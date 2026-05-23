@@ -1,0 +1,27 @@
+Tolong lakukan penyempurnaan besar pada SISI PENCARI KERJA (Mode Pekerja) di aplikasi "Jakarta Gig Finder" dengan menambahkan Formulir Data Diri Legalitas (Pajak & Identitas) serta membuat Antarmuka Peta Radar yang sangat interaktif.
+
+Implementasikan spesifikasi teknis berikut ke dalam kode HTML, CSS, dan JavaScript:
+
+1. FORMULIR PENDAFTARAN & LEGALITAS PEKERJA (ONBOARDING FORM)
+Ketika pengguna masuk ke "Mode Pekerja" untuk pertama kali (atau mengklik tombol "Lengkapi Profil Legalitas"), munculkan formulir bertahap (Multi-step Form) yang bersih untuk memasukkan data wajib berikut:
+- Data Identitas: Nama Lengkap (Sesuai KTP), No. KTP (NIK - 16 Digit), Tempat/Tanggal Lahir, Jenis Kelamin, dan Nomor WhatsApp Aktif.
+- Data Perpajakan & Finansial (Wajib untuk Pemotongan PPh 21 & Pencairan Dana):
+  * Nomor Pokok Wajib Pajak (NPWP / Nomor Induk Pajak 15 atau 16 digit).
+  * Opsi: "Saya belum memiliki NPWP" (Jika dicentang, berikan catatan otomatis: Potongan pajak PPh 21 akan 20% lebih tinggi sesuai peraturan perpajakan Indonesia).
+  * Data Rekening Bank / E-Wallet (Pilih Bank, No. Rekening, Nama Pemilik Rekening) untuk pencairan gaji harian.
+- Upload Berkas Simulasi: Tombol untuk simulasi unggah foto KTP dan foto Selfie pegang KTP (untuk verifikasi keamanan).
+
+2. ANTARMUKA PETA INTERAKTIF SISI PEKERJA (RADAR GEOLOCATION MAP)
+Ubah tampilan peta jika pengguna berada di "Mode Pekerja". Peta harus menjadi pusat kendali yang interaktif dengan fitur:
+- Lokasi Saya (Pusat Peta): Tampilkan pin lokasi GPS pekerja saat ini dengan animasi lingkaran radar berdenyut (Pulsing Radius Effect) yang melambangkan "Radius Jangkauan Siap Kerja" (misal: Radius 5 KM dari rumah pekerja).
+- Pin Lowongan Aktif: Peta pekerja harus mendeteksi secara real-time dan menampilkan ikon "Koper Kerja" di lokasi perusahaan-perusahaan yang baru saja memposting lowongan kustom (dari fitur perusahaan sebelumnya).
+- Garis Jarak Interaktif (Polyline/Distance Calculator): Jika pekerja mengklik salah satu Pin Lowongan di peta, buat garis lurus putus-putus dari lokasi pekerja ke lokasi lowongan tersebut, dan tampilkan info jarak di atasnya (contoh: "Jarak ke lokasi: 2.4 KM - Estimasi 10 menit berkendara").
+
+3. KARTU DETAIL LOWONGAN & TOMBOL "LAMBAR SEKARANG"
+Saat pekerja mengklik Pin Lowongan di petanya, munculkan Bottom Sheet dari bawah layar yang berisi detail tugas kustom dari perusahaan, standar pakaian, kuota, serta kalkulasi bersih yang akan mereka terima (Sudah dipotong pajak PPh 21 estimasi dan komisi aplikasi 15%).
+- Tambahkan Tombol Hijau Besar: "Lamar Pekerjaan Ini".
+- Jika diklik, buat animasi pengiriman data legalitas pekerja (Nama, NIK, NPWP) secara aman ke dasbor perusahaan pengiklan, dan munculkan notifikasi: "Lamaran Terkirim! Perusahaan akan memvalidasi data pajak dan identitas Anda."
+
+4. PENYEMPURNAAN DESAIN (UI/UX)
+- Berikan indikator visual berwarna hijau di profil pekerja jika data NPWP dan KTP mereka sudah terisi lengkap (Status: Akun Terverifikasi Pajak).
+- Pastikan desain formulir perpajakan terlihat formal namun mudah diisi lewat layar HP, lengkap dengan petunjuk teks kecil (tooltip) di setiap kolom input.

@@ -1,27 +1,43 @@
+import { useState } from "react";
 import { CustomJob, calcCommission, calcTotal, paymentLabels } from "@/types/custom-job";
+import { WorkerProfile, pph21Rate, isVerified } from "@/types/worker-profile";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { Users, FileText, Shirt, Banknote, Clock } from "lucide-react";
+import { Users, FileText, Shirt, Banknote, CheckCircle, ShieldCheck, Loader2 } from "lucide-react";
 
 interface JobSheetProps {
   job: CustomJob | null;
   onClose: () => void;
+  workerProfile?: WorkerProfile | null;
 }
 
-function formatRupiah(value: number): string {
+function formatRp(value: number): string {
   return "Rp " + value.toLocaleString("id-ID");
 }
 
-export default function JobSheet({ job, onClose }: JobSheetProps) {
+type ApplyState = "idle" | "sending" | "done";
+
+export default function JobSheet({ job, onClose, workerProfile }: JobSheetProps) {
+  const [applyState, setApplyState] = useState<ApplyState>("idle");
+
   if (!job) return null;
 
   const total = calcTotal(job.nominal, job.pembayaran);
   const commission = calcCommission(job.nominal, job.pembayaran);
-  const workerGets = total - commission;
+  const pph21 = workerProfile ? total * pph21Rate(workerProfile) : total * 0.05;
+  const workerGets = total - commission - pph21;
+  const hasNpwp = workerProfile ? !workerProfile.belumPunyaNpwp : true;
+  const verified = workerProfile ? isVerified(workerProfile) : false;
+
+  const handleApply = () => {
+    if (applyState !== "idle") return;
+    setApplyState("sending");
+    setTimeout(() => setApplyState("done"), 2000);
+  };
 
   return (
     <Sheet open={!!job} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="bottom" className="rounded-t-2xl p-6 h-[80vh] sm:h-auto overflow-y-auto">
+      <SheetContent side="bottom" className="rounded-t-2xl p-6 h-[82vh] sm:h-auto overflow-y-auto">
         <div className="flex flex-col gap-5 pt-4">
           {/* Header */}
           <div className="flex items-start gap-4">
@@ -31,11 +47,16 @@ export default function JobSheet({ job, onClose }: JobSheetProps) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-xl font-bold text-gray-900 leading-tight">{job.posisi}</h2>
-                <Badge className="bg-violet-100 text-violet-700 border-0 text-xs font-semibold">Lowongan Baru</Badge>
+                <Badge className="bg-violet-100 text-violet-700 border-0 text-xs font-semibold">Lowongan Kustom</Badge>
               </div>
               <div className="flex items-center gap-2 mt-1">
                 <Users className="w-3.5 h-3.5 text-gray-400" />
                 <span className="text-sm text-gray-500">{job.kuota} orang dibutuhkan</span>
+                {verified && (
+                  <span className="flex items-center gap-1 text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full ml-1">
+                    <ShieldCheck className="w-3 h-3" /> Akun Terverifikasi
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -58,48 +79,115 @@ export default function JobSheet({ job, onClose }: JobSheetProps) {
             </p>
           </div>
 
-          {/* Biaya */}
+          {/* Kalkulasi Biaya */}
           <div className="space-y-2">
             <h3 className="font-semibold text-sm text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-              <Banknote className="w-4 h-4" /> Detail Pembayaran
+              <Banknote className="w-4 h-4" /> Kalkulasi Penghasilan Bersih
             </h3>
             <div className="bg-primary/5 border border-primary/10 p-4 rounded-xl space-y-2.5">
               <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-600 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5" /> Sistem Bayaran
-                </span>
+                <span className="text-gray-600">Sistem Bayaran</span>
                 <span className="font-semibold text-gray-900">{paymentLabels[job.pembayaran]}</span>
               </div>
               <div className="flex justify-between items-center text-sm">
                 <span className="text-gray-600">
-                  {job.pembayaran === "per_jam" ? `${formatRupiah(job.nominal)} × 8 jam` : "Total pembayaran"}
+                  {job.pembayaran === "per_jam" ? `${formatRp(job.nominal)} × 8 jam` : "Total kotor"}
                 </span>
-                <span className="font-medium text-gray-900">{formatRupiah(total)}</span>
+                <span className="font-medium text-gray-900">{formatRp(total)}</span>
               </div>
-              <div className="flex justify-between items-center text-sm border-t border-primary/10 pt-2">
-                <span className="text-gray-500">Biaya layanan platform (15%)</span>
-                <span className="text-gray-500">−{formatRupiah(commission)}</span>
+
+              <div className="border-t border-primary/10 pt-2 space-y-1.5">
+                <div className="flex justify-between items-center text-xs text-gray-500">
+                  <span>Komisi platform (15%)</span>
+                  <span>−{formatRp(commission)}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className={`${!hasNpwp ? "text-amber-600" : "text-gray-500"}`}>
+                    PPh 21 ({hasNpwp ? "5%" : "6% — tanpa NPWP"})
+                  </span>
+                  <span className={`${!hasNpwp ? "text-amber-600" : "text-gray-500"}`}>
+                    −{formatRp(pph21)}
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between items-center border-t border-primary/10 pt-2">
-                <span className="font-bold text-gray-800">Penghasilan bersih Anda</span>
-                <span className="font-bold text-primary text-lg">{formatRupiah(workerGets)}</span>
+
+              <div className="flex justify-between items-center border-t border-primary/10 pt-2.5">
+                <span className="font-bold text-gray-800">Anda terima bersih</span>
+                <span className="font-bold text-primary text-lg">{formatRp(workerGets)}</span>
               </div>
+
+              {!hasNpwp && (
+                <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
+                  Daftarkan NPWP di pajak.go.id untuk menghemat pajak dan meningkatkan kepercayaan perusahaan.
+                </p>
+              )}
             </div>
           </div>
 
+          {/* Worker identity preview (if verified) */}
+          {workerProfile && (
+            <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 space-y-1">
+              <p className="text-xs font-semibold text-gray-600">Data yang akan dikirim ke perusahaan:</p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1">
+                <div>
+                  <p className="text-[10px] text-gray-400">Nama</p>
+                  <p className="text-xs font-semibold text-gray-800 truncate">{workerProfile.namaLengkap}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400">NIK</p>
+                  <p className="text-xs font-semibold text-gray-800">
+                    {workerProfile.nik.slice(0, 4)}••••••••{workerProfile.nik.slice(-4)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400">NPWP</p>
+                  <p className="text-xs font-semibold text-gray-800">
+                    {workerProfile.belumPunyaNpwp ? "Belum ada" : `••••••${workerProfile.npwp.slice(-4)}`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400">Bank</p>
+                  <p className="text-xs font-semibold text-gray-800">{workerProfile.namaBank || "—"}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* CTA */}
           <div className="pt-1 pb-6">
-            <button
-              data-testid="button-apply-job"
-              className="w-full bg-violet-600 hover:bg-violet-700 active:scale-[0.98] text-white font-bold py-3.5 rounded-xl text-base transition-all shadow-lg"
-              style={{ boxShadow: "0 4px 16px rgba(124,58,237,0.3)" }}
-              onClick={() => {
-                const text = `Halo, saya tertarik dengan lowongan ${job.posisi} yang Anda posting di Jakarta Gig Finder. Apakah posisi ini masih tersedia?`;
-                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
-              }}
-            >
-              Lamar Sekarang
-            </button>
+            {applyState === "idle" && (
+              <button
+                data-testid="button-apply-job"
+                className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-white font-bold py-3.5 rounded-xl text-base transition-all shadow-lg"
+                style={{ boxShadow: "0 4px 16px rgba(6,95,70,0.35)" }}
+                onClick={handleApply}
+              >
+                Lamar Pekerjaan Ini
+              </button>
+            )}
+
+            {applyState === "sending" && (
+              <div className="w-full bg-primary/10 border border-primary/20 text-primary font-semibold py-3.5 rounded-xl text-sm flex items-center justify-center gap-3">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Mengirim data legalitas secara aman...
+              </div>
+            )}
+
+            {applyState === "done" && (
+              <div className="space-y-3">
+                <div className="w-full bg-primary text-white font-semibold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2">
+                  <CheckCircle className="w-5 h-5" />
+                  Lamaran Terkirim!
+                </div>
+                <div className="bg-primary/5 border border-primary/15 rounded-xl px-4 py-3">
+                  <p className="text-xs text-gray-700 text-center leading-relaxed">
+                    Perusahaan akan memvalidasi data pajak dan identitas Anda.
+                    Notifikasi akan dikirim ke WhatsApp{" "}
+                    {workerProfile ? `+62${workerProfile.whatsapp}` : "Anda"}.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </SheetContent>
