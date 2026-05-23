@@ -1,0 +1,28 @@
+Tolong lakukan perombakan besar dan penyempurnaan pada aplikasi "Jakarta Gig Finder" untuk memberikan kebebasan penuh kepada sisi "Perusahaan" (Klien) dalam merekrut dan menentukan detail pekerjaan secara tidak terbatas.
+
+Implementasikan fitur Sistem Lowongan Terbuka (Custom Job System) berikut ke dalam kode HTML, CSS, dan JavaScript:
+
+1. FITUR "BUAT LOWONGAN KUSTOM" (CUSTOM JOB POSTING FORM)
+- Pada Mode Perusahaan, tambahkan satu tombol besar yang melayang (Floating Action Button) di pojok kanan bawah bertuliskan "+ Buka Lowongan Baru".
+- Jika tombol ini diklik, munculkan formulir input (Modal/Pop-up Form) dengan kolom-kolom bebas berikut:
+  * Nama Posisi/Pekerjaan: (Input teks bebas, contoh: "Asisten Fotografer", "Penerjemah Bahasa Mandarin Mandiri", "Penjaga Booth Jajanan").
+  * Deskripsi & Tugas Spesifik: (Textarea bebas untuk mengetik detail instruksi pekerjaan).
+  * Sistem Bayaran: (Dropdown pilihan: "Per Jam", "Per Shift", "Per Projek/Target").
+  * Nominal Bayaran: (Input angka Rupiah bebas).
+  * Persyaratan Pakaian & Atribut: (Input teks bebas, contoh: "Baju bebas rapi, bawa laptop sendiri").
+  * Kuota Pekerja: (Input angka jumlah tenaga kerja yang dibutuhkan).
+
+2. LOGIKA KODE SISTEM DINAMIS (JavaScript Update)
+- Ubah sistem filter di bagian bawah peta. Jangan gunakan tombol kategori kaku lagi. Ganti menjadi "Kolom Pencarian Pintar (Smart Search Bar)" dan "Sistem Tagging".
+- Setiap kali perusahaan selesai memposting "Lowongan Kustom" baru melalui formulir di atas, buat fungsi JavaScript untuk memetakan lowongan tersebut secara instan sebagai Pin Baru di peta (Gunakan koordinat random di sekitar lokasi GPS saat ini).
+- Jika Pin Lowongan Baru tersebut diklik dalam Mode Pekerja, tampilkan seluruh detail kustom yang diketik oleh perusahaan tadi secara utuh di dalam kartu informasi (Bottom Sheet).
+
+3. KALKULASI REVENUE STREAM UNTUK INPUT KUSTOM (Sistem Komisi Adaptif)
+- Perbarui logika mesin pencetak uang (Dashboard Admin) agar bisa membaca nominal kustom dari perusahaan:
+  * Jika sistem bayaran yang dipilih "Per Jam", rumus komisi: (Nominal x 8 Jam) x 15%.
+  * Jika sistem bayaran "Per Shift" atau "Per Projek", rumus komisi: Nominal Langsung x 15%.
+- Tampilkan simulasi pemotongan komisi 15% ini secara real-time di bawah formulir saat perusahaan sedang mengetik nominal bayarannya, sehingga perusahaan tahu berapa biaya layanan yang masuk ke platform kita sebelum lowongan diterbitkan.
+
+4. DESAIN INTERFASE INPUT YANG BERSIH (UI/UX)
+- Buat formulir input kustom ini terlihat sangat modern dan bersih (Clean Form Layout), menggunakan elemen input text yang luas, animasi transisi yang mulus saat modal terbuka, dan tombol "Terbitkan Lowongan" berwarna hijau gelap yang mencolok.
+- Pastikan aplikasi tetap stabil, responsif di HP, dan data lowongan kustom yang baru dibuat otomatis tersimpan di memory temporary (Array data) agar langsung muncul di peta tanpa perlu memuat ulang (reload) halaman.
