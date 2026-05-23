@@ -1,0 +1,47 @@
+Buatkan aplikasi web on-demand bernama "Jakarta Gig Finder" untuk mempertemukan Perusahaan (Klien) dengan Pekerja Lepas Harian (Daily Worker) secara real-time berbasis peta lokasi. Aplikasi ini harus dioptimalkan untuk browser handphone (Mobile-First Responsive Web App).
+
+Tolong implementasikan struktur data dan spesifikasi pekerjaan berikut secara detail ke dalam kode HTML, CSS, dan JavaScript:
+
+1. SISTEM DUA ANTARMUKA (ROLE SWITCHER)
+Di bagian atas aplikasi, buat tombol toggle/switch untuk mengubah mode tampilan:
+A. Mode Perusahaan (Mencari Pekerja)
+B. Mode Pekerja (Mencari Lowongan / Simulasi Standby)
+
+2. SPESIFIKASI KATEGORI PEKERJAAN & STRUKTUR DATA (DATABASE SIMULASI)
+Buat array data berisi minimal 10 pekerja fiktif yang tersebar di wilayah Jakarta (Gunakan koordinat lokal Jakarta) dengan spesifikasi pekerjaan yang sangat detil sebagai berikut:
+
+* Kategori: "Barista"
+  - Skill Spesifik: Latte Art, Manual Brewing (V60), Mengoperasikan Mesin Espresso Komersial.
+  - Sertifikasi: Sertifikat Keamanan Pangan (Food Safety) atau Pengalaman Kerja minimal 1 Tahun.
+  - Jam Kerja: Shift Pagi (06.00 - 14.00) atau Shift Malam (14.00 - 22.00).
+  - Standar Pakaian: Kemeja hitam polos, celana hitam, sepatu tertutup, apron kain.
+  - Tarif: Rp 35.000 / Jam.
+
+* Kategori: "Waiter / Waitress"
+  - Skill Spesifik: Table Manner, Menguasai Aplikasi POS (Point of Sales) / Kasir, Hospitality, Up-selling menu.
+  - Fisik & Sikap: Ramah, komunikatif, rambut rapi (diikat jika panjang), tidak menggunakan perhiasan berlebih.
+  - Jam Kerja: Berdasarkan Shift Restoran (Flexible Hours).
+  - Standar Pakaian: Kaos Polo hitam/putih, celana bahan gelap, sepatu hitam antiselip.
+  - Tarif: Rp 25.000 / Jam.
+
+* Kategori: "Event Crew / Runner"
+  - Skill Spesifik: Angkat beban (logistik acara), instalasi basic sound system/tenda, manajemen antrean (crowd control), registrasi tamu.
+  - Jam Kerja: Sistem Flat Rate per Event (Biasanya 8 - 12 Jam kerja berkelanjutan).
+  - Standar Pakaian: Kaos hitam polos, celana kargo/jeans gelap, sepatu olahraga (sneakers) yang nyaman untuk bergerak cepat.
+  - Tarif: Rp 200.000 / Shift (Flat Rate).
+
+3. FITUR PETA INTERAKTIF & FILTERISASI (GEOLOCATION)
+- Gunakan Leaflet.js atau OpenStreetMap (Alternatif Google Maps gratis tanpa API Key) untuk memetakan lokasi secara langsung.
+- Aktifkan fitur GPS Geolocation agar browser mendeteksi koordinat HP pengguna.
+- Buat tombol filter berbentuk kapsul horizontal (scrollable) di bawah navbar untuk menyaring pin pekerja di peta berdasarkan 3 Kategori spesifik di atas + 1 opsi "Semua Kategori".
+
+4. KARTU DETAIL PEKERJA (BOTTOM SHEET / POP-UP)
+Jika salah satu pin pekerja di peta diklik, munculkan lembar informasi (Bottom Sheet) dari bawah layar yang menampilkan:
+- Foto Profil, Nama, Rating Bintang (contoh: 4.8/5.0), dan Jumlah Job yang pernah diselesaikan.
+- List "Spesifikasi Keahlian" dan "Persyaratan Pakaian" sesuai dengan data kategori di atas.
+- Total Biaya yang harus dibayar (Kalkulasi otomatis berdasarkan tarif per jam x 8 jam standar shift).
+- Tombol Utama: "Pesan Tenaga Kerja" yang memicu simulasi pengiriman pesan WhatsApp otomatis ke nomor pekerja dengan template teks: "Halo [Nama Pekerja], perusahaan kami tertarik menggunakan jasa Anda sebagai [Kategori] melalui Jakarta Gig Finder..."
+
+5. DESAIN & INTERFASE (UI/UX)
+- Gunakan tema warna profesional: Hijau Gelap (Emerald/Teal) sebagai warna utama (melambangkan pertumbuhan ekonomi), Putih Bersih sebagai latar belakang, dan Hitam sebagai warna teks.
+- Pastikan semua file (index.html, script.js, style.css) terpisah dengan rapi, efisien, dan tidak ada fungsi yang eror/terpotong.
