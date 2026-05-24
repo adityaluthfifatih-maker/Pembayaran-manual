@@ -1,0 +1,22 @@
+Tolong lakukan pembaruan sistem pada aplikasi "Jakarta Gig Finder" dengan memisahkan tipe pemberi kerja (Perusahaan vs Agensi) sekaligus menambahkan fitur "Real-Time Dashboard Analytics" khusus di dalam Mode Perusahaan.
+
+Implementasikan spesifikasi fitur berikut ke dalam kode HTML, CSS, dan JavaScript:
+
+1. PEMISAHAN TIPE AKUN (PERUSAHAAN VS AGENSI)
+- Pada formulir pendaftaran sisi pemberi kerja, tambahkan dropdown "Tipe Bisnis":
+  * "Perusahaan Langsung (Kafe, Resto, Hotel, Kantor, dll)"
+  * "Agensi / Event Organizer / Outsourcing (Penyedia Massal)"
+- Jika tipe akun adalah "Agensi", buka kolom input kustom "Kuota Tenaga Kerja Massal" (bisa diisi hingga ratusan orang). Tampilkan badge khusus "[AGENCY JOB]" pada pin lowongan mereka di peta.
+- Logika Komisi: Jika lowongan diposting akun "Agensi" dengan kuota di atas 15 orang, otomatis potong komisi platform menjadi flat 7% (Diskon Volume). Jika di bawah 15 orang atau akun tipe "Perusahaan Langsung", gunakan skema komisi normal (15%).
+
+2. REAL-TIME DASHBOARD ANALYTICS (MODE PERUSAHAAN)
+Di dalam halaman utama Mode Perusahaan, buat sebuah tab menu atau panel visual baru bernama "Analitik Keuangan & Performa" dengan metrik real-time sebagai berikut:
+- Total Pengeluaran Per Lowongan: Tampilkan kartu ringkasan (Summary Cards) yang menghitung total biaya upah + komisi platform yang telah dikeluarkan untuk setiap lowongan aktif yang mereka buat.
+- Rata-Rata Rating Pekerja: Tampilkan angka rata-rata rating dari seluruh pekerja yang telah mereka rekrut dan selesaikan pekerjaannya (diambil dari database rating bintang dua arah sebelumnya).
+- Grafik Efisiensi Biaya (Cost-Efficiency Chart): Buatlah visualisasi grafik sederhana (menggunakan CSS Chart bar/line atau elemen visual div) yang membandingkan "Biaya Komisi yang Dikeluarkan" vs "Uang yang Dihemat" berdasarkan pilihan durasi kontrak (Harian 15% vs 6 Bulan 5%). Tunjukkan secara visual bahwa memilih kontrak 6 bulan membuat efisiensi keuangan perusahaan mereka meningkat tajam (berwarna Hijau Neon).
+
+3. PENYEMPURNAAN VISUAL (DASHBOARD UI/UX)
+- Desain halaman analitik perusahaan ini wajib menggunakan tema premium modern (Dark Mode dengan aksen warna Hijau Finansial dan Biru Elegan).
+- Pastikan semua angka pengeluaran, rata-rata rating, dan grafik otomatis memperbarui diri (auto-refresh/reactive) setiap kali perusahaan membuat lowongan baru atau menyelesaikan transaksi kerja dengan pekerja.
+
+Integrasikan seluruh logika analitik baru ini dengan file script.js, index.html, dan style.css tanpa merusak sistem peta radar, sensor ruang chat, dan validasi pajak yang sudah berjalan stabil sebelumnya. Jalankan aplikasi setelah selesai.

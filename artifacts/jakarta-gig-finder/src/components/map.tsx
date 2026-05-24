@@ -19,12 +19,21 @@ const createColoredIcon = (color: string) =>
     iconAnchor: [9, 9],
   });
 
-const createJobIcon = () =>
+const createJobIcon = (isAgency = false, isFlagged = false) =>
   L.divIcon({
     className: "",
-    html: `<div style="width:26px;height:26px;border-radius:6px;background:#7C3AED;border:3px solid white;box-shadow:0 2px 10px rgba(124,58,237,0.5);display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:900;line-height:1">+</div>`,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
+    html: isAgency
+      ? `<div style="position:relative;width:34px;height:34px">
+           <div style="width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,#1D4ED8,#7C3AED);border:3px solid white;box-shadow:0 2px 12px rgba(124,58,237,0.55);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0">
+             <span style="color:white;font-size:8px;font-weight:900;line-height:1">AG</span>
+             <span style="color:white;font-size:7px;font-weight:700;opacity:0.85;line-height:1">JOB</span>
+           </div>
+         </div>`
+      : isFlagged
+      ? `<div style="width:26px;height:26px;border-radius:6px;background:#EAB308;border:3px solid white;box-shadow:0 2px 10px rgba(234,179,8,0.5);display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:900">⚠</div>`
+      : `<div style="width:26px;height:26px;border-radius:6px;background:#7C3AED;border:3px solid white;box-shadow:0 2px 10px rgba(124,58,237,0.5);display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:900;line-height:1">+</div>`,
+    iconSize: isAgency ? [34, 34] : [26, 26],
+    iconAnchor: isAgency ? [17, 17] : [13, 13],
   });
 
 const categoryColors: Record<string, string> = {
@@ -68,7 +77,7 @@ export default function Map({ workers, onWorkerClick, customJobs = [], onJobClic
           <Marker
             key={`job-${job.id}`}
             position={[job.lat, job.lng]}
-            icon={createJobIcon()}
+            icon={createJobIcon(job.isAgency, job.flaggedSuspect)}
             eventHandlers={{ click: () => onJobClick?.(job) }}
           />
         ))}

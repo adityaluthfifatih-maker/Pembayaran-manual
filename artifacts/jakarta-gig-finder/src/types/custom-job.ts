@@ -1,5 +1,6 @@
 export type PaymentType = "per_jam" | "per_shift" | "per_projek";
 export type DurasiKontrak = "harian" | "1_bulan" | "3_bulan" | "6_bulan";
+export type TipeAkun = "perusahaan" | "agensi";
 
 export interface CustomJob {
   id: number;
@@ -17,22 +18,42 @@ export interface CustomJob {
   nibPerusahaan?: string;
   namaPerusahaan?: string;
   flaggedSuspect?: boolean;
+  tipeAkun?: TipeAkun;
+  isAgency?: boolean;
 }
 
 export const durasiKontrakOptions: { value: DurasiKontrak; label: string; rate: number }[] = [
-  { value: "harian",  label: "Harian (Gig biasa)",    rate: 0.15 },
+  { value: "harian",  label: "Harian (Gig biasa)",      rate: 0.15 },
   { value: "1_bulan", label: "1 Bulan (Jangka pendek)", rate: 0.10 },
   { value: "3_bulan", label: "3 Bulan (Paruh waktu)",   rate: 0.075 },
   { value: "6_bulan", label: "6 Bulan (Semi-tetap)",    rate: 0.05 },
 ];
 
+export function effectiveCommissionRate(
+  durasi?: DurasiKontrak,
+  isAgency?: boolean,
+  kuota?: number
+): number {
+  // Volume discount for agencies with > 15 workers
+  if (isAgency && (kuota ?? 0) > 15) return 0.07;
+  const opt = durasiKontrakOptions.find((o) => o.value === durasi);
+  return opt ? opt.rate : 0.15;
+}
+
+/** Alias kept for compatibility */
 export function commissionRate(durasi?: DurasiKontrak): number {
   const opt = durasiKontrakOptions.find((o) => o.value === durasi);
   return opt ? opt.rate : 0.15;
 }
 
-export function calcCommission(nominal: number, pembayaran: PaymentType, durasi?: DurasiKontrak): number {
-  const rate = commissionRate(durasi);
+export function calcCommission(
+  nominal: number,
+  pembayaran: PaymentType,
+  durasi?: DurasiKontrak,
+  isAgency?: boolean,
+  kuota?: number
+): number {
+  const rate = effectiveCommissionRate(durasi, isAgency, kuota);
   if (pembayaran === "per_jam") return nominal * 8 * rate;
   return nominal * rate;
 }
