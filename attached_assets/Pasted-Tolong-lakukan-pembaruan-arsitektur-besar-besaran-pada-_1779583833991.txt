@@ -1,0 +1,34 @@
+Tolong lakukan pembaruan arsitektur besar-besaran pada aplikasi "Jakarta Gig Finder". Integrasikan (1) Halaman Login & Sign Up Konvensional, (2) Autentikasi "Sign In with Google", (3) Pemisahan Peran Perusahaan vs Karyawan, serta (4) Halaman Profil dengan Dashboard Analitik Data Diri Lengkap ke dalam kode HTML, CSS, dan JavaScript secara sinkron.
+
+Berikut adalah spesifikasi teknis mendalam yang wajib kamu implementasikan sekarang:
+
+1. HALAMAN AUTENTIKASI ADAPTIF & INTEGRASI GOOGLE LOGIN
+- Buat halaman depan (Welcome/Auth Screen) yang modern dan mobile-first dengan opsi tab: "Masuk" dan "Daftar Baru".
+- Sediakan formulir input konvensional: Email, Password, Nama Akun, dan Nomor WhatsApp.
+- RENDER TOMBOL GOOGLE: Tambahkan tombol premium "Lanjutkan dengan Google" sesuai Google Brand Guidelines (latar bersih, soft shadow, dan ikon 'G' berwarna khas Google di sisi kiri teks).
+- ALUR PEMILIHAN PERAN (ROLE SELECTION): Ketika pengguna mendaftar konvensional atau klik "Sign in with Google", munculkan Pop-up/Modal transisi elegan yang mewajibkan memilih peran:
+  * [Opsi A]: "Saya Pencari Kerja / Karyawan"
+  * [Opsi B]: "Saya Pemilik Usaha / Perusahaan / Agensi"
+- Setelah peran dipilih, jalankan fungsi JavaScript untuk mensimulasikan penarikan nama/email Google dummy, beri lencana "Linked with Google" di profil, lalu redirect otomatis ke dasbor yang sesuai.
+
+2. FITUR PROFIL & ANALITIK LENGKAP SISI KARYAWAN (PROFIL DATA DIRI LEGAL)
+Buat halaman Profil Karyawan berbasis tab bawah (Bottom Navigation) yang menampilkan data diri legalitas terintegrasi dan metrik performa real-time:
+- Tampilan Data Diri Legal: Nama Lengkap (KTP), NIK (16 Digit), dan Nomor Induk Pajak/NPWP (15/16 Digit). Jika NPWP diisi, beri lencana hijau "Akun Patuh Pajak (PPh 21 Resmi)". Jika kosong, beri peringatan kuning "Potongan Pajak +20% Lebih Tinggi".
+- Panel Analitik Performa Karyawan (Real-Time Metrics):
+  * Total Jam Kerja Selesai: Mengakumulasikan jam kerja dari proyek yang berhasil diselesaikan.
+  * Pendapatan Bersih (E-Wallet): Menampilkan total uang yang dicairkan setelah dipotong pajak PPh 21 dan komisi platform.
+  * Skor Reputasi & Rating: Tampilkan nilai rating bintang (contoh: 4.9/5.0) dan bar visual "Poin Reputasi" (Skala 0 - 100) untuk memantau pinalti pembatalan kerja.
+
+3. FITUR PROFIL & ANALITIK REKREASI SISI PERUSAHAAN/AGENSI
+Perbarui halaman Profil Perusahaan untuk menyatukan manajemen bisnis dan analisis pengeluaran:
+- Tampilan Data Legal: Nama Bisnis, Tipe Bisnis (Dropdown: Perusahaan Langsung / Agensi dengan kuota massal), dan Nomor Induk Berusaha (NIB).
+- Panel Analitik Keuangan Perusahaan (Real-Time Dashboard Analytics):
+  * Total Pengeluaran Per Lowongan: Menghitung total biaya upah + komisi platform yang telah dikeluarkan.
+  * Rata-Rata Rating Pekerja Direkrut: Menampilkan rata-rata kualitas tenaga kerja yang telah mereka sewa.
+  * Grafik Efisiensi Kontrak (Cost-Efficiency Chart): Buatlah visualisasi grafik batang/garis interaktif menggunakan elemen div/CSS yang membandingkan "Biaya Komisi Dikeluarkan" vs "Uang yang Dihemat". Tunjukkan secara visual bahwa memilih kontrak 6 bulan (komisi 5%) membuat efisiensi keuangan mereka meningkat tajam (berwarna Hijau Neon).
+
+4. SINKRONISASI DATA SIMULASI DEMO (DEVELOPER MODE)
+- Pastikan seluruh data analitik, grafik efisiensi, data legalitas (NIB/NIK/NPWP), dan nama akun Google di atas terhubung langsung dengan fitur "Suntik 20 Data Simulasi (Mode Demo)" yang sudah dibuat sebelumnya.
+- Ketika tombol demo diklik, halaman profil karyawan maupun perusahaan harus langsung terisi dengan angka-angka performa, riwayat chat, dan grafik keuangan yang ramai secara instan untuk kebutuhan presentasi.
+
+Terapkan pembaruan ini pada file index.html, script.js, dan style.css secara rapi. Pastikan semua fungsi navigasi tab lancar dan tidak merusak logika peta radar, sensor chat, serta alarm notifikasi darurat yang sudah berjalan stabil sebelumnya. Jalankan aplikasi setelah selesai diperbarui.
