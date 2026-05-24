@@ -45,7 +45,7 @@ function randomJakartaCoords() {
 const JAKARTA_CENTER = { lat: -6.2088, lng: 106.8456 };
 type JobStatus = "accepted" | "clocked_in" | "completed" | null;
 type CompanyView = "map" | "analytics";
-type AppTab = "home" | "profile";
+type AppTab = "home" | "chat" | "profile";
 
 // ── Demo data factories ────────────────────────────────────────────
 function makeDemoWorkerProfile(): WorkerProfile {
@@ -178,6 +178,12 @@ export default function Home() {
     setCurrentUser(user);
     setMode(user.role);
     setActiveTab("home");
+    // Role-specific initial view
+    if (user.role === "pekerja") {
+      setWorkerView("map");   // workers land on radar map
+    } else {
+      setCompanyView("map");  // companies land on worker map + job posting
+    }
   }, []);
 
   const handleLogout = useCallback(() => {
@@ -380,6 +386,107 @@ export default function Home() {
       )}
       {mode === "pekerja" && jobStatus === "clocked_in" && activeJob && (
         <SOSButton jobTitle={activeJob.posisi} />
+      )}
+
+      {/* ── CHAT TAB ─────────────────────────────────────── */}
+      {activeTab === "chat" && (
+        <div className="flex-1 overflow-y-auto bg-gray-50 flex flex-col">
+          <div className="bg-white border-b border-gray-100 px-5 py-4 shrink-0">
+            <h2 className="font-bold text-gray-900 text-base">Pesan & Chat</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {currentUser.role === "pekerja" ? "Chat dengan perusahaan yang menerima lamaran Anda" : "Chat dengan pelamar yang Anda terima"}
+            </p>
+          </div>
+
+          {currentUser.role === "pekerja" ? (
+            /* ── WORKER CHAT LIST ── */
+            customJobs.length === 0 && !activeJob ? (
+              <ChatEmptyState label="Belum ada percakapan aktif" sub="Lamar pekerjaan terlebih dahulu untuk mulai chat dengan perusahaan." />
+            ) : (
+              <div className="p-4 space-y-3">
+                {/* Active job banner */}
+                {activeJob && (
+                  <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shrink-0">
+                        <Briefcase className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-900">{activeJob.posisi}</p>
+                        <p className="text-xs text-primary font-medium">{activeJob.namaPerusahaan || "Perusahaan"}</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">{jobStatus === "clocked_in" ? "🟢 Sedang bekerja" : jobStatus === "completed" ? "✅ Selesai" : "⏳ Menunggu Clock-In"}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setChatContext({ jobTitle: activeJob.posisi, nominal: activeJob.nominal, companyName: activeJob.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker" })}
+                      className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-xl shrink-0">
+                      <MessageSquare className="w-3.5 h-3.5" /> Chat
+                    </button>
+                  </div>
+                )}
+                {/* Other jobs from the list */}
+                {customJobs.filter(j => j.id !== activeJob?.id).map((job) => (
+                  <div key={job.id} className="bg-white border border-gray-100 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center font-black text-sm text-white ${job.isAgency ? "bg-gradient-to-br from-blue-600 to-violet-600" : "bg-violet-600"}`}>
+                        {job.isAgency ? "AG" : "+"}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-gray-900 truncate">{job.posisi}</p>
+                        <p className="text-xs text-gray-500 truncate">{job.namaPerusahaan || "Perusahaan"}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Rp {job.nominal.toLocaleString("id-ID")} / {job.pembayaran === "per_jam" ? "Jam" : job.pembayaran === "per_shift" ? "Shift" : "Projek"}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker" })}
+                      className="flex items-center gap-1.5 bg-gray-100 text-gray-700 text-xs font-bold px-3 py-2 rounded-xl shrink-0 hover:bg-primary/10 hover:text-primary transition-colors">
+                      <MessageSquare className="w-3.5 h-3.5" /> Chat
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : (
+            /* ── COMPANY CHAT LIST ── */
+            notifications.filter(n => n.status === "diterima" || n.status === "ditinjau").length === 0 ? (
+              <ChatEmptyState label="Belum ada percakapan aktif" sub="Terima lamaran pekerja terlebih dahulu untuk mulai berkomunikasi." />
+            ) : (
+              <div className="p-4 space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1">Pelamar Diterima / Ditinjau</p>
+                {notifications
+                  .filter(n => n.status === "diterima" || n.status === "ditinjau")
+                  .map((n) => {
+                    const job = customJobs.find(j => j.id === n.jobId);
+                    const isAccepted = n.status === "diterima";
+                    return (
+                      <div key={n.id} className="bg-white border border-gray-100 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary font-bold text-sm">
+                            {n.applicantName.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-sm font-bold text-gray-900">{n.applicantName}</p>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isAccepted ? "bg-primary/10 text-primary" : "bg-amber-100 text-amber-700"}`}>
+                                {isAccepted ? "Diterima" : "Ditinjau"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 truncate">{n.jobTitle}</p>
+                            {n.hasNpwp && <p className="text-[10px] text-primary font-medium mt-0.5">✓ NPWP Terverifikasi</p>}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setChatContext({ jobTitle: n.jobTitle, nominal: job?.nominal ?? 0, companyName: job?.namaPerusahaan || "Perusahaan Anda", workerName: n.applicantName, currentRole: "company" })}
+                          className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-xl shrink-0 hover:bg-primary/90 transition-colors">
+                          <MessageSquare className="w-3.5 h-3.5" /> Chat
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+            )
+          )}
+        </div>
       )}
 
       {/* ── PROFILE PAGES (full-screen when tab=profile) ── */}
@@ -710,9 +817,33 @@ export default function Home() {
         </>
       )}
 
-      {/* ── BOTTOM NAVIGATION ──────────────────────────── */}
+      {/* ── BOTTOM NAVIGATION (3 tabs) ─────────────────── */}
       <nav className="shrink-0 bg-white border-t border-gray-100 flex shadow-[0_-2px_12px_rgba(0,0,0,0.06)] z-20">
-        <NavBtn icon={<HomeIcon className="w-5 h-5" />} label="Beranda" active={activeTab === "home"} onClick={() => setActiveTab("home")} />
+        <NavBtn
+          icon={<HomeIcon className="w-5 h-5" />}
+          label={mode === "pekerja" ? "Radar" : "Beranda"}
+          active={activeTab === "home"}
+          onClick={() => setActiveTab("home")}
+        />
+        <NavBtn
+          icon={
+            <div className="relative">
+              <MessageSquare className="w-5 h-5" />
+              {/* Unread chat badge */}
+              {mode === "perusahaan" && notifications.filter(n => n.status === "diterima" || n.status === "ditinjau").length > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center">
+                  {notifications.filter(n => n.status === "diterima" || n.status === "ditinjau").length > 9 ? "9+" : notifications.filter(n => n.status === "diterima" || n.status === "ditinjau").length}
+                </span>
+              )}
+              {mode === "pekerja" && (customJobs.length > 0 || activeJob) && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-primary rounded-full border border-white" />
+              )}
+            </div>
+          }
+          label="Chat"
+          active={activeTab === "chat"}
+          onClick={() => setActiveTab("chat")}
+        />
         <NavBtn
           icon={
             <div className="relative">
@@ -727,6 +858,18 @@ export default function Home() {
           onClick={() => setActiveTab("profile")}
         />
       </nav>
+    </div>
+  );
+}
+
+function ChatEmptyState({ label, sub }: { label: string; sub: string }) {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center text-center px-8 py-16 gap-3">
+      <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-1">
+        <MessageSquare className="w-8 h-8 text-gray-300" />
+      </div>
+      <p className="font-bold text-gray-700 text-sm">{label}</p>
+      <p className="text-xs text-gray-400 leading-relaxed">{sub}</p>
     </div>
   );
 }

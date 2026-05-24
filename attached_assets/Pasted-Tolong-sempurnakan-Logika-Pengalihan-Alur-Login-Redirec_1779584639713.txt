@@ -1,0 +1,22 @@
+Tolong sempurnakan Logika Pengalihan Alur (Login Redirect Workflow) setelah pengguna berhasil memilih peran pada aplikasi "Jakarta Gig Finder". Pastikan sistem langsung mengarahkan pengguna ke tampilan Peta dan Profil yang spesifik sesuai kebutuhan peran mereka tanpa terkecuali.
+
+Implementasikan logika JavaScript dan UI ini pada komponen yang sudah dibuat:
+
+1. ALUR JIKA PENGGUNA MEMILIH "PENCARI KERJA / KARYAWAN":
+Begitu tombol "Saya Pencari Kerja" diklik pada menu Login/Google Sign-In:
+- Sembunyikan halaman autentikasi secara penuh.
+- Set Toggle Peran di atas otomatis ke posisi "Mode Pekerja".
+- BUKA PETA RADAR: Tampilan utama langsung memuat Peta Radar Lowongan terdekat di Jakarta, lengkap dengan Pin aktif dan tombol darurat "⚠️ SOS".
+- BUKA PROFIL PEKERJA: Tab Akun/Profil otomatis dikonfigurasi untuk hanya menampilkan Nama Verified, NIK/NPWP (Lencana Patuh Pajak), Indikator E-Wallet Saldo, Jam Kerja Selesai, dan Skor Poin Reputasi. (Sembunyikan semua grafik keuangan perusahaan).
+
+2. ALUR JIKA PENGGUNA MEMILIH "PEMILIK USAHA / PERUSAHAAN / AGENSI":
+Begitu tombol "Saya Pemilik Usaha" diklik pada menu Login/Google Sign-In:
+- Sembunyikan halaman autentikasi secara penuh.
+- Set Toggle Peran di atas otomatis ke posisi "Mode Perusahaan".
+- BUKA DASBOR KEBUTUHAN PERUSAHAAN: Tampilan utama langsung memuat daftar "Lowongan Aktif Anda", tombol utama "+ Buka Lowongan Baru", dan membuka akses input data legalitas NIB.
+- BUKA PROFIL ANALITIK BISNIS: Tab Akun/Profil otomatis dikonfigurasi untuk hanya menampilkan Profil Bisnis, Total Pengeluaran, Rata-Rata Rating Pekerja, serta Grafik Efisiensi Biaya Kontrak (CSS Bar Hijau Neon). (Sembunyikan semua metrik saldo e-wallet pekerja).
+
+3. SISTEM NAVIGASI YANG ADAPTIF
+- Pastikan Tab Navigasi Bawah [Tab 1: Beranda/Peta, Tab 2: Chat, Tab 3: Profil] ikut menyesuaikan isinya secara otomatis mengikuti peran yang telah dipilih di awal tadi, sehingga tidak akan ada data pekerja yang tertukar di akun perusahaan, ataupun sebaliknya.
+
+Pastikan logika pengalihan instan ini berjalan mulus di script.js dan index.html tanpa ada bug layar putih (blank screen) saat perpindahan role selesai dipilih. Jalankan aplikasi setelah pembaruan ini diterapkan.
