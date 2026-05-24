@@ -1,0 +1,25 @@
+Tolong lakukan penyempurnaan menyeluruh dan final pada aplikasi "Jakarta Gig Finder". Integrasikan (1) Fitur Ruang Chat Internal Aplikasi, (2) Sistem Proteksi Anti-Main Belakang dengan Sensor Chat Aktif, (3) Sistem Kontrak Berdurasi, dan (4) Sistem Anti-Penipuan ke dalam kode HTML, CSS, dan JavaScript secara utuh.
+
+Berikut adalah spesifikasi teknis ruang chat dan keamanan yang wajib kamu ketik sekarang:
+
+1. FITUR RUANG CHAT INTERNAL APLIKASI (IN-APP CHAT INTERFACE)
+- Di dalam Kartu Detail Pekerja (setelah lowongan diterima atau pin diklik), tambahkan tombol "Buka Chat Aplikasi" dengan ikon pesan.
+- Jika tombol ini diklik, munculkan kotak ruang chat (Chat Box Overlay) yang bersih dan modern mirip tampilan WhatsApp/Gojek Chat di dalam aplikasi.
+- Sediakan area tampilan gelembung pesan (Chat Bubbles) yang membedakan warna pesan pengirim (hijau gelap/biru) dan pesan penerima (abu-abu/putih), lengkap dengan kolom input teks dan tombol "Kirim".
+
+2. INTEGRASI ALGORITMA SENSOR CHAT AKTIF (ANTI-MAIN BELAKANG)
+- Pasang fungsi JavaScript `addEventListener` pada tombol "Kirim" di ruang chat untuk menyaring (screening) setiap teks yang diketik secara real-time sebelum pesan tersebut terkirim ke layar.
+- Jika pengguna (perusahaan atau pekerja) mengetik kata kunci pemicu bypass seperti: "nomor WA", "minta kontak", "bayar cash", "pindah WA", "batalin aplikasi", "minta nomor hp", atau "transfer langsung":
+  * BLOKIR PESAN: Jangan teruskan pesan tersebut ke dalam ruang chat (pesan gagal terkirim).
+  * POP-UP PERINGATAN: Munculkan kotak peringatan merah di layar dengan teks: "❌ Pesan Diblokir! Deteksi Transaksi Luar Aplikasi. Pelanggaran sistem dapat mengakibatkan pembekuan akun permanen dan hilangnya jaminan asuransi kerja."
+
+3. INDIKATOR JAMINAN & OPSI TRANSFER RESMI (BUY-OUT FEE)
+- Di bagian atas header ruang chat, tampilkan teks berjalan atau banner kecil (Notice Banner) bertuliskan: "🔒 Ruang Chat Terproteksi: Transaksi resmi dijamin asuransi BPJS Ketenagakerjaan (Clock-In) & Bukti Potong Pajak PPh 21."
+- Tambahkan tombol opsi di pojok kanan atas chat: "Ajukan Kontrak Tetap (Buy-Out)". Jika diklik oleh perusahaan, tampilkan simulasi biaya transfer resmi setara 1 bulan gaji untuk mengangkat pekerja secara legal menjadi staf tetap di luar aplikasi.
+
+4. SISTEM KONTRAK & ANTI-PENIPUAN (DARI FITUR SEBELUMNYA)
+- Pastikan Dropdown "Durasi Kontrak Kerja" (Harian 15%, 1 Bulan 10%, 3 Bulan 7.5%, 6 Bulan 5%) di form perusahaan tetap berfungsi dan terhitung di Dashboard Admin.
+- Kolom input "NIB / KTP Perusahaan" dan Filter Kata Kunci Penipuan ("biaya seragam", "biaya admin") pada deskripsi lowongan harus tetap aktif melanggar penerbitan lowongan palsu.
+- Tombol merah "Laporkan Lowongan Mencurigakan" tetap tersedia di sisi pekerja untuk mengubah warna pin menjadi kuning peringatan.
+
+Pastikan seluruh struktur komponen HTML chat, gaya CSS transisi slide-in ruang chat, dan logika sensor JavaScript ini dirakit menjadi satu kesatuan yang stabil tanpa merusak sistem peta radar, e-wallet, dan alarm notifikasi yang sudah berjalan. Jalankan (Run) aplikasinya jika sudah selesai diperbarui.

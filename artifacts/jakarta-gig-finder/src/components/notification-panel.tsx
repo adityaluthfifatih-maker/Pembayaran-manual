@@ -1,27 +1,28 @@
-import { Bell, X, ShieldCheck, AlertCircle, CheckCircle, Clock, ChevronRight, Inbox } from "lucide-react";
+import { Bell, X, ShieldCheck, AlertCircle, CheckCircle, Clock, ChevronRight, Inbox, MessageSquare } from "lucide-react";
 import { ApplicationNotification, ApplicationStatus } from "@/types/notification";
 import { useState } from "react";
 
 interface NotificationPanelProps {
   notifications: ApplicationNotification[];
   onStatusChange: (id: number, status: ApplicationStatus) => void;
+  onOpenChat?: (notif: ApplicationNotification) => void;
 }
 
 const statusConfig: Record<ApplicationStatus, { label: string; color: string; bg: string }> = {
-  baru:      { label: "Baru",     color: "text-violet-700", bg: "bg-violet-100" },
-  ditinjau:  { label: "Ditinjau", color: "text-amber-700",  bg: "bg-amber-100"  },
-  diterima:  { label: "Diterima", color: "text-primary",    bg: "bg-primary/10" },
-  ditolak:   { label: "Ditolak",  color: "text-red-600",    bg: "bg-red-100"    },
+  baru:     { label: "Baru",     color: "text-violet-700", bg: "bg-violet-100" },
+  ditinjau: { label: "Ditinjau", color: "text-amber-700",  bg: "bg-amber-100"  },
+  diterima: { label: "Diterima", color: "text-primary",    bg: "bg-primary/10" },
+  ditolak:  { label: "Ditolak",  color: "text-red-600",    bg: "bg-red-100"    },
 };
 
 function timeAgo(date: Date): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return "Baru saja";
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} menit lalu`;
-  return `${Math.floor(seconds / 3600)} jam lalu`;
+  const s = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (s < 60)   return "Baru saja";
+  if (s < 3600) return `${Math.floor(s / 60)} menit lalu`;
+  return `${Math.floor(s / 3600)} jam lalu`;
 }
 
-export default function NotificationPanel({ notifications, onStatusChange }: NotificationPanelProps) {
+export default function NotificationPanel({ notifications, onStatusChange, onOpenChat }: NotificationPanelProps) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
 
@@ -29,7 +30,6 @@ export default function NotificationPanel({ notifications, onStatusChange }: Not
 
   return (
     <>
-      {/* Bell button */}
       <button
         data-testid="button-notification-bell"
         onClick={() => setOpen(true)}
@@ -43,16 +43,13 @@ export default function NotificationPanel({ notifications, onStatusChange }: Not
         )}
       </button>
 
-      {/* Overlay */}
       {open && (
         <div
           className="fixed inset-0 z-[150]"
           style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)" }}
         >
-          {/* Tap outside */}
           <div className="absolute inset-0" onClick={() => setOpen(false)} />
 
-          {/* Panel — slides from right */}
           <div
             className="absolute top-0 right-0 bottom-0 w-full max-w-sm bg-white flex flex-col shadow-2xl"
             style={{ animation: "slideInRight 0.26s cubic-bezier(0.32,0.72,0,1)" }}
@@ -104,11 +101,9 @@ export default function NotificationPanel({ notifications, onStatusChange }: Not
                           className="flex items-start gap-3 cursor-pointer"
                           onClick={() => setExpanded(isExpanded ? null : n.id)}
                         >
-                          {/* Avatar */}
                           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary font-bold text-sm">
                             {n.applicantName.charAt(0).toUpperCase()}
                           </div>
-
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-semibold text-sm text-gray-900 truncate">{n.applicantName}</span>
@@ -134,35 +129,42 @@ export default function NotificationPanel({ notifications, onStatusChange }: Not
                               </span>
                             </div>
                           </div>
-
-                          <ChevronRight
-                            className={`w-4 h-4 text-gray-400 shrink-0 mt-1 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-                          />
+                          <ChevronRight className={`w-4 h-4 text-gray-400 shrink-0 mt-1 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
                         </div>
 
-                        {/* Expanded detail */}
+                        {/* Expanded */}
                         {isExpanded && (
                           <div className="mt-4 space-y-3" style={{ animation: "fadeIn 0.15s ease" }}>
-                            {/* Identity grid */}
                             <div className="bg-gray-50 rounded-xl p-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
-                              <DataRow label="NIK" value={n.applicantNikMasked} />
-                              <DataRow label="NPWP" value={n.applicantNpwpMasked} warn={!n.hasNpwp} />
-                              <DataRow label="Bank" value={n.bank} />
+                              <DataRow label="NIK"         value={n.applicantNikMasked} />
+                              <DataRow label="NPWP"        value={n.applicantNpwpMasked} warn={!n.hasNpwp} />
+                              <DataRow label="Bank"        value={n.bank} />
                               <DataRow label="No. Rekening" value={n.rekening} />
                             </div>
 
-                            {/* Tax notice */}
                             {!n.hasNpwp && (
                               <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
                                 <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                                 <p className="text-[11px] text-amber-700 leading-relaxed">
-                                  Pelamar belum memiliki NPWP. Pemotongan PPh 21 akan lebih tinggi 20% (tarif 6%). Pastikan disesuaikan dalam sistem penggajian.
+                                  Pelamar belum memiliki NPWP. Pemotongan PPh 21 akan lebih tinggi 20% (tarif 6%).
                                 </p>
                               </div>
                             )}
 
+                            {/* Open chat button (available for accepted/reviewed) */}
+                            {onOpenChat && (n.status === "diterima" || n.status === "ditinjau") && (
+                              <button
+                                data-testid={`button-open-chat-notif-${n.id}`}
+                                onClick={() => { setOpen(false); onOpenChat(n); }}
+                                className="w-full flex items-center justify-center gap-2 bg-primary/5 border border-primary/20 text-primary text-xs font-bold py-2.5 rounded-xl hover:bg-primary/10 transition-colors"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                                Buka Chat dengan Pekerja
+                              </button>
+                            )}
+
                             {/* Action buttons */}
-                            {n.status === "baru" || n.status === "ditinjau" ? (
+                            {(n.status === "baru" || n.status === "ditinjau") ? (
                               <div className="flex gap-2 pt-1">
                                 <button
                                   data-testid={`button-accept-${n.id}`}
@@ -204,14 +206,8 @@ export default function NotificationPanel({ notifications, onStatusChange }: Not
       )}
 
       <style>{`
-        @keyframes slideInRight {
-          from { transform: translateX(100%); opacity: 0.6; }
-          to   { transform: translateX(0);    opacity: 1; }
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-4px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
+        @keyframes slideInRight { from{transform:translateX(100%);opacity:0.6} to{transform:translateX(0);opacity:1} }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
       `}</style>
     </>
   );

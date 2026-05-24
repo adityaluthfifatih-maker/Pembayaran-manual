@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import Map from "@/components/map";
 import WorkerMap from "@/components/worker-map";
 import WorkerSheet from "@/components/bottom-sheet";
@@ -11,6 +11,7 @@ import RatingModal, { RatingPayload } from "@/components/rating-modal";
 import SOSButton from "@/components/sos-button";
 import PaySlipModal from "@/components/pay-slip-modal";
 import EarningsDashboard from "@/components/earnings-dashboard";
+import ChatModal from "@/components/chat-modal";
 import { workers, Worker } from "@/data/workers";
 import { jobs } from "@/data/jobs";
 import { CustomJob, calcTotal } from "@/types/custom-job";
@@ -22,7 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   MapPin, Clock, Banknote, Search, X, ShieldCheck, UserCircle,
-  Map as MapIcon, Briefcase, Star, TrendingUp, XCircle,
+  Map as MapIcon, Briefcase, TrendingUp, XCircle, MessageSquare,
 } from "lucide-react";
 
 let nextJobId = 100;
@@ -36,7 +37,6 @@ function randomJakartaCoords() {
 }
 
 const JAKARTA_CENTER = { lat: -6.2088, lng: 106.8456 };
-
 type JobStatus = "accepted" | "clocked_in" | "completed" | null;
 
 export default function Home() {
@@ -59,31 +59,35 @@ export default function Home() {
   const [workerProfile, setWorkerProfile] = useState<WorkerProfile | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
-  // ── Reputation system (Fitur 3) ────────────────────────────────────
+  // ── Reputation system ──────────────────────────────────────────────
   const [reputationPoints, setReputationPoints] = useState(100);
   const isSuspended = reputationPoints < 50;
 
-  // ── Active job & clock-in/out (Fitur 1) ───────────────────────────
+  // ── Active job & clock-in/out ──────────────────────────────────────
   const [activeJob, setActiveJob] = useState<CustomJob | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus>(null);
   const [clockedInAt, setClockedInAt] = useState<Date | null>(null);
   const [clockedOutAt, setClockedOutAt] = useState<Date | null>(null);
   const [showClockIn, setShowClockIn] = useState(false);
 
-  // ── Rating system (Fitur 2) ────────────────────────────────────────
+  // ── Rating system ──────────────────────────────────────────────────
   const [pendingRating, setPendingRating] = useState<{
     raterType: "company" | "worker"; targetName: string; job: CustomJob;
   } | null>(null);
 
-  // ── Pay slip (Fitur 5) ────────────────────────────────────────────
+  // ── Pay slip & earnings ────────────────────────────────────────────
   const [showPaySlip, setShowPaySlip] = useState(false);
-
-  // ── Earnings dashboard ────────────────────────────────────────────
   const [showEarnings, setShowEarnings] = useState(false);
   const [totalEarned, setTotalEarned] = useState(0);
   const [completedNotifs, setCompletedNotifs] = useState<ApplicationNotification[]>([]);
 
-  // ── Notifications (Fitur for company) ────────────────────────────
+  // ── Chat ───────────────────────────────────────────────────────────
+  const [chatContext, setChatContext] = useState<{
+    jobTitle: string; nominal: number; companyName: string;
+    workerName: string; currentRole: "company" | "worker";
+  } | null>(null);
+
+  // ── Notifications ──────────────────────────────────────────────────
   const [notifications, setNotifications] = useState<ApplicationNotification[]>([]);
 
   // ── Geolocation ───────────────────────────────────────────────────
@@ -104,7 +108,7 @@ export default function Home() {
     if (m === "pekerja" && !workerProfile) setShowOnboarding(true);
   }, [workerProfile]);
 
-  // ── Search & tags ─────────────────────────────────────────────────
+  // ── Search ────────────────────────────────────────────────────────
   const suggestedTags = ["Barista", "Waiter / Waitress", "Event Crew / Runner", "Latte Art", "POS/Kasir", "Crowd Control"];
   const visibleTags = searchQuery
     ? suggestedTags.filter((t) => t.toLowerCase().includes(searchQuery.toLowerCase()) && !activeTags.includes(t))
@@ -132,7 +136,7 @@ export default function Home() {
     setCustomJobs((p) => [...p, { id: nextJobId++, type: "custom_job", ...data, ...coords, postedAt: new Date() }]);
   }, []);
 
-  // ── Worker applies to job (Fitur: notification + active job) ──────
+  // ── Apply ─────────────────────────────────────────────────────────
   const handleApply = useCallback((job: CustomJob, profile: WorkerProfile) => {
     const notif: ApplicationNotification = {
       id: nextNotifId++, jobId: job.id, jobTitle: job.posisi,
@@ -145,69 +149,80 @@ export default function Home() {
       timestamp: new Date(), status: "baru",
     };
     setNotifications((p) => [notif, ...p]);
-    // Set this as the worker's active job
     setActiveJob(job);
     setJobStatus("accepted");
   }, []);
 
   const handleStatusChange = useCallback((id: number, status: ApplicationStatus) => {
     setNotifications((p) => p.map((n) => n.id === id ? { ...n, status } : n));
-    // Company accepts → trigger company rating modal
     if (status === "diterima") {
       const n = notifications.find((x) => x.id === id);
-      if (n && customJobs.length > 0) {
+      if (n) {
         const job = customJobs.find((j) => j.id === n.jobId);
-        if (job) {
-          setPendingRating({ raterType: "company", targetName: n.applicantName, job });
-        }
+        if (job) setPendingRating({ raterType: "company", targetName: n.applicantName, job });
       }
     }
   }, [notifications, customJobs]);
 
-  // ── Clock-in ──────────────────────────────────────────────────────
+  // ── Chat ──────────────────────────────────────────────────────────
+  const handleOpenChatFromJob = useCallback((job: CustomJob) => {
+    setChatContext({
+      jobTitle: job.posisi,
+      nominal: job.nominal,
+      companyName: job.namaPerusahaan || "Perusahaan Pengiklan",
+      workerName: workerProfile?.namaLengkap || "Pekerja",
+      currentRole: "worker",
+    });
+  }, [workerProfile]);
+
+  const handleOpenChatFromNotif = useCallback((notif: ApplicationNotification) => {
+    const job = customJobs.find((j) => j.id === notif.jobId);
+    setChatContext({
+      jobTitle: notif.jobTitle,
+      nominal: job?.nominal ?? 0,
+      companyName: job?.namaPerusahaan || "Perusahaan Anda",
+      workerName: notif.applicantName,
+      currentRole: "company",
+    });
+  }, [customJobs]);
+
+  // ── Flag suspicious job ───────────────────────────────────────────
+  const handleReportSuspect = useCallback((jobId: number) => {
+    setCustomJobs((p) => p.map((j) => j.id === jobId ? { ...j, flaggedSuspect: true } : j));
+  }, []);
+
+  // ── Clock-in/out ──────────────────────────────────────────────────
   const handleClockIn = useCallback(() => {
     setClockedInAt(new Date());
     setJobStatus("clocked_in");
   }, []);
 
-  // ── Clock-out → trigger worker rating ────────────────────────────
   const handleClockOut = useCallback(() => {
     const now = new Date();
     setClockedOutAt(now);
     setJobStatus("completed");
-    // Accumulate earnings
     if (activeJob) {
       const gross = calcTotal(activeJob.nominal, activeJob.pembayaran);
       setTotalEarned((p) => p + gross);
-      setCompletedNotifs((p) => {
-        const dummy: ApplicationNotification = {
-          id: nextNotifId++, jobId: activeJob.id, jobTitle: activeJob.posisi,
-          applicantName: workerProfile?.namaLengkap ?? "Pekerja",
-          applicantNikMasked: "", applicantNpwpMasked: "",
-          hasNpwp: !(workerProfile?.belumPunyaNpwp ?? true),
-          bank: workerProfile?.namaBank ?? "",
-          rekening: workerProfile?.nomorRekening ?? "",
-          timestamp: now, status: "diterima",
-        };
-        return [...p, dummy];
-      });
-      // Trigger worker→company rating
-      setPendingRating({ raterType: "worker", targetName: "Perusahaan Pengiklan", job: activeJob });
+      setCompletedNotifs((p) => [...p, {
+        id: nextNotifId++, jobId: activeJob.id, jobTitle: activeJob.posisi,
+        applicantName: workerProfile?.namaLengkap ?? "Pekerja",
+        applicantNikMasked: "", applicantNpwpMasked: "",
+        hasNpwp: !(workerProfile?.belumPunyaNpwp ?? true),
+        bank: workerProfile?.namaBank ?? "", rekening: workerProfile?.nomorRekening ?? "",
+        timestamp: now, status: "diterima",
+      }]);
+      setPendingRating({ raterType: "worker", targetName: activeJob.namaPerusahaan || "Perusahaan Pengiklan", job: activeJob });
     }
   }, [activeJob, workerProfile]);
 
-  // ── Rating submit ─────────────────────────────────────────────────
-  const handleRatingSubmit = useCallback((_payload: RatingPayload) => {
-    setPendingRating(null);
+  const handleCancelJob = useCallback(() => {
+    setActiveJob(null); setJobStatus(null); setClockedInAt(null); setClockedOutAt(null);
+    setReputationPoints((p) => Math.max(0, p - 20));
   }, []);
 
-  // ── Cancel active job (Fitur 3: -20 poin) ────────────────────────
-  const handleCancelJob = useCallback(() => {
-    setActiveJob(null);
-    setJobStatus(null);
-    setClockedInAt(null);
-    setClockedOutAt(null);
-    setReputationPoints((p) => Math.max(0, p - 20));
+  const handleRatingSubmit = useCallback((_payload: RatingPayload) => {
+    setPendingRating(null);
   }, []);
 
   const verified = workerProfile ? isVerified(workerProfile) : false;
@@ -215,8 +230,7 @@ export default function Home() {
   return (
     <div className="flex flex-col h-[100dvh] w-full bg-gray-50 relative overflow-hidden">
 
-      {/* ── MODALS & OVERLAYS ─────────────────────────────────── */}
-
+      {/* ── MODALS ──────────────────────────────────────────── */}
       {showOnboarding && (
         <WorkerOnboarding
           onComplete={(p) => { setWorkerProfile(p); setShowOnboarding(false); }}
@@ -226,97 +240,87 @@ export default function Home() {
 
       {showClockIn && activeJob && (
         <ClockInModal
-          job={activeJob}
-          userLat={userLocation.lat}
-          userLng={userLocation.lng}
-          isClockedIn={jobStatus === "clocked_in"}
-          clockedInAt={clockedInAt}
-          onClockIn={handleClockIn}
-          onClockOut={handleClockOut}
+          job={activeJob} userLat={userLocation.lat} userLng={userLocation.lng}
+          isClockedIn={jobStatus === "clocked_in"} clockedInAt={clockedInAt}
+          onClockIn={handleClockIn} onClockOut={handleClockOut}
           onClose={() => setShowClockIn(false)}
         />
       )}
 
       {pendingRating && (
         <RatingModal
-          raterType={pendingRating.raterType}
-          targetName={pendingRating.targetName}
+          raterType={pendingRating.raterType} targetName={pendingRating.targetName}
           jobTitle={pendingRating.job.posisi}
-          onSubmit={handleRatingSubmit}
-          onClose={() => setPendingRating(null)}
+          onSubmit={handleRatingSubmit} onClose={() => setPendingRating(null)}
         />
       )}
 
       {showPaySlip && activeJob && workerProfile && (
         <PaySlipModal
-          job={activeJob}
-          workerProfile={workerProfile}
-          clockedInAt={clockedInAt}
-          clockedOutAt={clockedOutAt}
+          job={activeJob} workerProfile={workerProfile}
+          clockedInAt={clockedInAt} clockedOutAt={clockedOutAt}
           onClose={() => setShowPaySlip(false)}
         />
       )}
 
       {showEarnings && workerProfile && (
         <EarningsDashboard
-          workerProfile={workerProfile}
-          reputationPoints={reputationPoints}
-          completedJobs={completedNotifs}
-          totalEarned={totalEarned}
+          workerProfile={workerProfile} reputationPoints={reputationPoints}
+          completedJobs={completedNotifs} totalEarned={totalEarned}
           onDownloadSlip={() => { setShowEarnings(false); setShowPaySlip(true); }}
           onClose={() => setShowEarnings(false)}
         />
       )}
 
-      {/* SOS — only when clocked-in (Fitur 4) */}
+      {chatContext && (
+        <ChatModal
+          jobTitle={chatContext.jobTitle} nominal={chatContext.nominal}
+          companyName={chatContext.companyName} workerName={chatContext.workerName}
+          currentRole={chatContext.currentRole}
+          onClose={() => setChatContext(null)}
+        />
+      )}
+
+      {/* SOS — only when clocked-in */}
       {mode === "pekerja" && jobStatus === "clocked_in" && activeJob && (
         <SOSButton jobTitle={activeJob.posisi} />
       )}
 
-      {/* ── HEADER ───────────────────────────────────────────── */}
+      {/* ── HEADER ──────────────────────────────────────────── */}
       <header className="z-10 bg-white border-b border-gray-100 shadow-sm flex flex-col shrink-0">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
             <h1 className="font-bold text-lg text-primary tracking-tight">GigFinder</h1>
             {mode === "perusahaan" && (
-              <NotificationPanel notifications={notifications} onStatusChange={handleStatusChange} />
+              <NotificationPanel
+                notifications={notifications}
+                onStatusChange={handleStatusChange}
+                onOpenChat={handleOpenChatFromNotif}
+              />
             )}
           </div>
           <div className="flex bg-gray-100 p-1 rounded-lg">
-            <button
-              data-testid="button-mode-perusahaan"
-              onClick={() => handleModeChange("perusahaan")}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${mode === "perusahaan" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}
-            >
+            <button data-testid="button-mode-perusahaan" onClick={() => handleModeChange("perusahaan")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${mode === "perusahaan" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}>
               Mode Perusahaan
             </button>
-            <button
-              data-testid="button-mode-pekerja"
-              onClick={() => handleModeChange("pekerja")}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${mode === "pekerja" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}
-            >
+            <button data-testid="button-mode-pekerja" onClick={() => handleModeChange("pekerja")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${mode === "pekerja" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}>
               Mode Pekerja
             </button>
           </div>
         </div>
 
-        {/* Company: Smart Search */}
+        {/* Company search */}
         {mode === "perusahaan" && (
           <div className="px-4 pb-3 space-y-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              <input
-                data-testid="input-search"
-                type="text" value={searchQuery}
+              <input data-testid="input-search" type="text" value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Cari kategori, keahlian, atau nama pekerja..."
-                className="w-full pl-9 pr-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary transition-all"
-              />
-              {searchQuery && (
-                <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+                className="w-full pl-9 pr-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary transition-all" />
+              {searchQuery && <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"><X className="w-4 h-4" /></button>}
             </div>
             {activeTags.length > 0 && (
               <div className="flex gap-2 flex-wrap">
@@ -326,9 +330,7 @@ export default function Home() {
                     {tag} <X className="w-3 h-3" />
                   </button>
                 ))}
-                <button onClick={() => setActiveTags([])} className="px-3 py-1 text-xs text-gray-500 border border-gray-200 rounded-full">
-                  Hapus semua
-                </button>
+                <button onClick={() => setActiveTags([])} className="px-3 py-1 text-xs text-gray-500 border border-gray-200 rounded-full">Hapus semua</button>
               </div>
             )}
             {visibleTags.length > 0 && (searchQuery || !activeTags.length) && (
@@ -344,51 +346,35 @@ export default function Home() {
           </div>
         )}
 
-        {/* Worker: profile + view toggle */}
+        {/* Worker header */}
         {mode === "pekerja" && (
           <div className="px-4 pb-3 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {verified ? (
-                  <button
-                    onClick={() => setShowEarnings(true)}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/10 px-3 py-1.5 rounded-full"
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5" /> Terverifikasi · Lihat Dashboard
+                  <button onClick={() => setShowEarnings(true)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/10 px-3 py-1.5 rounded-full">
+                    <ShieldCheck className="w-3.5 h-3.5" /> Terverifikasi · Dashboard
                   </button>
                 ) : (
-                  <button
-                    data-testid="button-complete-profile"
-                    onClick={() => setShowOnboarding(true)}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full"
-                  >
+                  <button data-testid="button-complete-profile" onClick={() => setShowOnboarding(true)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full">
                     <UserCircle className="w-3.5 h-3.5" />
                     {workerProfile ? "Lengkapi Profil" : "Daftar & Verifikasi"}
                   </button>
                 )}
               </div>
-
               <div className="flex items-center gap-2">
-                {/* Reputation badge */}
-                <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                  isSuspended ? "bg-red-100 text-red-600" :
-                  reputationPoints < 80 ? "bg-amber-100 text-amber-700" :
-                  "bg-primary/10 text-primary"
-                }`}>
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${isSuspended ? "bg-red-100 text-red-600" : reputationPoints < 80 ? "bg-amber-100 text-amber-700" : "bg-primary/10 text-primary"}`}>
                   {isSuspended ? "Suspended" : `Rep: ${reputationPoints}`}
                 </span>
-
                 <div className="flex bg-gray-100 p-0.5 rounded-lg">
-                  <button
-                    onClick={() => setWorkerView("list")}
-                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${workerView === "list" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}
-                  >
+                  <button onClick={() => setWorkerView("list")}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${workerView === "list" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}>
                     Daftar
                   </button>
-                  <button
-                    onClick={() => setWorkerView("map")}
-                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 ${workerView === "map" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}
-                  >
+                  <button onClick={() => setWorkerView("map")}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 ${workerView === "map" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}>
                     <MapIcon className="w-3 h-3" /> Radar
                   </button>
                 </div>
@@ -399,8 +385,7 @@ export default function Home() {
             {activeJob && (
               <div className={`rounded-xl px-3 py-2.5 border flex items-center justify-between gap-2 ${
                 jobStatus === "clocked_in" ? "bg-primary text-white border-primary" :
-                jobStatus === "completed" ? "bg-gray-50 border-gray-200" :
-                "bg-amber-50 border-amber-200"
+                jobStatus === "completed" ? "bg-gray-50 border-gray-200" : "bg-amber-50 border-amber-200"
               }`}>
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <Briefcase className={`w-4 h-4 shrink-0 ${jobStatus === "clocked_in" ? "text-white" : jobStatus === "completed" ? "text-gray-400" : "text-amber-600"}`} />
@@ -414,11 +399,14 @@ export default function Home() {
                 <div className="flex gap-1.5 shrink-0">
                   {jobStatus === "completed" ? (
                     <>
-                      <button
-                        onClick={() => setShowPaySlip(true)}
-                        className="text-[10px] font-bold bg-primary text-white px-2.5 py-1.5 rounded-lg"
-                      >
+                      <button onClick={() => setShowPaySlip(true)}
+                        className="text-[10px] font-bold bg-primary text-white px-2.5 py-1.5 rounded-lg">
                         Slip Gaji
+                      </button>
+                      <button
+                        onClick={() => { setChatContext({ jobTitle: activeJob.posisi, nominal: activeJob.nominal, companyName: activeJob.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker" }); }}
+                        className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-1.5 rounded-lg flex items-center gap-1">
+                        <MessageSquare className="w-3 h-3" />
                       </button>
                       <button onClick={() => { setActiveJob(null); setJobStatus(null); }} className="text-[10px] font-bold bg-gray-200 text-gray-600 px-2 py-1.5 rounded-lg">
                         Tutup
@@ -426,21 +414,13 @@ export default function Home() {
                     </>
                   ) : (
                     <>
-                      <button
-                        data-testid="button-open-clock-in"
-                        onClick={() => setShowClockIn(true)}
-                        className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg ${
-                          jobStatus === "clocked_in" ? "bg-white/20 text-white" : "bg-primary text-white"
-                        }`}
-                      >
+                      <button data-testid="button-open-clock-in" onClick={() => setShowClockIn(true)}
+                        className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg ${jobStatus === "clocked_in" ? "bg-white/20 text-white" : "bg-primary text-white"}`}>
                         {jobStatus === "clocked_in" ? "Clock-Out" : "Clock-In"}
                       </button>
                       {jobStatus !== "clocked_in" && (
-                        <button
-                          data-testid="button-cancel-job"
-                          onClick={handleCancelJob}
-                          className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-1.5 rounded-lg"
-                        >
+                        <button data-testid="button-cancel-job" onClick={handleCancelJob}
+                          className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-1.5 rounded-lg">
                           Batal
                         </button>
                       )}
@@ -453,17 +433,18 @@ export default function Home() {
         )}
       </header>
 
-      {/* ── MAIN CONTENT ─────────────────────────────────────── */}
+      {/* ── MAIN ────────────────────────────────────────────── */}
       <main className="flex-1 relative overflow-hidden flex flex-col">
 
-        {/* ── COMPANY MODE ──────────────────────────────────── */}
         {mode === "perusahaan" ? (
+          /* COMPANY MAP */
           <div className="flex-1 relative">
             <Map
-              workers={filteredWorkers} onWorkerClick={(w) => { setSelectedJob(null); setSelectedWorker(w); }}
-              customJobs={customJobs} onJobClick={(j) => { setSelectedWorker(null); setSelectedJob(j); }}
+              workers={filteredWorkers}
+              onWorkerClick={(w) => { setSelectedJob(null); setSelectedWorker(w); }}
+              customJobs={customJobs}
+              onJobClick={(j) => { setSelectedWorker(null); setSelectedJob(j); }}
             />
-            {/* Legend */}
             <div className="absolute bottom-4 left-3 z-10 bg-white/90 backdrop-blur-sm rounded-xl px-3 py-2 shadow border border-gray-100 flex flex-col gap-1.5">
               {[["#065F46","Barista"],["#1D4ED8","Waiter / Waitress"],["#D97706","Event Crew"]].map(([c,l]) => (
                 <div key={l} className="flex items-center gap-2">
@@ -479,12 +460,15 @@ export default function Home() {
               )}
             </div>
             <WorkerSheet worker={selectedWorker} onClose={() => setSelectedWorker(null)} />
-            <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile} onApply={handleApply} />
+            <JobSheet
+              job={selectedJob} onClose={() => setSelectedJob(null)}
+              workerProfile={workerProfile} onApply={handleApply}
+            />
             <JobPostingModal onSubmit={handleJobPosted} />
           </div>
 
         ) : workerView === "map" ? (
-          /* ── WORKER RADAR MAP ─────────────────────────────── */
+          /* WORKER RADAR MAP */
           <div className="flex-1 relative">
             <WorkerMap
               userLat={userLocation.lat} userLng={userLocation.lng}
@@ -501,8 +485,7 @@ export default function Home() {
                     <span className="w-3.5 h-3.5 rounded-[3px] bg-violet-600 border-2 border-white shadow-sm shrink-0 flex items-center justify-center text-white text-[8px] font-black">+</span>
                     <span className="text-[10px] font-medium text-gray-600">{customJobs.length} Lowongan</span>
                   </div>
-                : <p className="text-[10px] text-gray-400">Belum ada lowongan</p>
-              }
+                : <p className="text-[10px] text-gray-400">Belum ada lowongan</p>}
             </div>
             {selectedJob && (
               <div className="absolute bottom-4 left-4 right-4 z-10 bg-white rounded-xl shadow-lg border border-gray-100 p-3 flex justify-between items-center">
@@ -510,14 +493,18 @@ export default function Home() {
                   <p className="text-xs font-bold text-gray-900 truncate">{selectedJob.posisi}</p>
                   <p className="text-[10px] text-violet-600 font-medium">Klik pin untuk detail</p>
                 </div>
-                <button onClick={() => setSelectedJob(null)} className="text-gray-400 hover:text-gray-600 p-1"><X className="w-4 h-4" /></button>
+                <button onClick={() => setSelectedJob(null)} className="text-gray-400 p-1"><X className="w-4 h-4" /></button>
               </div>
             )}
-            <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile} onApply={isSuspended ? undefined : handleApply} />
+            <JobSheet
+              job={selectedJob} onClose={() => setSelectedJob(null)}
+              workerProfile={workerProfile} onApply={isSuspended ? undefined : handleApply}
+              onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect}
+            />
           </div>
 
         ) : (
-          /* ── WORKER LIST ──────────────────────────────────── */
+          /* WORKER LIST */
           <div className="flex-1 overflow-y-auto bg-gray-50">
             <div className="p-4 space-y-4">
               <div className="flex items-center justify-between">
@@ -528,43 +515,41 @@ export default function Home() {
                   </p>
                 </div>
                 {workerProfile && (
-                  <button
-                    onClick={() => setShowEarnings(true)}
-                    className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-3 py-1.5 rounded-full"
-                  >
+                  <button onClick={() => setShowEarnings(true)}
+                    className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-3 py-1.5 rounded-full">
                     <TrendingUp className="w-3.5 h-3.5" /> Dashboard
                   </button>
                 )}
               </div>
 
-              {/* Suspended warning */}
               {isSuspended && (
                 <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4">
                   <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
                   <div>
                     <p className="text-sm font-bold text-red-700">Akun Ditangguhkan (Suspended)</p>
-                    <p className="text-xs text-red-600 mt-0.5">Poin reputasi Anda di bawah 50. Anda tidak dapat melamar pekerjaan. Hubungi admin untuk pemulihan akun.</p>
+                    <p className="text-xs text-red-600 mt-0.5">Poin reputasi Anda di bawah 50. Hubungi admin untuk pemulihan akun.</p>
                   </div>
                 </div>
               )}
 
               {customJobs.length > 0 && (
-                <button
-                  onClick={() => setWorkerView("map")}
-                  className="w-full flex items-center justify-center gap-2 bg-violet-50 border border-violet-200 text-violet-700 text-xs font-semibold py-2.5 rounded-xl hover:bg-violet-100 transition-colors"
-                >
+                <button onClick={() => setWorkerView("map")}
+                  className="w-full flex items-center justify-center gap-2 bg-violet-50 border border-violet-200 text-violet-700 text-xs font-semibold py-2.5 rounded-xl hover:bg-violet-100 transition-colors">
                   <MapIcon className="w-4 h-4" /> Lihat {customJobs.length} lowongan di Peta Radar
                 </button>
               )}
 
-              {/* Custom jobs */}
               {customJobs.map((job) => (
                 <div key={job.id} data-testid={`card-custom-job-${job.id}`}
-                  className="bg-white p-4 rounded-xl border border-violet-100 shadow-sm flex flex-col gap-3">
+                  className={`bg-white p-4 rounded-xl border shadow-sm flex flex-col gap-3 ${job.flaggedSuspect ? "border-yellow-300 bg-yellow-50/50" : "border-violet-100"}`}>
                   <div className="flex justify-between items-start">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-bold text-gray-900 truncate">{job.posisi}</h3>
-                      <p className="text-xs text-violet-600 font-medium mt-0.5">Lowongan Kustom</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <p className="text-xs text-violet-600 font-medium">Lowongan Kustom</p>
+                        {job.namaPerusahaan && <span className="text-[10px] text-gray-400">· {job.namaPerusahaan}</span>}
+                        {job.flaggedSuspect && <span className="text-[10px] font-bold text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded">⚠️ Ditinjau</span>}
+                      </div>
                     </div>
                     <span className="text-xs font-semibold bg-violet-100 text-violet-700 px-2 py-1 rounded ml-2 shrink-0">Baru</span>
                   </div>
@@ -582,17 +567,23 @@ export default function Home() {
                       </span>
                     </div>
                   </div>
-                  <Button
-                    disabled={isSuspended}
-                    className={`w-full font-semibold ${isSuspended ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-violet-600 hover:bg-violet-700 text-white"}`}
-                    onClick={() => !isSuspended && setSelectedJob(job)}
-                  >
-                    {isSuspended ? "Akun Ditangguhkan" : "Lihat Detail & Lamar"}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button disabled={isSuspended}
+                      className={`flex-1 font-semibold ${isSuspended ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-violet-600 hover:bg-violet-700 text-white"}`}
+                      onClick={() => !isSuspended && setSelectedJob(job)}>
+                      {isSuspended ? "Ditangguhkan" : "Detail & Lamar"}
+                    </Button>
+                    <button
+                      onClick={() => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker" })}
+                      className="px-3 py-2 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors flex items-center justify-center"
+                      title="Buka Chat"
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
 
-              {/* Static jobs */}
               {jobs.map((job) => (
                 <div key={job.id} data-testid={`card-job-${job.id}`}
                   className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col gap-3">
@@ -608,14 +599,19 @@ export default function Home() {
                     <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-gray-400" /><span>{job.time}</span></div>
                     <div className="flex items-center gap-2"><Banknote className="w-4 h-4 text-primary" /><span className="font-semibold text-gray-900">{job.pay}</span></div>
                   </div>
-                  <Button disabled={isSuspended} className={`w-full mt-1 ${isSuspended ? "bg-gray-200 text-gray-400" : "bg-primary hover:bg-primary/90 text-white"} font-semibold`}>
+                  <Button disabled={isSuspended}
+                    className={`w-full mt-1 ${isSuspended ? "bg-gray-200 text-gray-400" : "bg-primary hover:bg-primary/90 text-white"} font-semibold`}>
                     {isSuspended ? "Akun Ditangguhkan" : "Lamar Sekarang"}
                   </Button>
                 </div>
               ))}
             </div>
 
-            <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile} onApply={isSuspended ? undefined : handleApply} />
+            <JobSheet
+              job={selectedJob} onClose={() => setSelectedJob(null)}
+              workerProfile={workerProfile} onApply={isSuspended ? undefined : handleApply}
+              onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect}
+            />
           </div>
         )}
       </main>
