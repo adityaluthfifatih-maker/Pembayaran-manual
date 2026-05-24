@@ -9,6 +9,7 @@ interface JobSheetProps {
   job: CustomJob | null;
   onClose: () => void;
   workerProfile?: WorkerProfile | null;
+  onApply?: (job: CustomJob, profile: WorkerProfile) => void;
 }
 
 function formatRp(value: number): string {
@@ -17,7 +18,7 @@ function formatRp(value: number): string {
 
 type ApplyState = "idle" | "sending" | "done";
 
-export default function JobSheet({ job, onClose, workerProfile }: JobSheetProps) {
+export default function JobSheet({ job, onClose, workerProfile, onApply }: JobSheetProps) {
   const [applyState, setApplyState] = useState<ApplyState>("idle");
 
   if (!job) return null;
@@ -32,7 +33,12 @@ export default function JobSheet({ job, onClose, workerProfile }: JobSheetProps)
   const handleApply = () => {
     if (applyState !== "idle") return;
     setApplyState("sending");
-    setTimeout(() => setApplyState("done"), 2000);
+    setTimeout(() => {
+      setApplyState("done");
+      if (workerProfile && onApply) {
+        onApply(job, workerProfile);
+      }
+    }, 2000);
   };
 
   return (
