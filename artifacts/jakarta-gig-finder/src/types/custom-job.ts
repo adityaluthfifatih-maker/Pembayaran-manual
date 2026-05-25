@@ -1,3 +1,5 @@
+import type { EscrowStatus } from "./escrow";
+
 export type PaymentType = "per_jam" | "per_shift" | "per_projek";
 export type DurasiKontrak = "harian" | "1_bulan" | "3_bulan" | "6_bulan";
 export type TipeAkun = "perusahaan" | "agensi";
@@ -20,6 +22,10 @@ export interface CustomJob {
   flaggedSuspect?: boolean;
   tipeAkun?: TipeAkun;
   isAgency?: boolean;
+  // ── Escrow fields ────────────────────────────────────
+  escrowStatus?: EscrowStatus;
+  escrowAmount?: number;   // Total gross locked in escrow (per ALL workers)
+  jumlahHari?: number;     // Working days for this contract
 }
 
 export const durasiKontrakOptions: { value: DurasiKontrak; label: string; rate: number }[] = [

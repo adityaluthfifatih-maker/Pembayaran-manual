@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { X, Plus, AlertTriangle, ShieldCheck, Building2, Users } from "lucide-react";
+import { X, Plus, AlertTriangle, ShieldCheck, Building2, Users, Lock, ChevronLeft } from "lucide-react";
 import {
   CustomJob, PaymentType, calcCommission, calcTotal, paymentLabels,
   DurasiKontrak, TipeAkun, durasiKontrakOptions, detectFraud,
   effectiveCommissionRate,
 } from "@/types/custom-job";
+import { calcEscrowAmount, DURATION_DAYS, PLATFORM_RATE, PPH_WITH_NPWP, PPH_WITHOUT_NPWP, calcSplit } from "@/types/escrow";
 
 interface JobPostingModalProps {
   onSubmit: (job: Omit<CustomJob, "id" | "type" | "lat" | "lng" | "postedAt">) => void;
@@ -33,6 +34,10 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
   const [blocked, setBlocked] = useState(false);
   const [nibError, setNibError] = useState<string | null>(null);
 
+  // Escrow confirmation step
+  const [showEscrowConfirm, setShowEscrowConfirm] = useState(false);
+  const [jumlahHari, setJumlahHari] = useState(1);
+
   const isAgency = tipeAkun === "agensi";
   const effectiveKuota = isAgency ? parseInt(kuotaMassal) || 1 : parseInt(kuota) || 1;
   const nominalNum = parseInt(nominal.replace(/\D/g, "")) || 0;
@@ -41,6 +46,10 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
   const total = calcTotal(nominalNum, pembayaran);
   const commission = calcCommission(nominalNum, pembayaran, durasiKontrak, isAgency, effectiveKuota);
   const isVolumeDiscount = isAgency && effectiveKuota > 15;
+
+  // Escrow calculations
+  const escrowGross = calcEscrowAmount(nominalNum, pembayaran, jumlahHari, effectiveKuota);
+  const escrowSplit = calcSplit(escrowGross, true); // use NPWP rate for estimate
 
   const handleNominalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/\D/g, "");
@@ -65,7 +74,11 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
     e.preventDefault();
     if (!posisi.trim() || !deskripsi.trim() || !nominalNum || !dresscode.trim()) return;
     if (blocked || (nibPerusahaan.length > 0 && nibPerusahaan.length < 13)) return;
+    // Show escrow confirmation step first
+    setShowEscrowConfirm(true);
+  };
 
+  const handleEscrowConfirm = () => {
     onSubmit({
       posisi: posisi.trim(),
       deskripsi: deskripsi.trim(),
@@ -77,6 +90,9 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
       namaPerusahaan: namaPerusahaan.trim() || undefined,
       tipeAkun,
       isAgency,
+      escrowStatus: "locked",
+      escrowAmount: escrowGross,
+      jumlahHari,
     });
 
     // Reset
@@ -84,6 +100,7 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
     setDresscode(""); setKuota("1"); setNamaPerusahaan(""); setNibPerusahaan("");
     setDurasiKontrak("harian"); setTipeAkun("perusahaan"); setKuotaMassal("20");
     setFraudWarning(null); setBlocked(false); setNibError(null);
+    setShowEscrowConfirm(false);
     setOpen(false);
   };
 
@@ -91,6 +108,11 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
     document.body.style.overflow = open ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [open]);
+
+  // Sync jumlahHari default with duration
+  useEffect(() => {
+    setJumlahHari(DURATION_DAYS[durasiKontrak] ?? 1);
+  }, [durasiKontrak]);
 
   return (
     <>
@@ -371,6 +393,25 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
                 </div>
               )}
 
+              {/* ── Jumlah Hari ── */}
+              {pembayaran !== "per_projek" && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-blue-600" />
+                    Estimasi Jumlah Hari Kerja
+                    <span className="text-[10px] font-normal text-gray-500">(untuk kalkulator escrow)</span>
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setJumlahHari(d => Math.max(1, d - 1))}
+                      className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-50">−</button>
+                    <span className="text-xl font-bold text-gray-900 w-8 text-center">{jumlahHari}</span>
+                    <button type="button" onClick={() => setJumlahHari(d => d + 1)}
+                      className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-50">+</button>
+                    <span className="text-sm text-gray-500 ml-1">hari</span>
+                  </div>
+                </div>
+              )}
+
               <div className="pt-2 pb-6">
                 <button
                   data-testid="button-submit-job" type="submit"
@@ -382,10 +423,95 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
                   }`}
                   style={!blocked ? { boxShadow: "0 4px 16px rgba(6,95,70,0.35)" } : {}}
                 >
-                  {blocked ? "⚠️ Hapus Kata Kunci Penipuan Dulu" : isAgency ? `Terbitkan Lowongan Agensi (${effectiveKuota} orang)` : "Terbitkan Lowongan"}
+                  {blocked ? "⚠️ Hapus Kata Kunci Penipuan Dulu" : "Lanjut → Konfirmasi Escrow"}
                 </button>
               </div>
             </form>
+
+            {/* ── ESCROW CONFIRMATION OVERLAY ─────────── */}
+            {showEscrowConfirm && nominalNum > 0 && (
+              <div className="absolute inset-0 bg-white rounded-t-3xl z-10 flex flex-col overflow-y-auto">
+                <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
+                  <button onClick={() => setShowEscrowConfirm(false)}
+                    className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100">
+                    <ChevronLeft className="w-4 h-4 text-gray-600" />
+                  </button>
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900">Konfirmasi Escrow</h3>
+                    <p className="text-xs text-gray-500">Dana dikunci sebelum lowongan aktif</p>
+                  </div>
+                </div>
+
+                <div className="px-5 py-5 space-y-5 pb-8">
+                  {/* Status badge */}
+                  <div className="flex items-center justify-center gap-2 bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3">
+                    <Lock className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm font-bold text-blue-800">[DANA AKAN DIKUNCI DI ESCROW]</span>
+                  </div>
+
+                  {/* Cost breakdown */}
+                  <div className="bg-gray-50 rounded-2xl border border-gray-100 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-gray-100 bg-white">
+                      <p className="text-sm font-bold text-gray-900">📊 Kalkulator Biaya Otomatis</p>
+                    </div>
+                    <div className="px-4 py-3 space-y-2.5">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Upah per pekerja</span>
+                        <span className="font-semibold text-gray-900">Rp {nominalNum.toLocaleString("id-ID")} / {paymentLabels[pembayaran]}</span>
+                      </div>
+                      {pembayaran !== "per_projek" && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Jumlah hari kerja</span>
+                          <span className="font-semibold text-gray-900">{jumlahHari} hari</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Jumlah pekerja</span>
+                        <span className="font-semibold text-gray-900">{effectiveKuota} orang</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2.5">
+                        <span className="text-gray-900">Total Dana Dikunci ke Escrow</span>
+                        <span className="text-blue-700">Rp {escrowGross.toLocaleString("id-ID")}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payout breakdown */}
+                  <div className="bg-gray-50 rounded-2xl border border-gray-100 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-gray-100 bg-white">
+                      <p className="text-sm font-bold text-gray-900">💸 Rincian Pelepasan Dana (saat Selesai)</p>
+                    </div>
+                    <div className="px-4 py-3 space-y-2.5">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Komisi Platform Rekhastha ({(PLATFORM_RATE * 100).toFixed(0)}%)</span>
+                        <span className="font-semibold text-red-500">−Rp {escrowSplit.platformCut.toLocaleString("id-ID")}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">PPh 21 Pekerja ({(PPH_WITH_NPWP * 100).toFixed(1)}% NPWP / {(PPH_WITHOUT_NPWP * 100).toFixed(0)}% tanpa)</span>
+                        <span className="font-semibold text-amber-600">−Rp {escrowSplit.pphCut.toLocaleString("id-ID")}±</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2.5">
+                        <span className="text-primary">Estimasi Bersih ke Pekerja</span>
+                        <span className="text-primary">Rp {escrowSplit.workerNet.toLocaleString("id-ID")}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-gray-400 text-center leading-relaxed">
+                    Lowongan hanya akan aktif di peta setelah dana dikunci. Dana dapat dicairkan kembali jika tidak ada pekerja yang diterima dalam 7 hari.
+                  </p>
+
+                  <button
+                    onClick={handleEscrowConfirm}
+                    className="w-full flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-800 text-white font-bold py-4 rounded-2xl text-sm transition-all active:scale-[0.98]"
+                    style={{ boxShadow: "0 4px 20px rgba(29,78,216,0.4)" }}
+                  >
+                    <Lock className="w-5 h-5" />
+                    Simulasi Transfer ke Escrow Rekhastha
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

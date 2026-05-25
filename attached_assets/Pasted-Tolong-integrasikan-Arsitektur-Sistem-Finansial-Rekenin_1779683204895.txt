@@ -1,0 +1,29 @@
+Tolong integrasikan Arsitektur Sistem Finansial & Rekening Penampung Otomatis (Automated Escrow Engine & E-Wallet System) ke dalam seluruh kode aplikasi "Rekhastha". Sistem ini harus mengatur alur dana, pemotongan komisi platform, kalkulasi pajak, dan pembekuan dana saat terjadi sengketa secara real-time.
+
+Implementasikan logika teknis berikut ke dalam file index.html, style.css, dan script.js:
+
+1. MODUL ESCROW UNTUK PERUSAHAAN (DEPOSIT & LOCKING FUND)
+- Pada Formulir "+ Buka Lowongan Baru", tambahkan kalkulator estimasi total biaya otomatis (Jumlah Pekerja x Upah Harian x Jumlah Hari).
+- Aturan Kunci Lowongan: Lowongan tidak akan berstatus "Aktif" di peta sebelum Perusahaan menekan tombol "Simulasi Transfer ke Escrow Rekhastha". Setelah ditekan, ubah status proyek menjadi [DANA DIKUNCI DI ESCROW] dengan indikator warna Biru Elegan. Uang upah kotor harus masuk ke dalam array data penampung pihak ketiga di memori lokal aplikasi.
+
+2. MODUL ASURANSI & STATUS KERJA PEKERJA (CLOCK-IN ESCROW TELEMETRY)
+- Di halaman Beranda Pekerja, saat mereka memilih pin lowongan, tampilkan lencana hijau bertuliskan: "🔒 Gaji Terjamin di Escrow".
+- Tambahkan tombol "Mulai Kerja (Clock-In)" dan "Selesai Kerja (Clock-Out)". Selama status pekerja berada di antara Clock-In dan Clock-Out, tampilkan Banner Notice aktif: "Jaminan Asuransi Kecelakaan Kerja Aktif oleh Rekhastha & Pemprov DKI".
+
+3. AUTOMATED SPLIT-PAYMENT ENGINE (PELEPASAN DANA & POTONG KOMISI)
+- Ketika Perusahaan menekan tombol "Selesai (Completed)" pada dashboard mereka, jalankan fungsi JavaScript untuk memecah dana escrow tersebut secara otomatis menjadi 3 bagian:
+  a. Komisi Platform: Potong 10% dari total upah bruto dan masukkan ke rekening Pendapatan Bersih Rekhastha (Tilu Company).
+  b. Pajak PPh 21: Potong otomatis sebesar 2.5% (jika pekerja menginput NPWP valid) ATAU potong 3% (jika NPWP kosong) dari upah bruto pekerja.
+  c. Saldo Bersih Pekerja: Masukkan sisa uang (Upah Bruto - Pajak) langsung ke saldo "E-Wallet" di halaman profil pekerja yang bersalah.
+- Perbarui semua visualisasi kartu metrik keuangan di kedua belah pihak secara real-time setelah dana dilepaskan.
+
+4. SISTEM PEMBEKUAN DANA OTOMATIS SAAT SENGKETA (DISPUTE FREEZE ENGINE)
+- Jika pekerja atau perusahaan menekan tombol "⚠️ Ajukan Pengaduan Kelalaian" di tengah masa kontrak, jalankan fungsi JS untuk mengubah status dana di escrow dari [DANA DIKUNCI] menjadi [DANA DIBEKUAN - INVESTIGASI ADMIN] dengan warna Merah/Kuning Berkedip.
+- Selama status dana dibekukan, kunci tombol "Selesai" milik perusahaan dan tombol "Tarik Saldo" milik pekerja untuk mencegah pelarian dana.
+- Pada Tab Profil (Developer Mode), tambahkan panel rahasia bernama "Admin Master Escrow Key". Sediakan dua tombol simulasi untuk Admin: "Ketuk Palu: Menangkan Pekerja" (melepaskan dana ke e-wallet pekerja setelah potong komisi) ATAU "Ketuk Palu: Refund ke Perusahaan" (mengembalikan dana utuh ke perusahaan setelah dikurangi biaya admin platform 5%).
+
+5. VISUALISASI METRIK KEUANGAN DI TAB PROFIL
+- Di Tab Profil Pekerja: Tampilkan komponen visual e-wallet yang elegan, histori mutasi transaksi masuk (Gaji Bersih setelah pajak), dan tombol "Tarik Saldo (Withdraw)" ke rekening bank lokal.
+- Di Tab Profil Perusahaan: Tampilkan kartu "Total Dana Mengendap di Escrow (Float Money)" dan "Grafik Efisiensi Komisi" yang menunjukkan total penghematan biaya administrasi mereka.
+
+Pastikan seluruh logika perhitungan matematika potongan komisi, penyesuaian tarif pajak PPh 21, dan transisi pembekuan dana escrow ini sinkron dengan data lokal tanpa merusak UI Dark Mode premium yang sudah dibangun sebelumnya. Run aplikasi setelah selesai.

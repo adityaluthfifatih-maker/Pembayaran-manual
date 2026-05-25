@@ -1,0 +1,1 @@
+- [Escrow Engine Architecture](escrow-engine.md) — Rekhastha escrow: rates, split calc, status flow, and which component owns each action.

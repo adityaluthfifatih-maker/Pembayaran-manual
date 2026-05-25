@@ -19,6 +19,7 @@ import CompanyProfilePage from "@/components/company-profile-page";
 import { workers, Worker } from "@/data/workers";
 import { jobs } from "@/data/jobs";
 import { CustomJob, calcTotal } from "@/types/custom-job";
+import { WalletTransaction, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, DURATION_DAYS } from "@/types/escrow";
 import { WorkerProfile, isVerified } from "@/types/worker-profile";
 import { AuthUser } from "@/types/auth";
 import {
@@ -67,16 +68,24 @@ function makeDemoJobs(): CustomJob[] {
     { posisi: "Admin & Kasir", nominal: 3_500_000, nama: "CV Indomaret Franchise" },
     { posisi: "Crew Packing Gudang", nominal: 175_000, nama: "PT Lazada Logistik" },
   ];
-  return tipes.map((t, i) => ({
-    id: nextJobId++, type: "custom_job",
-    posisi: t.posisi, deskripsi: `Dibutuhkan segera ${t.posisi} berpengalaman di bidangnya.`,
-    pembayaran: i < 2 || i === 4 ? "per_shift" : i === 3 ? "per_projek" : "per_jam",
-    nominal: t.nominal, dresscode: "Baju hitam, sopan", kuota: i === 1 ? 20 : 3,
-    namaPerusahaan: t.nama, nibPerusahaan: "1234567890123",
-    durasiKontrak: durations[i], tipeAkun: i === 1 ? "agensi" : "perusahaan",
-    isAgency: i === 1,
-    ...randomJakartaCoords(), postedAt: new Date(Date.now() - i * 3600_000),
-  }));
+  return tipes.map((t, i) => {
+    const pembayaran: CustomJob["pembayaran"] = i < 2 || i === 4 ? "per_shift" : i === 3 ? "per_projek" : "per_jam";
+    const kuota = i === 1 ? 20 : 3;
+    const jumlahHari = DURATION_DAYS[durations[i] ?? "harian"] ?? 1;
+    const escrowAmount = calcEscrowAmount(t.nominal, pembayaran, jumlahHari, kuota);
+    return {
+      id: nextJobId++, type: "custom_job" as const,
+      posisi: t.posisi, deskripsi: `Dibutuhkan segera ${t.posisi} berpengalaman di bidangnya.`,
+      pembayaran, nominal: t.nominal, dresscode: "Baju hitam, sopan", kuota,
+      namaPerusahaan: t.nama, nibPerusahaan: "1234567890123",
+      durasiKontrak: durations[i], tipeAkun: (i === 1 ? "agensi" : "perusahaan") as CustomJob["tipeAkun"],
+      isAgency: i === 1,
+      escrowStatus: "locked" as const,
+      escrowAmount,
+      jumlahHari,
+      ...randomJakartaCoords(), postedAt: new Date(Date.now() - i * 3600_000),
+    };
+  });
 }
 
 function makeDemoRatings(): RatingPayload[] {
@@ -152,6 +161,11 @@ export default function Home() {
   const [totalEarned, setTotalEarned] = useState(0);
   const [completedNotifs, setCompletedNotifs] = useState<ApplicationNotification[]>([]);
 
+  // ── Escrow & Wallet ──────────────────────────────────────────────
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [walletTransactions, setWalletTransactions] = useState<WalletTransaction[]>([]);
+  const [platformBalance, setPlatformBalance] = useState(0);
+
   // ── Chat ────────────────────────────────────────────────────────
   const [chatContext, setChatContext] = useState<{
     jobTitle: string; nominal: number; companyName: string;
@@ -199,7 +213,100 @@ export default function Home() {
     setActiveJob(null);
     setJobStatus(null);
     setReputationPoints(100);
+    setWalletBalance(0);
+    setWalletTransactions([]);
+    setPlatformBalance(0);
   }, []);
+
+  // ── Escrow handlers ─────────────────────────────────────────────
+  const handleSplitPayment = useCallback((notifId: number, hasNpwp: boolean) => {
+    const notif = notifications.find(n => n.id === notifId);
+    if (!notif) return;
+    const job = customJobs.find(j => j.id === notif.jobId);
+    const gross = job?.escrowAmount ?? calcTotal(job?.nominal ?? 0, job?.pembayaran ?? "per_shift");
+    const { platformCut, pphCut, workerNet } = calcSplit(gross, hasNpwp);
+
+    setCustomJobs(prev => prev.map(j =>
+      j.id === notif.jobId ? { ...j, escrowStatus: "released" as const } : j
+    ));
+    setWalletBalance(prev => prev + workerNet);
+    setWalletTransactions(prev => [...prev, {
+      id: Date.now(),
+      type: "credit" as const,
+      amount: workerNet,
+      label: "Gaji bersih — pekerjaan selesai",
+      jobTitle: notif.jobTitle,
+      timestamp: new Date(),
+      note: `PPh ${hasNpwp ? "2.5%" : "3%"} Rp ${pphCut.toLocaleString("id-ID")} + Komisi 10% Rp ${platformCut.toLocaleString("id-ID")}`,
+    }]);
+    setPlatformBalance(prev => prev + platformCut);
+    setTotalEarned(prev => prev + gross);
+    setNotifications(prev => prev.map(n =>
+      n.id === notifId ? { ...n, status: "selesai" as ApplicationStatus } : n
+    ));
+  }, [notifications, customJobs]);
+
+  const handleNotifDispute = useCallback((notifId: number) => {
+    const notif = notifications.find(n => n.id === notifId);
+    if (!notif) return;
+    setCustomJobs(prev => prev.map(j =>
+      j.id === notif.jobId ? { ...j, escrowStatus: "disputed" as const } : j
+    ));
+  }, [notifications]);
+
+  const handleJobDispute = useCallback((jobId: number) => {
+    setCustomJobs(prev => prev.map(j =>
+      j.id === jobId ? { ...j, escrowStatus: "disputed" as const } : j
+    ));
+  }, []);
+
+  const handleWorkerDispute = useCallback(() => {
+    if (!activeJob) return;
+    setCustomJobs(prev => prev.map(j =>
+      j.id === activeJob.id ? { ...j, escrowStatus: "disputed" as const } : j
+    ));
+    setActiveJob(prev => prev ? { ...prev, escrowStatus: "disputed" } : prev);
+  }, [activeJob]);
+
+  const handleAdminResolve = useCallback((jobId: number, winner: "worker" | "company") => {
+    const job = customJobs.find(j => j.id === jobId);
+    if (!job || !job.escrowAmount) return;
+    if (winner === "worker") {
+      const hasNpwp = workerProfile ? !workerProfile.belumPunyaNpwp : true;
+      const { platformCut, pphCut, workerNet } = calcSplit(job.escrowAmount, hasNpwp);
+      setWalletBalance(prev => prev + workerNet);
+      setWalletTransactions(prev => [...prev, {
+        id: Date.now(),
+        type: "credit" as const,
+        amount: workerNet,
+        label: "Keputusan Admin — Pekerja Menang",
+        jobTitle: job.posisi,
+        timestamp: new Date(),
+        note: `Dipotong: Rp ${(pphCut + platformCut).toLocaleString("id-ID")}`,
+      }]);
+      setPlatformBalance(prev => prev + platformCut);
+    } else {
+      const adminFee = Math.round(job.escrowAmount * ADMIN_DISPUTE_FEE);
+      setPlatformBalance(prev => prev + adminFee);
+    }
+    setCustomJobs(prev => prev.map(j =>
+      j.id === jobId ? { ...j, escrowStatus: winner === "worker" ? "released" as const : "refunded" as const } : j
+    ));
+  }, [customJobs, workerProfile]);
+
+  const handleWithdraw = useCallback(() => {
+    if (walletBalance <= 0) return;
+    setWalletTransactions(prev => [...prev, {
+      id: Date.now(),
+      type: "debit" as const,
+      amount: walletBalance,
+      label: "Penarikan ke Rekening Bank",
+      jobTitle: workerProfile?.namaBank ?? "Bank",
+      timestamp: new Date(),
+      note: `Rekening: ••••${workerProfile?.nomorRekening?.slice(-4) ?? "****"}`,
+    }]);
+    setWalletBalance(0);
+  }, [walletBalance, workerProfile]);
 
   // ── Demo inject ─────────────────────────────────────────────────
   const handleDemoInject = useCallback(() => {
@@ -209,6 +316,21 @@ export default function Home() {
       setWorkerProfile(demoProfile);
       setReputationPoints(87);
       setTotalEarned(4_200_000);
+      // Inject demo wallet data
+      const demoTx1: WalletTransaction = {
+        id: 1, type: "credit", amount: 2_835_000,
+        label: "Gaji bersih — pekerjaan selesai", jobTitle: "Event Staff Runner",
+        timestamp: new Date(Date.now() - 2 * 86_400_000),
+        note: "PPh 2.5% Rp 72.000 + Komisi 10% Rp 315.000",
+      };
+      const demoTx2: WalletTransaction = {
+        id: 2, type: "credit", amount: 936_000,
+        label: "Gaji bersih — pekerjaan selesai", jobTitle: "Barista Part-Time",
+        timestamp: new Date(Date.now() - 5 * 86_400_000),
+        note: "PPh 2.5% Rp 24.000 + Komisi 10% Rp 104.000",
+      };
+      setWalletBalance(3_771_000);
+      setWalletTransactions([demoTx2, demoTx1]);
       const fakeJob: CustomJob = {
         id: nextJobId++, type: "custom_job",
         posisi: "Barista Event Besar", deskripsi: "Demo job",
@@ -502,9 +624,13 @@ export default function Home() {
               totalEarned={totalEarned}
               clockedInAt={clockedInAt}
               clockedOutAt={clockedOutAt}
+              walletBalance={walletBalance}
+              walletTransactions={walletTransactions}
+              isWithdrawLocked={customJobs.some(j => j.escrowStatus === "disputed")}
               onLogout={handleLogout}
               onDemoInject={handleDemoInject}
               onEditProfile={() => setShowOnboarding(true)}
+              onWithdraw={handleWithdraw}
             />
           ) : (
             <CompanyProfilePage
@@ -514,6 +640,8 @@ export default function Home() {
               notifications={notifications}
               onLogout={handleLogout}
               onDemoInject={handleDemoInject}
+              onDispute={handleJobDispute}
+              onAdminResolve={handleAdminResolve}
             />
           )}
         </div>
@@ -528,7 +656,7 @@ export default function Home() {
               <div className="flex items-center gap-2">
                 <h1 className="font-bold text-lg text-primary tracking-tight">GigFinder</h1>
                 {mode === "perusahaan" && (
-                  <NotificationPanel notifications={notifications} onStatusChange={handleStatusChange} onOpenChat={handleOpenChatFromNotif} />
+                  <NotificationPanel notifications={notifications} onStatusChange={handleStatusChange} onOpenChat={handleOpenChatFromNotif} onMarkComplete={handleSplitPayment} onDispute={handleNotifDispute} />
                 )}
               </div>
               <div className="flex bg-gray-100 p-1 rounded-lg">
@@ -649,6 +777,9 @@ export default function Home() {
                             className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg ${jobStatus === "clocked_in" ? "bg-white/20 text-white" : "bg-primary text-white"}`}>
                             {jobStatus === "clocked_in" ? "Clock-Out" : "Clock-In"}
                           </button>
+                          {jobStatus === "clocked_in" && (
+                            <button onClick={handleWorkerDispute} className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-1.5 rounded-lg">⚠️ Sengketa</button>
+                          )}
                           {jobStatus !== "clocked_in" && (
                             <button data-testid="button-cancel-job" onClick={handleCancelJob} className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-1.5 rounded-lg">Batal</button>
                           )}

@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { ShieldCheck, AlertCircle, Star, LogOut, Zap, TrendingUp, Clock, Banknote, Award, Play } from "lucide-react";
+import { ShieldCheck, AlertCircle, Star, LogOut, Zap, TrendingUp, Clock, Banknote, Award, Play, Wallet } from "lucide-react";
 import { AuthUser } from "@/types/auth";
 import { WorkerProfile } from "@/types/worker-profile";
 import { RatingPayload } from "@/components/rating-modal";
 import { ApplicationNotification } from "@/types/notification";
+import { WalletTransaction } from "@/types/escrow";
+import EscrowWalletPanel from "@/components/escrow-wallet-panel";
 
 interface WorkerProfilePageProps {
   currentUser: AuthUser;
@@ -14,12 +16,16 @@ interface WorkerProfilePageProps {
   totalEarned: number;
   clockedInAt: Date | null;
   clockedOutAt: Date | null;
+  walletBalance: number;
+  walletTransactions: WalletTransaction[];
+  isWithdrawLocked: boolean;
   onLogout: () => void;
   onDemoInject: () => void;
   onEditProfile: () => void;
+  onWithdraw: () => void;
 }
 
-type ProfileTab = "data" | "analitik";
+type ProfileTab = "data" | "analitik" | "wallet";
 
 function fmt(n: number) { return "Rp " + Math.round(n).toLocaleString("id-ID"); }
 function maskNik(nik: string) { return nik.length >= 8 ? nik.slice(0, 4) + "••••••••" + nik.slice(-4) : nik; }
@@ -27,7 +33,8 @@ function maskNpwp(npwp: string) { return npwp.length >= 4 ? "••••••"
 
 export default function WorkerProfilePage({
   currentUser, workerProfile, reputationPoints, ratings,
-  completedJobs, totalEarned, onLogout, onDemoInject, onEditProfile,
+  completedJobs, totalEarned, walletBalance, walletTransactions,
+  isWithdrawLocked, onLogout, onDemoInject, onEditProfile, onWithdraw,
 }: WorkerProfilePageProps) {
   const [tab, setTab] = useState<ProfileTab>("data");
 
@@ -96,11 +103,11 @@ export default function WorkerProfilePage({
       </div>
 
       {/* ── Tab bar ─────────────────────────────────────── */}
-      <div className="flex bg-white border-b border-gray-100 px-5 gap-1">
-        {(["data", "analitik"] as ProfileTab[]).map((t) => (
+      <div className="flex bg-white border-b border-gray-100 px-3 gap-0.5">
+        {(["data", "analitik", "wallet"] as ProfileTab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-3 text-sm font-bold transition-all border-b-2 ${tab === t ? "border-emerald-600 text-emerald-700" : "border-transparent text-gray-500"}`}>
-            {t === "data" ? "📋 Data Diri Legal" : "📊 Analitik Performa"}
+            className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 flex items-center justify-center gap-1 ${tab === t ? "border-emerald-600 text-emerald-700" : "border-transparent text-gray-500"}`}>
+            {t === "data" ? "📋 Data Diri" : t === "analitik" ? "📊 Analitik" : <><Wallet className="w-3.5 h-3.5" /> E-Wallet</>}
           </button>
         ))}
       </div>
@@ -159,7 +166,7 @@ export default function WorkerProfilePage({
             </button>
           </>
 
-        ) : (
+        ) : tab === "analitik" ? (
           /* ── ANALITIK ──────────────────────────────────── */
           <>
             {/* Summary cards */}
@@ -236,7 +243,16 @@ export default function WorkerProfilePage({
               <Play className="w-4 h-4" /> 🚀 Suntik Data Demo untuk Presentasi
             </button>
           </>
-        )}
+        ) : tab === "wallet" ? (
+          /* ── E-WALLET ──────────────────────────────────── */
+          <EscrowWalletPanel
+            balance={walletBalance}
+            transactions={walletTransactions}
+            isWithdrawLocked={isWithdrawLocked}
+            hasNpwp={!!hasNpwp}
+            onWithdraw={onWithdraw}
+          />
+        ) : null}
 
         {/* Logout */}
         <button

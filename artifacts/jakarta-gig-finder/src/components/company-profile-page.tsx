@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ShieldCheck, LogOut, Building2, Play, BarChart2 } from "lucide-react";
+import { ShieldCheck, LogOut, Building2, Play, BarChart2, Lock, AlertTriangle, Gavel, CheckCircle, RefreshCcw } from "lucide-react";
 import { AuthUser } from "@/types/auth";
 import { CustomJob } from "@/types/custom-job";
 import { RatingPayload } from "@/components/rating-modal";
@@ -13,15 +13,23 @@ interface CompanyProfilePageProps {
   notifications: ApplicationNotification[];
   onLogout: () => void;
   onDemoInject: () => void;
+  onDispute: (jobId: number) => void;
+  onAdminResolve: (jobId: number, winner: "worker" | "company") => void;
 }
 
 type ProfileTab = "data" | "analitik";
 
 export default function CompanyProfilePage({
-  currentUser, customJobs, ratings, notifications, onLogout, onDemoInject,
+  currentUser, customJobs, ratings, notifications, onLogout, onDemoInject, onDispute, onAdminResolve,
 }: CompanyProfilePageProps) {
   const [tab, setTab] = useState<ProfileTab>("data");
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const nibValid = (currentUser.nibPerusahaan?.length ?? 0) === 13;
+
+  const lockedJobs = customJobs.filter(j => j.escrowStatus === "locked" || j.escrowStatus === "disputed");
+  const disputedJobs = customJobs.filter(j => j.escrowStatus === "disputed");
+  const escrowFloat = lockedJobs.reduce((s, j) => s + (j.escrowAmount ?? 0), 0);
+  const fmt = (n: number) => "Rp " + Math.round(n).toLocaleString("id-ID");
 
   const initials = currentUser.name.split(" ").filter(Boolean).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
 
@@ -78,6 +86,75 @@ export default function CompanyProfilePage({
 
       {tab === "data" ? (
         <div className="p-4 space-y-4 pb-24">
+
+          {/* ── Escrow Float Card ────────────────────── */}
+          {escrowFloat > 0 && (
+            <div className="rounded-2xl overflow-hidden border border-blue-200"
+              style={{ background: "linear-gradient(135deg, #1E3A5F 0%, #1D4ED8 100%)" }}>
+              <div className="px-4 py-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Lock className="w-4 h-4 text-blue-200" />
+                  <p className="text-xs font-semibold text-blue-200 uppercase tracking-wide">Total Dana Mengendap di Escrow</p>
+                </div>
+                <p className="text-2xl font-black text-white mb-3">{fmt(escrowFloat)}</p>
+                <div className="flex gap-3">
+                  <div className="flex-1 bg-white/10 rounded-xl p-2.5 text-center">
+                    <p className="text-sm font-black text-white">{lockedJobs.filter(j => j.escrowStatus === "locked").length}</p>
+                    <p className="text-[9px] text-blue-200">Dana Dikunci</p>
+                  </div>
+                  <div className="flex-1 bg-white/10 rounded-xl p-2.5 text-center">
+                    <p className="text-sm font-black text-white">{disputedJobs.length}</p>
+                    <p className="text-[9px] text-blue-200">Dana Dibekukan</p>
+                  </div>
+                  <div className="flex-1 bg-white/10 rounded-xl p-2.5 text-center">
+                    <p className="text-sm font-black text-white">{customJobs.filter(j => j.escrowStatus === "released").length}</p>
+                    <p className="text-[9px] text-blue-200">Dilepas</p>
+                  </div>
+                </div>
+              </div>
+              {disputedJobs.length > 0 && (
+                <div className="bg-red-600/90 px-4 py-2.5 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-white shrink-0" />
+                  <p className="text-xs text-white font-bold">{disputedJobs.length} sengketa aktif — dana dibekukan oleh sistem</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Active Escrow Jobs ───────────────────── */}
+          {lockedJobs.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">
+                <Lock className="w-4 h-4 text-blue-600" />
+                <p className="text-sm font-bold text-gray-900">Lowongan Aktif (Escrow)</p>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {lockedJobs.map(job => {
+                  const isDisputed = job.escrowStatus === "disputed";
+                  return (
+                    <div key={job.id} className="px-4 py-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-900 truncate">{job.posisi}</p>
+                          <p className="text-xs text-gray-500">Escrow: {fmt(job.escrowAmount ?? 0)}</p>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${isDisputed ? "bg-red-100 text-red-700 animate-pulse" : "bg-blue-100 text-blue-700"}`}>
+                          {isDisputed ? "🔴 DIBEKUKAN" : "🔒 DIKUNCI"}
+                        </span>
+                      </div>
+                      {!isDisputed && (
+                        <button onClick={() => onDispute(job.id)}
+                          className="w-full flex items-center justify-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold py-2 rounded-xl hover:bg-amber-100 transition-colors">
+                          <AlertTriangle className="w-3.5 h-3.5" /> Ajukan Pengaduan Kelalaian
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Legal data */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">
@@ -121,6 +198,49 @@ export default function CompanyProfilePage({
             className="w-full flex items-center justify-center gap-2 bg-slate-900 text-emerald-400 text-sm font-bold py-3.5 rounded-2xl hover:bg-slate-800 transition-colors">
             <BarChart2 className="w-4 h-4" /> Lihat Dashboard Analitik Keuangan →
           </button>
+
+          {/* ── Admin Escrow Key Panel ───────────────── */}
+          <button onClick={() => setShowAdminPanel(p => !p)}
+            className="w-full flex items-center justify-center gap-2 bg-gray-900 text-amber-400 text-xs font-bold py-3 rounded-2xl hover:bg-gray-800 transition-colors border border-amber-900/30">
+            <Gavel className="w-3.5 h-3.5" /> 🔑 Admin Master Escrow Key {showAdminPanel ? "▲" : "▼"}
+          </button>
+
+          {showAdminPanel && (
+            <div className="bg-gray-900 rounded-2xl border border-amber-700/30 overflow-hidden">
+              <div className="px-4 py-3 border-b border-amber-700/20 flex items-center gap-2">
+                <Gavel className="w-4 h-4 text-amber-400" />
+                <p className="text-sm font-bold text-amber-400">Admin Escrow Command Center</p>
+              </div>
+              {disputedJobs.length === 0 ? (
+                <div className="px-4 py-6 text-center">
+                  <p className="text-sm text-gray-500">Tidak ada sengketa aktif</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-800">
+                  {disputedJobs.map(job => (
+                    <div key={job.id} className="px-4 py-4 space-y-3">
+                      <div>
+                        <p className="text-sm font-bold text-white">{job.posisi}</p>
+                        <p className="text-xs text-gray-400">Dana dibekukan: {fmt(job.escrowAmount ?? 0)}</p>
+                        <p className="text-[10px] text-red-400 mt-0.5">🔴 DANA DIBEKUKAN — INVESTIGASI ADMIN</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => onAdminResolve(job.id, "worker")}
+                          className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600 text-white text-xs font-bold py-2.5 rounded-xl hover:bg-emerald-500 transition-colors">
+                          <CheckCircle className="w-3.5 h-3.5" /> Menangkan Pekerja
+                        </button>
+                        <button onClick={() => onAdminResolve(job.id, "company")}
+                          className="flex-1 flex items-center justify-center gap-1.5 bg-blue-700 text-white text-xs font-bold py-2.5 rounded-xl hover:bg-blue-600 transition-colors">
+                          <RefreshCcw className="w-3.5 h-3.5" /> Refund ke Perusahaan
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-gray-500 text-center">Menangkan pekerja → gaji dilepas (potong 10% + PPh). Refund → dikembalikan (potong 5% biaya admin).</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <button onClick={onLogout}
             className="w-full flex items-center justify-center gap-2 bg-red-50 border border-red-200 text-red-500 text-sm font-semibold py-3 rounded-2xl hover:bg-red-100 transition-colors">

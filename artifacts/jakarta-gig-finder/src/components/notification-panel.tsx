@@ -6,13 +6,16 @@ interface NotificationPanelProps {
   notifications: ApplicationNotification[];
   onStatusChange: (id: number, status: ApplicationStatus) => void;
   onOpenChat?: (notif: ApplicationNotification) => void;
+  onMarkComplete?: (notifId: number, hasNpwp: boolean) => void;
+  onDispute?: (notifId: number) => void;
 }
 
 const statusConfig: Record<ApplicationStatus, { label: string; color: string; bg: string }> = {
-  baru:     { label: "Baru",     color: "text-violet-700", bg: "bg-violet-100" },
-  ditinjau: { label: "Ditinjau", color: "text-amber-700",  bg: "bg-amber-100"  },
-  diterima: { label: "Diterima", color: "text-primary",    bg: "bg-primary/10" },
-  ditolak:  { label: "Ditolak",  color: "text-red-600",    bg: "bg-red-100"    },
+  baru:     { label: "Baru",     color: "text-violet-700",  bg: "bg-violet-100"  },
+  ditinjau: { label: "Ditinjau", color: "text-amber-700",   bg: "bg-amber-100"   },
+  diterima: { label: "Diterima", color: "text-primary",     bg: "bg-primary/10"  },
+  ditolak:  { label: "Ditolak",  color: "text-red-600",     bg: "bg-red-100"     },
+  selesai:  { label: "Dibayar ✓", color: "text-emerald-700", bg: "bg-emerald-100" },
 };
 
 function timeAgo(date: Date): string {
@@ -22,7 +25,7 @@ function timeAgo(date: Date): string {
   return `${Math.floor(s / 3600)} jam lalu`;
 }
 
-export default function NotificationPanel({ notifications, onStatusChange, onOpenChat }: NotificationPanelProps) {
+export default function NotificationPanel({ notifications, onStatusChange, onOpenChat, onMarkComplete, onDispute }: NotificationPanelProps) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
 
@@ -187,6 +190,33 @@ export default function NotificationPanel({ notifications, onStatusChange, onOpe
                                 >
                                   <X className="w-3.5 h-3.5" />
                                 </button>
+                              </div>
+                            ) : n.status === "diterima" ? (
+                              <div className="space-y-2 pt-1">
+                                {/* Escrow guarantee badge */}
+                                <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+                                  <span className="text-blue-600 text-[11px] font-bold">🔒 Gaji Terjamin di Escrow Rekhastha</span>
+                                </div>
+                                <div className="flex gap-2">
+                                  {onMarkComplete && (
+                                    <button
+                                      data-testid={`button-complete-${n.id}`}
+                                      onClick={() => { onMarkComplete(n.id, n.hasNpwp); setOpen(false); }}
+                                      className="flex-1 flex items-center justify-center gap-1.5 bg-primary text-white text-xs font-bold py-2.5 rounded-xl hover:bg-primary/90 active:scale-[0.97] transition-all"
+                                    >
+                                      <CheckCircle className="w-3.5 h-3.5" /> Selesai &amp; Bayar Pekerja
+                                    </button>
+                                  )}
+                                  {onDispute && (
+                                    <button
+                                      data-testid={`button-dispute-${n.id}`}
+                                      onClick={() => { onDispute(n.id); setOpen(false); }}
+                                      className="flex items-center justify-center gap-1 px-3 bg-amber-50 text-amber-600 text-xs font-bold py-2.5 rounded-xl hover:bg-amber-100 transition-colors border border-amber-200"
+                                    >
+                                      ⚠️ Sengketa
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             ) : (
                               <div className={`text-center text-xs font-semibold py-2 rounded-xl ${cfg.bg} ${cfg.color}`}>

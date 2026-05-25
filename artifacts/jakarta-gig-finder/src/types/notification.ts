@@ -1,4 +1,4 @@
-export type ApplicationStatus = "baru" | "ditinjau" | "diterima" | "ditolak";
+export type ApplicationStatus = "baru" | "ditinjau" | "diterima" | "ditolak" | "selesai";
 
 export interface ApplicationNotification {
   id: number;
