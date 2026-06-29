@@ -165,3 +165,31 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 }
+
+/* ── Custom animations ─────────────────────────────────── */
+@keyframes radar-expand {
+  0%   { transform: scale(0.3); opacity: 0.85; }
+  70%  { opacity: 0.25; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+
+@keyframes slide-up-bounce {
+  0%   { transform: translateY(110%); opacity: 0; }
+  65%  { transform: translateY(-6px); opacity: 1; }
+  80%  { transform: translateY(3px); }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes ping-shake {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  15%       { transform: translateX(-4px) rotate(-1.5deg); }
+  30%       { transform: translateX(4px) rotate(1.5deg); }
+  45%       { transform: translateX(-3px) rotate(-1deg); }
+  60%       { transform: translateX(3px) rotate(1deg); }
+  75%       { transform: translateX(-2px) rotate(-0.5deg); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 12px 4px rgba(16,185,129,0.3); }
+  50%       { box-shadow: 0 0 28px 12px rgba(16,185,129,0.5); }
+}
