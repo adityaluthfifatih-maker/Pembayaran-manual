@@ -4,8 +4,9 @@ import { AuthUser } from "@/types/auth";
 import { WorkerProfile } from "@/types/worker-profile";
 import { RatingPayload } from "@/components/rating-modal";
 import { ApplicationNotification } from "@/types/notification";
-import { WalletTransaction } from "@/types/escrow";
+import { WalletTransaction, EscrowEvent } from "@/types/escrow";
 import EscrowWalletPanel from "@/components/escrow-wallet-panel";
+import EscrowTimeline from "@/components/escrow-timeline";
 
 interface WorkerProfilePageProps {
   currentUser: AuthUser;
@@ -19,6 +20,8 @@ interface WorkerProfilePageProps {
   walletBalance: number;
   walletTransactions: WalletTransaction[];
   isWithdrawLocked: boolean;
+  escrowEvents: EscrowEvent[];
+  workerJobIds: number[];
   onLogout: () => void;
   onDemoInject: () => void;
   onEditProfile: () => void;
@@ -34,7 +37,7 @@ function maskNpwp(npwp: string) { return npwp.length >= 4 ? "••••••"
 export default function WorkerProfilePage({
   currentUser, workerProfile, reputationPoints, ratings,
   completedJobs, totalEarned, walletBalance, walletTransactions,
-  isWithdrawLocked, onLogout, onDemoInject, onEditProfile, onWithdraw,
+  isWithdrawLocked, escrowEvents, workerJobIds, onLogout, onDemoInject, onEditProfile, onWithdraw,
 }: WorkerProfilePageProps) {
   const [tab, setTab] = useState<ProfileTab>("data");
 
@@ -245,13 +248,35 @@ export default function WorkerProfilePage({
           </>
         ) : tab === "wallet" ? (
           /* ── E-WALLET ──────────────────────────────────── */
-          <EscrowWalletPanel
-            balance={walletBalance}
-            transactions={walletTransactions}
-            isWithdrawLocked={isWithdrawLocked}
-            hasNpwp={!!hasNpwp}
-            onWithdraw={onWithdraw}
-          />
+          <>
+            <EscrowWalletPanel
+              balance={walletBalance}
+              transactions={walletTransactions}
+              isWithdrawLocked={isWithdrawLocked}
+              hasNpwp={!!hasNpwp}
+              onWithdraw={onWithdraw}
+            />
+
+            {/* Escrow audit log — only jobs this worker participated in */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
+                  <Clock className="w-3.5 h-3.5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-black text-gray-900">Riwayat Escrow Saya</p>
+                  <p className="text-[10px] text-gray-400">Jejak dana dari setiap pekerjaan</p>
+                </div>
+              </div>
+              <div className="p-4">
+                <EscrowTimeline
+                  events={escrowEvents}
+                  filterJobIds={workerJobIds.length > 0 ? workerJobIds : undefined}
+                  emptyLabel="Selesaikan pekerjaan pertama untuk melihat riwayat escrow"
+                />
+              </div>
+            </div>
+          </>
         ) : null}
 
         {/* Logout */}

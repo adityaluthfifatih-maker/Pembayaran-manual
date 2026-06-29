@@ -1,5 +1,18 @@
 export type EscrowStatus = "pending" | "locked" | "disputed" | "released" | "refunded";
 
+export interface EscrowEvent {
+  id: number;
+  jobId: number;
+  jobTitle: string;
+  fromStatus?: EscrowStatus;
+  toStatus: EscrowStatus;
+  actor: "system" | "company" | "worker" | "admin";
+  actorName?: string;
+  amount?: number;
+  timestamp: Date;
+  note?: string;
+}
+
 export interface WalletTransaction {
   id: number;
   type: "credit" | "debit";

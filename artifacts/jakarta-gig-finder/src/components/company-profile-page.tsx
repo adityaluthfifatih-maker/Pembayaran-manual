@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { ShieldCheck, LogOut, Building2, Play, BarChart2, Lock, AlertTriangle, Gavel, CheckCircle, RefreshCcw } from "lucide-react";
+import { ShieldCheck, LogOut, Building2, Play, BarChart2, Lock, AlertTriangle, Gavel, CheckCircle, RefreshCcw, History } from "lucide-react";
 import { AuthUser } from "@/types/auth";
 import { CustomJob } from "@/types/custom-job";
 import { RatingPayload } from "@/components/rating-modal";
 import { ApplicationNotification } from "@/types/notification";
 import AnalyticsDashboard from "@/components/analytics-dashboard";
+import EscrowTimeline from "@/components/escrow-timeline";
+import { EscrowEvent } from "@/types/escrow";
 
 interface CompanyProfilePageProps {
   currentUser: AuthUser;
@@ -13,14 +15,15 @@ interface CompanyProfilePageProps {
   notifications: ApplicationNotification[];
   onLogout: () => void;
   onDemoInject: () => void;
+  escrowEvents: EscrowEvent[];
   onDispute: (jobId: number) => void;
   onAdminResolve: (jobId: number, winner: "worker" | "company") => void;
 }
 
-type ProfileTab = "data" | "analitik";
+type ProfileTab = "data" | "analitik" | "riwayat";
 
 export default function CompanyProfilePage({
-  currentUser, customJobs, ratings, notifications, onLogout, onDemoInject, onDispute, onAdminResolve,
+  currentUser, customJobs, ratings, notifications, escrowEvents, onLogout, onDemoInject, onDispute, onAdminResolve,
 }: CompanyProfilePageProps) {
   const [tab, setTab] = useState<ProfileTab>("data");
   const [showAdminPanel, setShowAdminPanel] = useState(false);
@@ -35,6 +38,7 @@ export default function CompanyProfilePage({
 
   return (
     <div className="flex-1 overflow-y-auto" style={{ background: tab === "analitik" ? "#0F172A" : "#F8FAFC" }}>
+
       {/* ── Profile header ──────────────────────────────── */}
       <div
         className="px-5 pt-6 pb-5 flex flex-col items-center gap-3"
@@ -72,14 +76,14 @@ export default function CompanyProfilePage({
 
       {/* ── Tab bar ─────────────────────────────────────── */}
       <div className={`flex border-b px-5 gap-1 ${tab === "analitik" ? "bg-slate-900 border-slate-700" : "bg-white border-gray-100"}`}>
-        {(["data", "analitik"] as ProfileTab[]).map((t) => (
+        {(["data", "analitik", "riwayat"] as ProfileTab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-3 text-sm font-bold transition-all border-b-2 ${
+            className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 ${
               tab === t
                 ? t === "analitik" ? "border-emerald-400 text-emerald-400" : "border-blue-600 text-blue-700"
                 : tab === "analitik" ? "border-transparent text-slate-500" : "border-transparent text-gray-500"
             }`}>
-            {t === "data" ? "🏢 Data Bisnis Legal" : "📊 Analitik Keuangan"}
+            {t === "data" ? "🏢 Bisnis" : t === "analitik" ? "📊 Analitik" : "📋 Riwayat"}
           </button>
         ))}
       </div>
@@ -248,7 +252,7 @@ export default function CompanyProfilePage({
           </button>
         </div>
 
-      ) : (
+      ) : tab === "analitik" ? (
         /* Analytics — reuses dark AnalyticsDashboard + logout at bottom */
         <div className="flex flex-col" style={{ background: "#0F172A" }}>
           <AnalyticsDashboard customJobs={customJobs} ratings={ratings} totalApplicants={notifications.length} />
@@ -262,6 +266,53 @@ export default function CompanyProfilePage({
               <LogOut className="w-4 h-4" /> Keluar dari Akun
             </button>
           </div>
+        </div>
+
+      ) : (
+        /* ── Riwayat Escrow / Audit Log ──────────────── */
+        <div className="p-4 space-y-4 pb-24">
+          {/* Header card */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+                <History className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm font-black text-gray-900">Audit Log Escrow Rekhastha</p>
+                <p className="text-xs text-gray-500">Setiap perubahan status dana tercatat permanen & tidak dapat diubah</p>
+              </div>
+            </div>
+
+            {/* Summary chips */}
+            {escrowEvents.length > 0 && (
+              <div className="flex gap-2 mt-3 flex-wrap">
+                {(["locked","disputed","released","refunded"] as const).map(s => {
+                  const count = escrowEvents.filter(e => e.toStatus === s).length;
+                  if (!count) return null;
+                  const colors: Record<string, string> = {
+                    locked: "bg-blue-50 text-blue-700 border-blue-200",
+                    disputed: "bg-red-50 text-red-700 border-red-200",
+                    released: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                    refunded: "bg-gray-100 text-gray-700 border-gray-200",
+                  };
+                  const labels: Record<string, string> = { locked: "🔒 Dikunci", disputed: "⚠️ Sengketa", released: "✅ Dilepas", refunded: "↩️ Refund" };
+                  return (
+                    <span key={s} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${colors[s]}`}>
+                      {labels[s]} ×{count}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Timeline */}
+          <EscrowTimeline events={escrowEvents} />
+
+          <button onClick={onLogout}
+            className="w-full flex items-center justify-center gap-2 bg-red-50 border border-red-200 text-red-500 text-sm font-semibold py-3 rounded-2xl hover:bg-red-100 transition-colors">
+            <LogOut className="w-4 h-4" /> Keluar dari Akun
+          </button>
         </div>
       )}
     </div>

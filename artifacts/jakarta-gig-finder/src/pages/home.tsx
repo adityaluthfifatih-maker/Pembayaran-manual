@@ -19,7 +19,7 @@ import CompanyProfilePage from "@/components/company-profile-page";
 import { workers, Worker } from "@/data/workers";
 import { jobs } from "@/data/jobs";
 import { CustomJob, calcTotal } from "@/types/custom-job";
-import { WalletTransaction, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, DURATION_DAYS } from "@/types/escrow";
+import { WalletTransaction, EscrowEvent, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, DURATION_DAYS } from "@/types/escrow";
 import { WorkerProfile, isVerified } from "@/types/worker-profile";
 import { AuthUser } from "@/types/auth";
 import {
@@ -165,6 +165,7 @@ export default function Home() {
   const [walletBalance, setWalletBalance] = useState(0);
   const [walletTransactions, setWalletTransactions] = useState<WalletTransaction[]>([]);
   const [platformBalance, setPlatformBalance] = useState(0);
+  const [escrowEvents, setEscrowEvents] = useState<EscrowEvent[]>([]);
 
   // ── Chat ────────────────────────────────────────────────────────
   const [chatContext, setChatContext] = useState<{
@@ -216,6 +217,7 @@ export default function Home() {
     setWalletBalance(0);
     setWalletTransactions([]);
     setPlatformBalance(0);
+    setEscrowEvents([]);
   }, []);
 
   // ── Escrow handlers ─────────────────────────────────────────────
@@ -244,6 +246,17 @@ export default function Home() {
     setNotifications(prev => prev.map(n =>
       n.id === notifId ? { ...n, status: "selesai" as ApplicationStatus } : n
     ));
+    setEscrowEvents(prev => [...prev, {
+      id: Date.now(),
+      jobId: notif.jobId,
+      jobTitle: notif.jobTitle,
+      fromStatus: "locked",
+      toStatus: "released",
+      actor: "company",
+      amount: workerNet,
+      timestamp: new Date(),
+      note: `Pekerja: ${notif.applicantName}. PPh ${hasNpwp ? "2.5%" : "3%"} + komisi 10% dipotong. Dana ditransfer ke e-wallet pekerja.`,
+    }]);
   }, [notifications, customJobs]);
 
   const handleNotifDispute = useCallback((notifId: number) => {
@@ -252,13 +265,36 @@ export default function Home() {
     setCustomJobs(prev => prev.map(j =>
       j.id === notif.jobId ? { ...j, escrowStatus: "disputed" as const } : j
     ));
+    setEscrowEvents(prev => [...prev, {
+      id: Date.now(),
+      jobId: notif.jobId,
+      jobTitle: notif.jobTitle,
+      fromStatus: "locked",
+      toStatus: "disputed",
+      actor: "company",
+      timestamp: new Date(),
+      note: `Perusahaan mengajukan sengketa. Dana dibekukan otomatis oleh sistem Rekhastha.`,
+    }]);
   }, [notifications]);
 
   const handleJobDispute = useCallback((jobId: number) => {
+    const job = customJobs.find(j => j.id === jobId);
     setCustomJobs(prev => prev.map(j =>
       j.id === jobId ? { ...j, escrowStatus: "disputed" as const } : j
     ));
-  }, []);
+    if (job) {
+      setEscrowEvents(prev => [...prev, {
+        id: Date.now(),
+        jobId,
+        jobTitle: job.posisi,
+        fromStatus: "locked",
+        toStatus: "disputed",
+        actor: "company",
+        timestamp: new Date(),
+        note: `Perusahaan mengajukan sengketa dari panel profil. Dana dibekukan otomatis.`,
+      }]);
+    }
+  }, [customJobs]);
 
   const handleWorkerDispute = useCallback(() => {
     if (!activeJob) return;
@@ -266,6 +302,16 @@ export default function Home() {
       j.id === activeJob.id ? { ...j, escrowStatus: "disputed" as const } : j
     ));
     setActiveJob(prev => prev ? { ...prev, escrowStatus: "disputed" } : prev);
+    setEscrowEvents(prev => [...prev, {
+      id: Date.now(),
+      jobId: activeJob.id,
+      jobTitle: activeJob.posisi,
+      fromStatus: "locked",
+      toStatus: "disputed",
+      actor: "worker",
+      timestamp: new Date(),
+      note: `Pekerja mengajukan sengketa saat sedang Clock-In. Dana dibekukan otomatis oleh sistem.`,
+    }]);
   }, [activeJob]);
 
   const handleAdminResolve = useCallback((jobId: number, winner: "worker" | "company") => {
@@ -289,9 +335,26 @@ export default function Home() {
       const adminFee = Math.round(job.escrowAmount * ADMIN_DISPUTE_FEE);
       setPlatformBalance(prev => prev + adminFee);
     }
+    const finalStatus = winner === "worker" ? "released" as const : "refunded" as const;
     setCustomJobs(prev => prev.map(j =>
-      j.id === jobId ? { ...j, escrowStatus: winner === "worker" ? "released" as const : "refunded" as const } : j
+      j.id === jobId ? { ...j, escrowStatus: finalStatus } : j
     ));
+    setEscrowEvents(prev => [...prev, {
+      id: Date.now(),
+      jobId,
+      jobTitle: job.posisi,
+      fromStatus: "disputed",
+      toStatus: finalStatus,
+      actor: "admin",
+      amount: winner === "worker" ? (() => {
+        const hasNpwp = workerProfile ? !workerProfile.belumPunyaNpwp : true;
+        return calcSplit(job.escrowAmount!, hasNpwp).workerNet;
+      })() : Math.round((job.escrowAmount ?? 0) * (1 - ADMIN_DISPUTE_FEE)),
+      timestamp: new Date(),
+      note: winner === "worker"
+        ? `Admin memutuskan pekerja menang. Dana dilepas ke e-wallet pekerja setelah potongan.`
+        : `Admin memutuskan perusahaan menang. Escrow direfund (dipotong biaya admin 5%).`,
+    }]);
   }, [customJobs, workerProfile]);
 
   const handleWithdraw = useCallback(() => {
@@ -360,6 +423,32 @@ export default function Home() {
       const demoNotifs = makeDemoNotifs(demoJobs);
       setNotifications(demoNotifs);
       setRatings(makeDemoRatings());
+      // Inject demo escrow audit log for company
+      const now = Date.now();
+      const demoEvents: EscrowEvent[] = [
+        ...demoJobs.map((j, i) => ({
+          id: now + i,
+          jobId: j.id,
+          jobTitle: j.posisi,
+          toStatus: "locked" as const,
+          actor: "system" as const,
+          amount: j.escrowAmount,
+          timestamp: new Date(now - (5 - i) * 3_600_000),
+          note: `Dana dikunci otomatis oleh sistem. Lowongan aktif di peta.`,
+        })),
+        // One disputed event for drama — job index 3 (Admin & Kasir)
+        {
+          id: now + 10,
+          jobId: demoJobs[3].id,
+          jobTitle: demoJobs[3].posisi,
+          fromStatus: "locked",
+          toStatus: "disputed",
+          actor: "worker",
+          timestamp: new Date(now - 1_800_000),
+          note: `Pekerja mengajukan sengketa: upah tidak sesuai kesepakatan. Dana dibekukan.`,
+        },
+      ];
+      setEscrowEvents(demoEvents);
     }
   }, [currentUser]);
 
@@ -391,7 +480,21 @@ export default function Home() {
   // ── Job posting ─────────────────────────────────────────────────
   const handleJobPosted = useCallback((data: Omit<CustomJob, "id" | "type" | "lat" | "lng" | "postedAt">) => {
     const coords = randomJakartaCoords();
-    setCustomJobs((p) => [...p, { id: nextJobId++, type: "custom_job", ...data, ...coords, postedAt: new Date() }]);
+    const newId = nextJobId++;
+    const now = new Date();
+    setCustomJobs(p => [...p, { id: newId, type: "custom_job", ...data, ...coords, postedAt: now }]);
+    if (data.escrowStatus === "locked" && data.escrowAmount) {
+      setEscrowEvents(prev => [...prev, {
+        id: Date.now(),
+        jobId: newId,
+        jobTitle: data.posisi,
+        toStatus: "locked",
+        actor: "system",
+        amount: data.escrowAmount,
+        timestamp: now,
+        note: `Dana dikunci otomatis oleh sistem. Lowongan aktif di peta setelah verifikasi.`,
+      }]);
+    }
   }, []);
 
   // ── Apply ───────────────────────────────────────────────────────
@@ -627,6 +730,8 @@ export default function Home() {
               walletBalance={walletBalance}
               walletTransactions={walletTransactions}
               isWithdrawLocked={customJobs.some(j => j.escrowStatus === "disputed")}
+              escrowEvents={escrowEvents}
+              workerJobIds={completedNotifs.map(n => n.jobId)}
               onLogout={handleLogout}
               onDemoInject={handleDemoInject}
               onEditProfile={() => setShowOnboarding(true)}
@@ -638,6 +743,7 @@ export default function Home() {
               customJobs={customJobs}
               ratings={ratings}
               notifications={notifications}
+              escrowEvents={escrowEvents}
               onLogout={handleLogout}
               onDemoInject={handleDemoInject}
               onDispute={handleJobDispute}
