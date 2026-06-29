@@ -6,6 +6,7 @@ interface ClockInModalProps {
   job: CustomJob;
   userLat: number;
   userLng: number;
+  locationAccuracy: number | null;
   isClockedIn: boolean;
   clockedInAt: Date | null;
   onClockIn: () => void;
@@ -34,16 +35,14 @@ function elapsed(from: Date): string {
 type SelfieStep = "idle" | "camera" | "captured";
 
 export default function ClockInModal({
-  job, userLat, userLng, isClockedIn, clockedInAt, onClockIn, onClockOut, onClose,
+  job, userLat, userLng, locationAccuracy, isClockedIn, clockedInAt, onClockIn, onClockOut, onClose,
 }: ClockInModalProps) {
   const [selfieStep, setSelfieStep] = useState<SelfieStep>("idle");
   const [timer, setTimer] = useState("00:00:00");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const distance = haversineMeters(userLat, userLng, job.lat, job.lng);
-  // For demo: treat as < 50m in simulation (actual GPS may differ), clamp to show distance
-  // We show real distance but allow clock-in with a demo bypass button
-  const withinRange = distance < 50000; // relaxed for demo (real GPS varies)
+  const withinRange = distance < 500; // 500m geofence radius
 
   useEffect(() => {
     if (isClockedIn && clockedInAt) {
@@ -93,16 +92,23 @@ export default function ClockInModal({
 
         <div className="px-5 py-5 space-y-4">
           {/* Distance indicator */}
-          <div className={`flex items-center gap-3 p-4 rounded-xl border ${withinRange ? "bg-primary/5 border-primary/15" : "bg-amber-50 border-amber-200"}`}>
-            <MapPin className={`w-5 h-5 shrink-0 ${withinRange ? "text-primary" : "text-amber-500"}`} />
-            <div>
+          <div className={`flex items-start gap-3 p-4 rounded-xl border ${withinRange ? "bg-primary/5 border-primary/15" : "bg-amber-50 border-amber-200"}`}>
+            <MapPin className={`w-5 h-5 shrink-0 mt-0.5 ${withinRange ? "text-primary" : "text-amber-500"}`} />
+            <div className="flex-1 min-w-0">
               <p className={`text-sm font-semibold ${withinRange ? "text-primary" : "text-amber-700"}`}>
-                {withinRange ? "Dalam Jangkauan Lokasi Kerja" : "Jauh dari Lokasi Kerja"}
+                {withinRange ? "✅ Dalam Radius Lokasi Kerja" : "⚠️ Di Luar Radius 500m"}
               </p>
               <p className="text-xs text-gray-500 mt-0.5">
-                Jarak: {distance < 1000 ? `${Math.round(distance)} m` : `${(distance / 1000).toFixed(1)} km`} dari titik kerja
-                {!withinRange && " · Harap mendekat ke lokasi"}
+                Jarak: <span className="font-bold">{distance < 1000 ? `${Math.round(distance)} m` : `${(distance / 1000).toFixed(2)} km`}</span> dari titik kerja
               </p>
+              {locationAccuracy != null && (
+                <p className={`text-[10px] mt-1 font-medium ${locationAccuracy <= 20 ? "text-emerald-600" : locationAccuracy <= 100 ? "text-amber-600" : "text-red-500"}`}>
+                  {locationAccuracy <= 20 ? "📡 GPS Presisi Tinggi" : locationAccuracy <= 100 ? "📡 GPS Cukup Akurat" : "📡 GPS Kurang Akurat"} · Akurasi ±{locationAccuracy} m
+                </p>
+              )}
+              {!locationAccuracy && (
+                <p className="text-[10px] text-gray-400 mt-1">Mencari sinyal GPS…</p>
+              )}
             </div>
           </div>
 

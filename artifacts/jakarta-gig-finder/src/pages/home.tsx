@@ -178,14 +178,19 @@ export default function Home() {
 
   // ── Geolocation ─────────────────────────────────────────────────
   const [userLocation, setUserLocation] = useState(JAKARTA_CENTER);
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
 
   useEffect(() => {
-    if (mode === "pekerja" && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (p) => setUserLocation({ lat: p.coords.latitude, lng: p.coords.longitude }),
-        () => setUserLocation(JAKARTA_CENTER)
-      );
-    }
+    if (mode !== "pekerja" || !navigator.geolocation) return;
+    const watchId = navigator.geolocation.watchPosition(
+      (p) => {
+        setUserLocation({ lat: p.coords.latitude, lng: p.coords.longitude });
+        setLocationAccuracy(Math.round(p.coords.accuracy));
+      },
+      () => setUserLocation(JAKARTA_CENTER),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
   }, [mode]);
 
   // ── Auth complete ───────────────────────────────────────────────
@@ -223,7 +228,7 @@ export default function Home() {
   // ── Escrow handlers ─────────────────────────────────────────────
   const handleSplitPayment = useCallback((notifId: number, hasNpwp: boolean) => {
     const notif = notifications.find(n => n.id === notifId);
-    if (!notif) return;
+    if (!notif || notif.status === "selesai") return;
     const job = customJobs.find(j => j.id === notif.jobId);
     const gross = job?.escrowAmount ?? calcTotal(job?.nominal ?? 0, job?.pembayaran ?? "per_shift");
     const { platformCut, pphCut, workerNet } = calcSplit(gross, hasNpwp);
@@ -412,6 +417,31 @@ export default function Home() {
         status: "diterima" as ApplicationStatus,
       }));
       setCompletedNotifs(demoCompleted);
+      // Inject matching escrow audit trail for wallet transactions
+      setEscrowEvents([
+        {
+          id: Date.now() + 100,
+          jobId: fakeJob.id,
+          jobTitle: "Event Staff Runner",
+          fromStatus: "locked",
+          toStatus: "released",
+          actor: "company",
+          amount: 2_835_000,
+          timestamp: new Date(Date.now() - 2 * 86_400_000),
+          note: `Perusahaan menyetujui pembayaran. PPh 2.5% + komisi 10% dipotong otomatis.`,
+        },
+        {
+          id: Date.now() + 101,
+          jobId: fakeJob.id,
+          jobTitle: "Barista Part-Time",
+          fromStatus: "locked",
+          toStatus: "released",
+          actor: "company",
+          amount: 936_000,
+          timestamp: new Date(Date.now() - 5 * 86_400_000),
+          note: `Perusahaan menyetujui pembayaran. PPh 2.5% + komisi 10% dipotong otomatis.`,
+        },
+      ]);
       setRatings([
         { stars: 5, comment: "Pekerja sangat disiplin!", raterType: "company", targetName: "PT Kopi Kenangan" },
         { stars: 4, comment: "Bagus, datang tepat waktu.", raterType: "company", targetName: "EO Spekta" },
@@ -589,6 +619,7 @@ export default function Home() {
       )}
       {showClockIn && activeJob && (
         <ClockInModal job={activeJob} userLat={userLocation.lat} userLng={userLocation.lng}
+          locationAccuracy={locationAccuracy}
           isClockedIn={jobStatus === "clocked_in"} clockedInAt={clockedInAt}
           onClockIn={handleClockIn} onClockOut={handleClockOut} onClose={() => setShowClockIn(false)} />
       )}
