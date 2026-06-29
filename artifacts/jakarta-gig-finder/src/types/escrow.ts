@@ -24,7 +24,9 @@ export interface WalletTransaction {
 }
 
 // ── Platform rates (Rekhastha) ─────────────────────────
-export const PLATFORM_RATE = 0.10;         // 10% komisi platform
+export const PLATFORM_RATE = 0.10;         // 10% komisi platform (default)
+export const PLATFORM_FEE_CEPAT = 0.15;   // 15% biaya sistem — Mode Butuh Cepat (instant broadcast)
+export const PLATFORM_FEE_LAMA = 0.07;    // 7%  biaya sistem — Mode Bisa Lama (scheduled contract)
 export const PPH_WITH_NPWP = 0.025;        // 2.5% PPh 21 dengan NPWP
 export const PPH_WITHOUT_NPWP = 0.03;      // 3.0% PPh 21 tanpa NPWP
 export const ADMIN_DISPUTE_FEE = 0.05;     // 5% biaya admin jika perusahaan menang

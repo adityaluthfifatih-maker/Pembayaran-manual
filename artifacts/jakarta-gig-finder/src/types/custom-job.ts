@@ -4,6 +4,8 @@ export type PaymentType = "per_jam" | "per_shift" | "per_projek";
 export type DurasiKontrak = "harian" | "1_bulan" | "3_bulan" | "6_bulan";
 export type TipeAkun = "perusahaan" | "agensi";
 
+export type HiringMode = "cepat" | "lama";
+
 export interface CustomJob {
   id: number;
   type: "custom_job";
@@ -22,6 +24,9 @@ export interface CustomJob {
   flaggedSuspect?: boolean;
   tipeAkun?: TipeAkun;
   isAgency?: boolean;
+  // ── Hiring mode ──────────────────────────────────────
+  hiringMode?: HiringMode;     // "cepat" = instant broadcast, "lama" = scheduled
+  broadcastActive?: boolean;   // true when instant broadcast is live
   // ── Escrow fields ────────────────────────────────────
   escrowStatus?: EscrowStatus;
   escrowAmount?: number;   // Total gross locked in escrow (per ALL workers)
