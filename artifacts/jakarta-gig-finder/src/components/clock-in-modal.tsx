@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { X, MapPin, Camera, CheckCircle, AlertTriangle, Clock } from "lucide-react";
+import { X, MapPin, QrCode, CheckCircle, AlertTriangle, Clock, ShieldCheck, Zap } from "lucide-react";
 import { CustomJob } from "@/types/custom-job";
 
 interface ClockInModalProps {
@@ -32,17 +32,59 @@ function elapsed(from: Date): string {
   return `${h}:${m}:${s}`;
 }
 
-type SelfieStep = "idle" | "camera" | "captured";
+// Simulated 21×21 QR code matrix (static pattern for demo)
+const QR_MATRIX = [
+  [1,1,1,1,1,1,1,0,0,1,0,1,0,0,1,1,1,1,1,1,1],
+  [1,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,1],
+  [1,0,1,1,1,0,1,0,0,1,0,1,0,0,1,0,1,1,1,0,1],
+  [1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1],
+  [1,0,1,1,1,0,1,0,0,0,0,1,0,0,1,0,1,1,1,0,1],
+  [1,0,0,0,0,0,1,0,1,0,1,0,0,0,1,0,0,0,0,0,1],
+  [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
+  [0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0],
+  [0,1,0,1,1,0,1,1,1,0,1,0,1,1,0,1,1,0,1,0,1],
+  [1,0,1,0,0,1,0,1,0,1,1,0,0,1,0,0,1,1,0,1,0],
+  [0,1,1,0,1,0,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1],
+  [1,0,0,1,0,1,0,1,0,1,0,0,1,1,0,1,0,0,1,0,0],
+  [0,0,1,0,1,0,1,0,1,1,0,1,0,0,1,0,1,1,0,1,0],
+  [0,0,0,0,0,0,0,0,1,0,1,0,1,0,0,1,0,1,0,1,1],
+  [1,1,1,1,1,1,1,0,0,1,0,1,0,1,1,0,1,1,1,0,1],
+  [1,0,0,0,0,0,1,0,1,0,1,0,1,0,0,1,0,0,0,1,0],
+  [1,0,1,1,1,0,1,0,0,1,0,1,0,1,1,0,1,0,1,0,1],
+  [1,0,1,1,1,0,1,0,1,0,1,0,1,0,0,1,1,1,0,1,0],
+  [1,0,1,1,1,0,1,0,0,1,1,0,0,1,1,0,0,1,1,0,1],
+  [1,0,0,0,0,0,1,0,1,0,0,1,0,0,1,0,1,0,0,1,0],
+  [1,1,1,1,1,1,1,0,1,1,0,0,1,1,0,1,0,1,0,1,1],
+];
+
+function QRDisplay() {
+  return (
+    <div className="bg-white p-2.5 rounded-2xl border-4 border-gray-900 inline-block shadow-lg">
+      {QR_MATRIX.map((row, r) => (
+        <div key={r} className="flex">
+          {row.map((cell, c) => (
+            <div key={c} style={{ width: 9, height: 9, backgroundColor: cell ? "#111827" : "#ffffff" }} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type QrStep = "idle" | "scanning" | "verified";
 
 export default function ClockInModal({
-  job, userLat, userLng, locationAccuracy, isClockedIn, clockedInAt, onClockIn, onClockOut, onClose,
+  job, userLat, userLng, locationAccuracy, isClockedIn, clockedInAt,
+  onClockIn, onClockOut, onClose,
 }: ClockInModalProps) {
-  const [selfieStep, setSelfieStep] = useState<SelfieStep>("idle");
+  const [qrStep, setQrStep] = useState<QrStep>("idle");
   const [timer, setTimer] = useState("00:00:00");
+  const [scanProgress, setScanProgress] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scanRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const distance = haversineMeters(userLat, userLng, job.lat, job.lng);
-  const withinRange = distance < 500; // 500m geofence radius
+  const withinRange = distance < 500;
 
   useEffect(() => {
     if (isClockedIn && clockedInAt) {
@@ -51,17 +93,22 @@ export default function ClockInModal({
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [isClockedIn, clockedInAt]);
 
-  const handleStartCamera = () => {
-    if (!withinRange) return;
-    setSelfieStep("camera");
-  };
-
-  const handleCapture = () => {
-    setSelfieStep("captured");
-    setTimeout(() => {
-      onClockIn();
-      onClose();
-    }, 1200);
+  const handleStartScan = () => {
+    setQrStep("scanning");
+    setScanProgress(0);
+    let p = 0;
+    scanRef.current = setInterval(() => {
+      p += 4;
+      setScanProgress(p);
+      if (p >= 100) {
+        clearInterval(scanRef.current!);
+        setQrStep("verified");
+        setTimeout(() => {
+          onClockIn();
+          onClose();
+        }, 1800);
+      }
+    }, 80);
   };
 
   return (
@@ -71,19 +118,20 @@ export default function ClockInModal({
     >
       <div className="absolute inset-0" onClick={onClose} />
       <div
-        className="relative bg-white rounded-t-3xl w-full max-h-[80vh] overflow-y-auto"
+        className="relative bg-white rounded-t-3xl w-full max-h-[88vh] overflow-y-auto"
         style={{ animation: "slideUp 0.28s cubic-bezier(0.32,0.72,0,1)" }}
       >
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 rounded-full bg-gray-200" />
         </div>
 
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
           <div>
             <h2 className="font-bold text-gray-900 text-base">
-              {isClockedIn ? "Sedang Bekerja" : "Clock-In Absensi"}
+              {isClockedIn ? "Shift Aktif" : "Clock-In via QR Rekhastha"}
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">{job.posisi}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{job.posisi} · Verifikasi Anti-Joki</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100">
             <X className="w-4 h-4 text-gray-600" />
@@ -106,95 +154,153 @@ export default function ClockInModal({
                   {locationAccuracy <= 20 ? "📡 GPS Presisi Tinggi" : locationAccuracy <= 100 ? "📡 GPS Cukup Akurat" : "📡 GPS Kurang Akurat"} · Akurasi ±{locationAccuracy} m
                 </p>
               )}
-              {!locationAccuracy && (
-                <p className="text-[10px] text-gray-400 mt-1">Mencari sinyal GPS…</p>
-              )}
             </div>
           </div>
 
           {/* Active timer */}
           {isClockedIn && clockedInAt && (
-            <div className="bg-primary text-white rounded-2xl p-5 text-center">
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <Clock className="w-4 h-4 opacity-80" />
-                <span className="text-xs font-semibold opacity-80">Durasi Kerja</span>
-              </div>
-              <div className="text-4xl font-mono font-bold tracking-widest">{timer}</div>
-              <p className="text-xs opacity-70 mt-2">
-                Mulai: {clockedInAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-              </p>
-            </div>
-          )}
-
-          {/* Selfie camera simulation */}
-          {selfieStep === "camera" && (
-            <div className="bg-gray-900 rounded-2xl overflow-hidden aspect-video flex flex-col items-center justify-center gap-4 relative">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-32 h-32 rounded-full border-4 border-white/40 border-dashed flex items-center justify-center">
-                  <Camera className="w-12 h-12 text-white/60" />
-                </div>
-              </div>
-              <div className="absolute bottom-4 flex gap-4">
-                <button
-                  onClick={handleCapture}
-                  className="w-16 h-16 rounded-full bg-white flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-                >
-                  <div className="w-13 h-13 rounded-full border-4 border-gray-300 w-12 h-12" />
-                </button>
-              </div>
-              <p className="absolute top-4 text-white/80 text-xs font-medium bg-black/30 px-3 py-1 rounded-full">
-                Foto selfie untuk verifikasi absensi
-              </p>
-            </div>
-          )}
-
-          {selfieStep === "captured" && (
-            <div className="bg-primary/10 border border-primary/20 rounded-2xl p-6 flex flex-col items-center gap-2">
-              <CheckCircle className="w-10 h-10 text-primary" />
-              <p className="font-bold text-primary text-sm">Foto Absensi Terverifikasi!</p>
-              <p className="text-xs text-gray-500">Clock-in berhasil dicatat...</p>
-            </div>
-          )}
-
-          {!isClockedIn && selfieStep === "idle" && (
             <>
-              {withinRange ? (
-                <button
-                  data-testid="button-clock-in"
-                  onClick={handleStartCamera}
-                  className="w-full bg-primary text-white font-bold py-4 rounded-xl text-base flex items-center justify-center gap-2 hover:bg-primary/90 active:scale-[0.98] transition-all"
-                  style={{ boxShadow: "0 4px 16px rgba(6,95,70,0.35)" }}
-                >
-                  <Camera className="w-5 h-5" />
-                  Mulai Kerja (Clock-In)
-                </button>
-              ) : (
-                <>
-                  <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                    <p className="text-xs text-amber-700 leading-relaxed">
-                      Anda harus berada dalam radius 50 meter dari lokasi kerja untuk dapat Clock-In. Gunakan mode simulasi di bawah untuk demo.
+              <div className="bg-primary text-white rounded-2xl p-5 text-center">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <Clock className="w-4 h-4 opacity-80" />
+                  <span className="text-xs font-semibold opacity-80">Durasi Kerja — SHIFT AKTIF</span>
+                </div>
+                <div className="text-4xl font-mono font-bold tracking-widest">{timer}</div>
+                <p className="text-xs opacity-70 mt-2">
+                  Mulai: {clockedInAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
+              {/* BPJS active banner */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-black text-emerald-800">🛡️ Perlindungan BPJS Aktif</p>
+                  <p className="text-[10px] text-emerald-700 mt-0.5">BPJS Ketenagakerjaan & asuransi kecelakaan kerja aktif selama shift berlangsung.</p>
+                </div>
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              </div>
+            </>
+          )}
+
+          {/* QR Scan flow */}
+          {!isClockedIn && (
+            <>
+              {qrStep === "idle" && (
+                <div className="space-y-4">
+                  {/* Instructions */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <QrCode className="w-5 h-5 text-blue-600" />
+                      <p className="text-sm font-bold text-blue-900">Cara Clock-In Anti-Joki</p>
+                    </div>
+                    <ol className="space-y-2 text-xs text-blue-800">
+                      <li className="flex items-start gap-2"><span className="font-black bg-blue-200 text-blue-800 w-4 h-4 rounded-full flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>Minta QR Code dinamis dari perangkat Pemberi Kerja di lokasi.</li>
+                      <li className="flex items-start gap-2"><span className="font-black bg-blue-200 text-blue-800 w-4 h-4 rounded-full flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>Tekan tombol "Scan QR" di bawah dan arahkan kamera ke QR Code.</li>
+                      <li className="flex items-start gap-2"><span className="font-black bg-blue-200 text-blue-800 w-4 h-4 rounded-full flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>QR berhasil terdeteksi → Shift aktif & BPJS langsung berlaku.</li>
+                    </ol>
+                  </div>
+
+                  {/* Employer QR preview */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col items-center gap-3">
+                    <p className="text-xs font-semibold text-gray-600">QR Code Dinamis Pemberi Kerja:</p>
+                    <QRDisplay />
+                    <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                      <Zap className="w-3 h-3 text-orange-500" />
+                      <span>QR ini unik per shift dan kadaluarsa otomatis</span>
+                    </div>
+                  </div>
+
+                  {withinRange ? (
+                    <button
+                      onClick={handleStartScan}
+                      className="w-full bg-primary text-white font-bold py-4 rounded-xl text-base flex items-center justify-center gap-2 hover:bg-primary/90 active:scale-[0.98] transition-all"
+                      style={{ boxShadow: "0 4px 16px rgba(6,95,70,0.35)" }}>
+                      <QrCode className="w-5 h-5" />
+                      Scan QR Pemberi Kerja
+                    </button>
+                  ) : (
+                    <>
+                      <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-amber-700 leading-relaxed">
+                          Anda harus berada dalam radius 500 meter dari lokasi kerja untuk Clock-In. Gunakan simulasi di bawah untuk demo.
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleStartScan}
+                        className="w-full bg-amber-500 text-white font-bold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-amber-600 transition-all">
+                        <QrCode className="w-4 h-4" />
+                        Simulasi Scan QR (Demo)
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Scanning step */}
+              {qrStep === "scanning" && (
+                <div className="space-y-4">
+                  <div className="bg-gray-900 rounded-2xl overflow-hidden aspect-video flex flex-col items-center justify-center relative">
+                    {/* Camera frame */}
+                    <div className="relative">
+                      {/* Corner brackets */}
+                      <div className="absolute -top-2 -left-2 w-6 h-6 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg" />
+                      <div className="absolute -top-2 -right-2 w-6 h-6 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg" />
+                      <div className="absolute -bottom-2 -left-2 w-6 h-6 border-b-4 border-l-4 border-emerald-400 rounded-bl-lg" />
+                      <div className="absolute -bottom-2 -right-2 w-6 h-6 border-b-4 border-r-4 border-emerald-400 rounded-br-lg" />
+                      <QRDisplay />
+                    </div>
+                    {/* Scan line animation */}
+                    <div
+                      className="absolute left-8 right-8 h-0.5 bg-emerald-400 opacity-80 blur-[1px]"
+                      style={{
+                        top: `${20 + scanProgress * 0.6}%`,
+                        transition: "top 0.08s linear",
+                        boxShadow: "0 0 8px rgba(52,211,153,0.8)",
+                      }}
+                    />
+                    <p className="absolute bottom-4 text-white/90 text-xs font-semibold bg-black/50 px-3 py-1 rounded-full">
+                      Mendeteksi QR... {scanProgress}%
                     </p>
                   </div>
-                  <button
-                    data-testid="button-clock-in-sim"
-                    onClick={handleStartCamera}
-                    className="w-full bg-amber-500 text-white font-bold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-amber-600 transition-all"
-                  >
-                    <Camera className="w-4 h-4" />
-                    Simulasi Clock-In (Demo)
-                  </button>
-                </>
+                  {/* Progress bar */}
+                  <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-400 to-green-500 rounded-full transition-all"
+                      style={{ width: `${scanProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Verified step */}
+              {qrStep === "verified" && (
+                <div className="space-y-4">
+                  <div className="bg-primary/10 border border-primary/20 rounded-2xl p-6 flex flex-col items-center gap-3">
+                    <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center animate-bounce">
+                      <CheckCircle className="w-10 h-10 text-emerald-600" />
+                    </div>
+                    <p className="font-black text-emerald-800 text-lg">QR Terverifikasi! ✅</p>
+                    <p className="text-xs text-gray-600 text-center">Clock-in berhasil dicatat. Shift aktif dimulai...</p>
+                  </div>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                    <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="text-xs font-black text-emerald-800">🛡️ BPJS Perlindungan Aktif!</p>
+                      <p className="text-[10px] text-emerald-700 mt-0.5">Asuransi kecelakaan kerja kini aktif untuk shift ini.</p>
+                    </div>
+                  </div>
+                </div>
               )}
             </>
           )}
 
           {isClockedIn && (
             <button
-              data-testid="button-clock-out"
               onClick={() => { onClockOut(); onClose(); }}
-              className="w-full bg-red-500 text-white font-bold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-red-600 active:scale-[0.98] transition-all"
-            >
+              className="w-full bg-red-500 text-white font-bold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-red-600 active:scale-[0.98] transition-all">
               Selesai Kerja (Clock-Out)
             </button>
           )}

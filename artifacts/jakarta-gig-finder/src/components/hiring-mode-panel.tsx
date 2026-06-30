@@ -3,10 +3,11 @@ import {
   Zap, CalendarDays, Lock, LockOpen, Radio, Users, Banknote,
   CheckCircle2, AlertTriangle, ChevronDown, ChevronUp, Star,
   MapPin, Clock, MessageSquare, Filter, ShieldCheck, Briefcase,
+  QrCode, XCircle,
 } from "lucide-react";
 import { CustomJob, PaymentType, HiringMode, paymentLabels } from "@/types/custom-job";
 import { ApplicationNotification, ApplicationStatus, maskName } from "@/types/notification";
-import { PLATFORM_FEE_CEPAT, PLATFORM_FEE_LAMA } from "@/types/escrow";
+import { PLATFORM_FEE_CEPAT, PLATFORM_FEE_LAMA, CANCELLATION_FEE_1HR } from "@/types/escrow";
 import { AuthUser } from "@/types/auth";
 
 interface HiringModePanelProps {
@@ -17,6 +18,46 @@ interface HiringModePanelProps {
   onLockEscrow: (jobId: number, escrowAmount: number) => void;
   onDispute: (jobId: number) => void;
   onStatusChange: (notifId: number, status: ApplicationStatus) => void;
+  onCancelJob?: (jobId: number, deductFee: boolean) => void;
+}
+
+// QR matrix for employer display (21×21, same design as worker scanner)
+const QR_MATRIX = [
+  [1,1,1,1,1,1,1,0,0,1,0,1,0,0,1,1,1,1,1,1,1],
+  [1,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,1],
+  [1,0,1,1,1,0,1,0,0,1,0,1,0,0,1,0,1,1,1,0,1],
+  [1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1],
+  [1,0,1,1,1,0,1,0,0,0,0,1,0,0,1,0,1,1,1,0,1],
+  [1,0,0,0,0,0,1,0,1,0,1,0,0,0,1,0,0,0,0,0,1],
+  [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
+  [0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0],
+  [0,1,0,1,1,0,1,1,1,0,1,0,1,1,0,1,1,0,1,0,1],
+  [1,0,1,0,0,1,0,1,0,1,1,0,0,1,0,0,1,1,0,1,0],
+  [0,1,1,0,1,0,1,0,1,0,0,1,1,0,1,0,0,1,1,0,1],
+  [1,0,0,1,0,1,0,1,0,1,0,0,1,1,0,1,0,0,1,0,0],
+  [0,0,1,0,1,0,1,0,1,1,0,1,0,0,1,0,1,1,0,1,0],
+  [0,0,0,0,0,0,0,0,1,0,1,0,1,0,0,1,0,1,0,1,1],
+  [1,1,1,1,1,1,1,0,0,1,0,1,0,1,1,0,1,1,1,0,1],
+  [1,0,0,0,0,0,1,0,1,0,1,0,1,0,0,1,0,0,0,1,0],
+  [1,0,1,1,1,0,1,0,0,1,0,1,0,1,1,0,1,0,1,0,1],
+  [1,0,1,1,1,0,1,0,1,0,1,0,1,0,0,1,1,1,0,1,0],
+  [1,0,1,1,1,0,1,0,0,1,1,0,0,1,1,0,0,1,1,0,1],
+  [1,0,0,0,0,0,1,0,1,0,0,1,0,0,1,0,1,0,0,1,0],
+  [1,1,1,1,1,1,1,0,1,1,0,0,1,1,0,1,0,1,0,1,1],
+];
+
+function EmployerQRDisplay() {
+  return (
+    <div className="bg-white p-2 rounded-xl border-2 border-gray-800 inline-block">
+      {QR_MATRIX.map((row, r) => (
+        <div key={r} className="flex">
+          {row.map((cell, c) => (
+            <div key={c} style={{ width: 7, height: 7, backgroundColor: cell ? "#111827" : "#ffffff" }} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 type BroadcastState = "idle" | "locking" | "broadcasting" | "done";
@@ -39,7 +80,7 @@ function getDemoKm(name: string): number {
 
 export default function HiringModePanel({
   currentUser, customJobs, notifications,
-  onJobPosted, onLockEscrow, onDispute, onStatusChange,
+  onJobPosted, onLockEscrow, onDispute, onStatusChange, onCancelJob,
 }: HiringModePanelProps) {
 
   // ── Mode toggle ────────────────────────────────────────────────
@@ -65,6 +106,11 @@ export default function HiringModePanel({
   const [escrowConfirmJobId, setEscrowConfirmJobId] = useState<number | null>(null);
   const [lockedJobIds, setLockedJobIds] = useState<Set<number>>(new Set());
   const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
+
+  // ── Loophole mitigation state ─────────────────────────────────
+  const [lockedAtMap, setLockedAtMap] = useState<Record<number, Date>>({});
+  const [cancelConfirmJobId, setCancelConfirmJobId] = useState<number | null>(null);
+  const [showQrJobId, setShowQrJobId] = useState<number | null>(null);
 
   // ── Derived calc ──────────────────────────────────────────────
   const nominalNum = parseInt(nominalRaw.replace(/\D/g, "")) || 0;
@@ -150,11 +196,22 @@ export default function HiringModePanel({
     const amount = Math.round(job.nominal * job.kuota * (1 + PLATFORM_FEE_LAMA));
     onLockEscrow(jobId, amount);
     setLockedJobIds(prev => new Set([...prev, jobId]));
+    setLockedAtMap(prev => ({ ...prev, [jobId]: new Date() }));
     // Accept all "ditinjau" applicants for this job
     notifications
       .filter(n => n.jobId === jobId && n.status === "ditinjau")
       .forEach(n => onStatusChange(n.id, "diterima"));
     setEscrowConfirmJobId(null);
+  };
+
+  // ── Cancel job with compensation check ─────────────────────────
+  const handleCancelJobConfirm = (jobId: number) => {
+    const lockedAt = lockedAtMap[jobId];
+    const within1hr = lockedAt
+      ? (Date.now() - lockedAt.getTime()) < 3_600_000
+      : true; // Cepat jobs are considered always within 1hr for demo
+    onCancelJob?.(jobId, within1hr);
+    setCancelConfirmJobId(null);
   };
 
   // ── Applicant sort ─────────────────────────────────────────────
@@ -171,6 +228,49 @@ export default function HiringModePanel({
   const labelCls = "text-xs font-semibold text-gray-700 mb-1 block";
 
   return (
+    <>
+    {/* ── Cancel Confirmation Modal ────────────────────────────── */}
+    {cancelConfirmJobId !== null && (() => {
+      const job = customJobs.find(j => j.id === cancelConfirmJobId);
+      const lockedAt = lockedAtMap[cancelConfirmJobId];
+      const within1hr = lockedAt
+        ? (Date.now() - lockedAt.getTime()) < 3_600_000
+        : true;
+      return (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}>
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4">
+            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto">
+              <XCircle className="w-6 h-6 text-red-500" />
+            </div>
+            <div className="text-center">
+              <h3 className="font-black text-gray-900">Batalkan Kontrak?</h3>
+              <p className="text-sm text-gray-500 mt-1">{job?.posisi}</p>
+            </div>
+            {within1hr && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-1">
+                <p className="text-xs font-bold text-red-800 text-center">⚠️ Kompensasi Pembatalan</p>
+                <p className="text-[11px] text-red-700 text-center leading-relaxed">
+                  Pembatalan dalam 1 jam pertama mengharuskan pembayaran kompensasi <span className="font-black">Rp {CANCELLATION_FEE_1HR.toLocaleString("id-ID")}</span> kepada pekerja sesuai ketentuan Rekhastha.
+                </p>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleCancelJobConfirm(cancelConfirmJobId)}
+                className="flex-1 bg-red-500 text-white font-bold py-3 rounded-xl text-sm hover:bg-red-600 transition-colors">
+                {within1hr ? `Batalkan (Rp ${(CANCELLATION_FEE_1HR).toLocaleString("id-ID")} dipotong)` : "Batalkan Kontrak"}
+              </button>
+              <button
+                onClick={() => setCancelConfirmJobId(null)}
+                className="flex-1 bg-gray-100 text-gray-700 font-semibold py-3 rounded-xl text-sm hover:bg-gray-200 transition-colors">
+                Kembali
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    })()}
+
     <div className="flex-1 overflow-y-auto bg-gray-50">
 
       {/* ── Stats row ─────────────────────────────────────────── */}
@@ -377,6 +477,10 @@ export default function HiringModePanel({
                         : "⏳ Deposit Wajib Setelah Seleksi Kandidat"}
                     </span>
                   </div>
+                  {/* Tax footnote */}
+                  <p className="text-[10px] text-gray-400 italic leading-relaxed border-t border-dashed border-gray-200 pt-1.5 mt-1">
+                    *Catatan: Segala kewajiban perpajakan atas transaksi ini menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.
+                  </p>
                 </div>
               )}
 
@@ -617,12 +721,37 @@ export default function HiringModePanel({
                   </div>
                 )}
 
-                {/* Dispute button */}
+                {/* QR Clock-In display for employer (locked jobs with accepted applicants) */}
                 {isJobLocked && job.escrowStatus !== "disputed" && (
-                  <button onClick={() => onDispute(job.id)}
-                    className="w-full flex items-center justify-center gap-2 border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold py-2 rounded-xl hover:bg-amber-100 transition-colors">
-                    <AlertTriangle className="w-3.5 h-3.5" /> Ajukan Sengketa
-                  </button>
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowQrJobId(showQrJobId === job.id ? null : job.id)}
+                        className="flex-1 flex items-center justify-center gap-1.5 border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-semibold py-2 rounded-xl hover:bg-emerald-100 transition-colors">
+                        <QrCode className="w-3.5 h-3.5" />
+                        {showQrJobId === job.id ? "Tutup QR" : "Tampilkan QR Absensi"}
+                      </button>
+                      <button onClick={() => onDispute(job.id)}
+                        className="flex-1 flex items-center justify-center gap-2 border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold py-2 rounded-xl hover:bg-amber-100 transition-colors">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Ajukan Sengketa
+                      </button>
+                    </div>
+                    {/* QR display */}
+                    {showQrJobId === job.id && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col items-center gap-2">
+                        <p className="text-[10px] font-bold text-gray-700">QR Dinamis Absensi — Tunjukkan ke Pekerja</p>
+                        <EmployerQRDisplay />
+                        <p className="text-[9px] text-gray-400 text-center">QR ini unik per shift · Kadaluarsa otomatis setelah shift berakhir</p>
+                      </div>
+                    )}
+                    {/* Cancellation button */}
+                    <button
+                      onClick={() => setCancelConfirmJobId(job.id)}
+                      className="w-full flex items-center justify-center gap-1.5 border border-red-200 bg-red-50 text-red-600 text-xs font-semibold py-2 rounded-xl hover:bg-red-100 transition-colors">
+                      <XCircle className="w-3.5 h-3.5" />
+                      Batalkan Kontrak {lockedAtMap[job.id] ? "(Kompensasi Berlaku)" : "(Rp20rb jika &lt;1 Jam)"}
+                    </button>
+                  </div>
                 )}
                 {job.escrowStatus === "disputed" && (
                   <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
@@ -696,6 +825,7 @@ export default function HiringModePanel({
         )}
       </div>
     </div>
+    </>
   );
 }
 

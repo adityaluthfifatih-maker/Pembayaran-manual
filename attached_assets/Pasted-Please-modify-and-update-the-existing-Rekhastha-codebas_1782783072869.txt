@@ -1,0 +1,29 @@
+Please modify and update the existing "Rekhastha" codebase. Focus strictly on injecting and optimizing these 3 core systems: the Tax-Free Escrow Engine, the Two-Way Negotiation Loop, and the Field Loophole Mitigations. Keep the existing auth and layout, but seamlessly integrate the following logic:
+
+=======================================================
+1. TAX-FREE ESCROW ENGINE
+=======================================================
+- Simplify the financial calculator component. Completely remove any tax calculations, PPh, or VAT/PPN logic.
+- The invoice breakdown must strictly display only three lines: "Upah Pokok Pekerja", "Biaya Sistem Platform" (15% for Butuh Cepat / 7% for Bisa Lama), and "Total Dana yang Harus Dikunci di Escrow".
+- At the bottom of the invoice card, append a small, professional text footnote in Indonesian: 
+  "*Catatan: Segala kewajiban perpajakan atas transaksi ini menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku."
+
+=======================================================
+2. TWO-WAY CONTINUOUS NEGOTIATION LOOP
+=======================================================
+- Mode "⚡ Butuh Cepat": Hard-lock the wage rate. Disable any price modifications or chat negotiation buttons.
+- Mode "🔍 Bisa Lama": Inside the chat room, implement a continuous two-way counter-offer system via an "Ubah Nominal Upah" component.
+- Either the Worker or Employer can propose a new amount. The counterparty will see the offer with two live options: "Setujui Upah" or "Tawar Balik".
+- Clicking "Tawar Balik" allows them to counter with a new number, reversing the choices back to the sender. This loop can continue back and forth.
+- The moment either party clicks "Setujui Upah", instantly freeze the inputs, lock the deal, and fire a reactive event to recalculate the 7% platform fee and update the final Escrow allocation balance.
+
+=======================================================
+3. FIELD LOOP HOLES & RISK MITIGATION (CELAH OPERASIONAL)
+=======================================================
+- Anti-Bypass Guard: Parse chat inputs using RegEx. If keywords like "WA", "WhatsApp", "0812...", or "transfer langsung" are detected, mask them with "[*** SENSOR KEAMANAN REKHASTHA ***]" and trigger a warning modal about losing insurance (for workers) and losing theft warranty (for employers).
+- Anti-Joki QR Verification: To initiate "Clock-In", the worker must use their in-app camera to scan a dynamic QR Code displayed on the Employer's active dashboard on-site. Successful scan triggers the "SHIFT AKTIF" state and activates the BPJS protection banner.
+- Standby / Backup Route: In "Butuh Cepat" mode, if the hired worker fails to scan the QR/Clock-In within 15 minutes of the shift start, automatically re-route the job token to the next nearest standby worker.
+- Cancellation Compensation: If the Employer cancels a secured contract within 1 hour of the shift, automatically deduct a flat 20,000 IDR from the locked escrow as a cancellation fee credited to the worker.
+- Dispute Resolution: Add an "Ajukan Sengketa" button for both parties to freeze the escrow funds in place if a workplace conflict occurs.
+
+Maintain the existing premium corporate blue design system and state variables. Do not truncate the code.

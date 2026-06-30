@@ -174,6 +174,7 @@ export default function Home() {
   const [chatContext, setChatContext] = useState<{
     jobTitle: string; nominal: number; companyName: string;
     workerName: string; currentRole: "company" | "worker";
+    hiringMode?: "cepat" | "lama"; jobId?: number;
   } | null>(null);
 
   // ── Notifications ───────────────────────────────────────────────
@@ -290,6 +291,29 @@ export default function Home() {
       note: `Perusahaan mengajukan sengketa. Dana dibekukan otomatis oleh sistem Rekhastha.`,
     }]);
   }, [notifications]);
+
+  const handleCancelJob = useCallback((jobId: number, deductFee: boolean) => {
+    setCustomJobs(prev => prev.map(j =>
+      j.id === jobId ? { ...j, escrowStatus: "refunded" as const } : j
+    ));
+    if (deductFee) {
+      setWalletBalance(prev => prev + 20_000);
+      setWalletTransactions(prev => [{
+        id: Date.now(), type: "credit" as const,
+        amount: 20_000, label: "Kompensasi Pembatalan Kontrak (<1 Jam)",
+        jobTitle: customJobs.find(j => j.id === jobId)?.posisi ?? "",
+        timestamp: new Date(),
+        note: "Dibayarkan oleh Pemberi Kerja sesuai aturan Rekhastha",
+      }, ...prev]);
+    }
+    setEscrowEvents(prev => [{
+      id: Date.now(), jobId,
+      jobTitle: customJobs.find(j => j.id === jobId)?.posisi ?? "",
+      fromStatus: "locked", toStatus: "refunded",
+      actor: "company", timestamp: new Date(),
+      note: deductFee ? "Dibatalkan dalam 1 jam — kompensasi Rp20.000 dibayarkan ke pekerja" : "Dibatalkan — escrow dikembalikan penuh",
+    }, ...prev]);
+  }, [customJobs]);
 
   const handleLockEscrow = useCallback((jobId: number, escrowAmount: number) => {
     const job = customJobs.find(j => j.id === jobId);
@@ -607,13 +631,23 @@ export default function Home() {
 
   // ── Chat ────────────────────────────────────────────────────────
   const handleOpenChatFromJob = useCallback((job: CustomJob) => {
-    setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker" });
+    setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id });
   }, [workerProfile]);
 
   const handleOpenChatFromNotif = useCallback((notif: ApplicationNotification) => {
     const job = customJobs.find((j) => j.id === notif.jobId);
-    setChatContext({ jobTitle: notif.jobTitle, nominal: job?.nominal ?? 0, companyName: job?.namaPerusahaan || "Perusahaan Anda", workerName: notif.applicantName, currentRole: "company" });
+    setChatContext({ jobTitle: notif.jobTitle, nominal: job?.nominal ?? 0, companyName: job?.namaPerusahaan || "Perusahaan Anda", workerName: notif.applicantName, currentRole: "company", hiringMode: job?.hiringMode, jobId: job?.id });
   }, [customJobs]);
+
+  const handleNominalUpdate = useCallback((newNominal: number) => {
+    if (!chatContext?.jobId) return;
+    const jid = chatContext.jobId;
+    setCustomJobs(prev => prev.map(j => j.id === jid
+      ? { ...j, nominal: newNominal, escrowAmount: Math.round(newNominal * j.kuota * 1.07) }
+      : j
+    ));
+    setChatContext(prev => prev ? { ...prev, nominal: newNominal } : null);
+  }, [chatContext]);
 
   const handleReportSuspect = useCallback((jobId: number) => {
     setCustomJobs((p) => p.map((j) => j.id === jobId ? { ...j, flaggedSuspect: true } : j));
@@ -715,7 +749,9 @@ export default function Home() {
       {chatContext && (
         <ChatModal jobTitle={chatContext.jobTitle} nominal={chatContext.nominal}
           companyName={chatContext.companyName} workerName={chatContext.workerName}
-          currentRole={chatContext.currentRole} onClose={() => setChatContext(null)} />
+          currentRole={chatContext.currentRole} hiringMode={chatContext.hiringMode}
+          onNominalUpdate={handleNominalUpdate}
+          onClose={() => setChatContext(null)} />
       )}
       {mode === "pekerja" && jobStatus === "clocked_in" && activeJob && (
         <SOSButton jobTitle={activeJob.posisi} />
@@ -751,7 +787,7 @@ export default function Home() {
                       </div>
                     </div>
                     <button
-                      onClick={() => setChatContext({ jobTitle: activeJob.posisi, nominal: activeJob.nominal, companyName: activeJob.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker" })}
+                      onClick={() => setChatContext({ jobTitle: activeJob.posisi, nominal: activeJob.nominal, companyName: activeJob.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker", hiringMode: activeJob.hiringMode, jobId: activeJob.id })}
                       className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-xl shrink-0">
                       <MessageSquare className="w-3.5 h-3.5" /> Chat
                     </button>
@@ -771,7 +807,7 @@ export default function Home() {
                       </div>
                     </div>
                     <button
-                      onClick={() => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker" })}
+                      onClick={() => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id })}
                       className="flex items-center gap-1.5 bg-gray-100 text-gray-700 text-xs font-bold px-3 py-2 rounded-xl shrink-0 hover:bg-primary/10 hover:text-primary transition-colors">
                       <MessageSquare className="w-3.5 h-3.5" /> Chat
                     </button>
@@ -809,7 +845,7 @@ export default function Home() {
                           </div>
                         </div>
                         <button
-                          onClick={() => setChatContext({ jobTitle: n.jobTitle, nominal: job?.nominal ?? 0, companyName: job?.namaPerusahaan || "Perusahaan Anda", workerName: n.applicantName, currentRole: "company" })}
+                          onClick={() => setChatContext({ jobTitle: n.jobTitle, nominal: job?.nominal ?? 0, companyName: job?.namaPerusahaan || "Perusahaan Anda", workerName: n.applicantName, currentRole: "company", hiringMode: job?.hiringMode, jobId: job?.id })}
                           className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-xl shrink-0 hover:bg-primary/90 transition-colors">
                           <MessageSquare className="w-3.5 h-3.5" /> Chat
                         </button>
@@ -967,7 +1003,7 @@ export default function Home() {
                       {jobStatus === "completed" ? (
                         <>
                           <button onClick={() => setShowPaySlip(true)} className="text-[10px] font-bold bg-primary text-white px-2.5 py-1.5 rounded-lg">Slip Gaji</button>
-                          <button onClick={() => setChatContext({ jobTitle: activeJob.posisi, nominal: activeJob.nominal, companyName: activeJob.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker" })}
+                          <button onClick={() => setChatContext({ jobTitle: activeJob.posisi, nominal: activeJob.nominal, companyName: activeJob.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: activeJob.hiringMode, jobId: activeJob.id })}
                             className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-1.5 rounded-lg flex items-center">
                             <MessageSquare className="w-3 h-3" />
                           </button>
@@ -1008,6 +1044,7 @@ export default function Home() {
                   onLockEscrow={handleLockEscrow}
                   onDispute={handleJobDispute}
                   onStatusChange={handleStatusChange}
+                  onCancelJob={handleCancelJob}
                 />
               )
 
@@ -1099,7 +1136,7 @@ export default function Home() {
                           onClick={() => !isSuspended && setSelectedJob(job)}>
                           {isSuspended ? "Ditangguhkan" : "Detail & Lamar"}
                         </Button>
-                        <button onClick={() => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker" })}
+                        <button onClick={() => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id })}
                           className="px-3 py-2 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors flex items-center justify-center">
                           <MessageSquare className="w-4 h-4" />
                         </button>
