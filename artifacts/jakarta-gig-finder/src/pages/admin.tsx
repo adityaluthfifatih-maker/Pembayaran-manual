@@ -139,7 +139,7 @@ function StatusBadge({ row }: { row: LedgerRow }) {
 }
 
 // ── Tab 1: Escrow ledger ──────────────────────────────────────────
-function EscrowTab() {
+function EscrowTab({ trainingPassed, requireAcademy }: { trainingPassed: boolean; requireAcademy: boolean }) {
   const [rows, setRows] = useState<LedgerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [releasing, setReleasing] = useState<number | null>(null);
@@ -189,6 +189,22 @@ function EscrowTab() {
 
   return (
     <div className="space-y-5">
+      {!trainingPassed && (
+        <div
+          data-testid="training-required-banner"
+          className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3.5 shadow-sm"
+        >
+          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-black text-amber-900 text-sm">Pelatihan belum selesai</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              Tombol <strong>Paksa Pencairan</strong> dinonaktifkan hingga Anda lulus Asesmen Onboarding Operator.
+              Kunjungi tab <strong>🎓 Kurasi Akademi</strong> untuk menyelesaikannya.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <SummaryCard label="Total Dana Ditahan (Escrow)" value={formatRp(totalHeld)} tone="amber" />
         <SummaryCard label="Total Komisi Platform (15%)" value={formatRp(totalCommission)} tone="gold" />
@@ -242,15 +258,27 @@ function EscrowTab() {
                     <td className="px-4 py-3"><StatusBadge row={r} /></td>
                     <td className="px-4 py-3 text-right">
                       {r.status !== "released" ? (
-                        <button
-                          data-testid={`button-force-release-${r.jobId}`}
-                          onClick={() => void handleRelease(r.jobId)}
-                          disabled={releasing === r.jobId}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 text-white text-[11px] font-bold px-2.5 py-1.5 hover:bg-emerald-600 disabled:opacity-50"
-                        >
-                          {releasing === r.jobId ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-                          Paksa Pencairan
-                        </button>
+                        requireAcademy && !trainingPassed ? (
+                          /* Hard gate: server enforces REQUIRE_ACADEMY=true */
+                          <span
+                            data-testid={`button-force-release-${r.jobId}`}
+                            title="Selesaikan Asesmen Akademi untuk mengaktifkan fitur ini"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-200 text-gray-400 text-[11px] font-bold px-2.5 py-1.5 cursor-not-allowed select-none"
+                          >
+                            <Lock className="w-3 h-3" /> Paksa Pencairan
+                          </span>
+                        ) : (
+                          /* Soft gate or trained: button active */
+                          <button
+                            data-testid={`button-force-release-${r.jobId}`}
+                            onClick={() => void handleRelease(r.jobId)}
+                            disabled={releasing === r.jobId}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 text-white text-[11px] font-bold px-2.5 py-1.5 hover:bg-emerald-600 disabled:opacity-50"
+                          >
+                            {releasing === r.jobId ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                            Paksa Pencairan
+                          </button>
+                        )
                       ) : (
                         <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 font-semibold">
                           <CheckCircle2 className="w-3.5 h-3.5" /> Selesai
@@ -386,7 +414,7 @@ function formatDateTime(iso: string): string {
   });
 }
 
-function AcademyTab() {
+function AcademyTab({ onTrainingPassed }: { onTrainingPassed?: () => void }) {
   const [questions, setQuestions] = useState<AcademyQuestion[]>([]);
   const [completions, setCompletions] = useState<AcademyCompletion[]>([]);
   const [passingScore, setPassingScore] = useState(80);
@@ -434,6 +462,9 @@ function AcademyTab() {
       setResult(res);
       setTaking(false);
       await load();
+      if (res.passed) {
+        onTrainingPassed?.();
+      }
     } catch {
       /* leave the quiz open so the operator can retry */
     } finally {
@@ -968,7 +999,17 @@ function SummaryCard({ label, value, tone }: { label: string; value: string; ton
 }
 
 // ── Command center shell ──────────────────────────────────────────
-function CommandCenter({ onLogout }: { onLogout: () => void }) {
+function CommandCenter({
+  onLogout,
+  trainingPassed,
+  requireAcademy,
+  onTrainingPassed,
+}: {
+  onLogout: () => void;
+  trainingPassed: boolean;
+  requireAcademy: boolean;
+  onTrainingPassed: () => void;
+}) {
   const [tab, setTab] = useState<Tab>("escrow");
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "escrow", label: "💰 Pengawasan Escrow", icon: <Wallet className="w-4 h-4" /> },
@@ -997,6 +1038,29 @@ function CommandCenter({ onLogout }: { onLogout: () => void }) {
             <p className="text-[11px]" style={{ color: GOLD }}>Command Center</p>
           </div>
         </div>
+
+        {/* Training status pill */}
+        <div className="px-4 pt-3 pb-1">
+          {trainingPassed ? (
+            <div
+              data-testid="training-status-passed"
+              className="flex items-center gap-1.5 rounded-lg bg-emerald-800/60 border border-emerald-600/40 px-2.5 py-1.5"
+            >
+              <Award className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="text-[11px] font-bold text-emerald-100">Pelatihan Lulus</span>
+            </div>
+          ) : (
+            <button
+              data-testid="training-status-pending"
+              onClick={() => setTab("academy")}
+              className="w-full flex items-center gap-1.5 rounded-lg bg-amber-500/20 border border-amber-500/40 px-2.5 py-1.5 hover:bg-amber-500/30 transition-colors text-left"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="text-[11px] font-bold text-amber-300">Pelatihan belum lulus</span>
+            </button>
+          )}
+        </div>
+
         <nav className="p-3 flex md:flex-col gap-1.5 overflow-x-auto">
           {tabs.map((t) => (
             <button
@@ -1031,11 +1095,11 @@ function CommandCenter({ onLogout }: { onLogout: () => void }) {
           </h2>
           <p className="text-sm text-gray-500">Panel operator platform Rekhastha</p>
         </div>
-        {tab === "escrow" && <EscrowTab />}
+        {tab === "escrow" && <EscrowTab trainingPassed={trainingPassed} requireAcademy={requireAcademy} />}
         {tab === "resolution" && <ResolutionTab />}
         {tab === "onsite" && <OnsiteTab />}
         {tab === "users" && <UsersTab />}
-        {tab === "academy" && <AcademyTab />}
+        {tab === "academy" && <AcademyTab onTrainingPassed={onTrainingPassed} />}
       </main>
 
       {/* Full-screen worker SOS alarm — blocks everything when active */}
@@ -1046,17 +1110,34 @@ function CommandCenter({ onLogout }: { onLogout: () => void }) {
 
 export default function AdminPortal() {
   const [authed, setAuthed] = useState<boolean | null>(null);
+  const [trainingPassed, setTrainingPassed] = useState(false);
+  const [requireAcademy, setRequireAcademy] = useState(false);
   const checked = useRef(false);
+
+  const checkSession = async () => {
+    try {
+      const me = await adminMe();
+      setTrainingPassed(me.trainingPassed);
+      setRequireAcademy(me.requireAcademy);
+      setAuthed(true);
+    } catch {
+      setAuthed(false);
+    }
+  };
 
   useEffect(() => {
     if (checked.current) return;
     checked.current = true;
-    adminMe().then(() => setAuthed(true)).catch(() => setAuthed(false));
+    void checkSession();
   }, []);
 
   const handleLogout = async () => {
     try { await adminLogout(); } catch { /* ignore */ }
     setAuthed(false);
+  };
+
+  const handleLoginSuccess = async () => {
+    await checkSession();
   };
 
   if (authed === null) {
@@ -1068,6 +1149,13 @@ export default function AdminPortal() {
   }
 
   return authed
-    ? <CommandCenter onLogout={handleLogout} />
-    : <LoginGate onSuccess={() => setAuthed(true)} />;
+    ? (
+      <CommandCenter
+        onLogout={handleLogout}
+        trainingPassed={trainingPassed}
+        requireAcademy={requireAcademy}
+        onTrainingPassed={() => void checkSession()}
+      />
+    )
+    : <LoginGate onSuccess={() => void handleLoginSuccess()} />;
 }

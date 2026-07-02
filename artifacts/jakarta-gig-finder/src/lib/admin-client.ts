@@ -112,7 +112,7 @@ export function adminLogout(): Promise<void> {
   return request("/admin/logout", "POST");
 }
 
-export function adminMe(): Promise<{ ok: true }> {
+export function adminMe(): Promise<{ ok: true; trainingPassed: boolean; requireAcademy: boolean }> {
   return request("/admin/me", "GET");
 }
 

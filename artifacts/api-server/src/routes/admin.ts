@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
-import { desc, eq, inArray, lte } from "drizzle-orm";
+import { and, desc, eq, inArray, lte } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -95,11 +95,24 @@ router.post("/admin/logout", async (req, res): Promise<void> => {
 });
 
 router.get("/admin/me", async (req, res): Promise<void> => {
-  if (!(await requireAdmin(req))) {
+  const adminId = await adminSessionId(req.cookies?.[ADMIN_COOKIE]);
+  if (!adminId) {
     res.status(401).json({ error: "Sesi admin tidak valid." });
     return;
   }
-  res.json({ ok: true });
+
+  const passed = await db
+    .select({ id: academyCompletionsTable.id })
+    .from(academyCompletionsTable)
+    .where(
+      and(
+        eq(academyCompletionsTable.adminId, adminId),
+        eq(academyCompletionsTable.passed, true),
+      ),
+    )
+    .limit(1);
+
+  res.json({ ok: true, trainingPassed: passed.length > 0, requireAcademy });
 });
 
 // ── Escrow ledger ────────────────────────────────────────────────
@@ -160,11 +173,42 @@ const forceReleaseBody = z.object({
   jobId: z.coerce.number(),
 });
 
+/**
+ * When REQUIRE_ACADEMY=true the force-release endpoint is hard-gated behind a
+ * passed operator assessment. Set the env var in production; leave it unset (or
+ * set to anything other than "true") in dev so new operators aren't locked out
+ * before they've had a chance to take the quiz.
+ */
+const requireAcademy = process.env["REQUIRE_ACADEMY"] === "true";
+
 router.post("/admin/force-release", async (req, res): Promise<void> => {
-  if (!(await requireAdmin(req))) {
+  const adminId = await adminSessionId(req.cookies?.[ADMIN_COOKIE]);
+  if (!adminId) {
     res.status(401).json({ error: "Sesi admin tidak valid." });
     return;
   }
+
+  if (requireAcademy) {
+    const passed = await db
+      .select({ id: academyCompletionsTable.id })
+      .from(academyCompletionsTable)
+      .where(
+        and(
+          eq(academyCompletionsTable.adminId, adminId),
+          eq(academyCompletionsTable.passed, true),
+        ),
+      )
+      .limit(1);
+
+    if (passed.length === 0) {
+      req.log.warn({ adminId }, "Force-release blocked — operator has not passed academy");
+      res.status(403).json({
+        error: "Aksi ini membutuhkan kelulusan Akademi Operator. Selesaikan asesmen di tab Akademi terlebih dahulu.",
+      });
+      return;
+    }
+  }
+
   const parsed = forceReleaseBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "jobId tidak valid." });
