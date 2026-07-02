@@ -22,7 +22,7 @@ import CompanyProfilePage from "@/components/company-profile-page";
 import { workers, Worker } from "@/data/workers";
 import { jobs } from "@/data/jobs";
 import { CustomJob, calcTotal } from "@/types/custom-job";
-import { WalletTransaction, EscrowEvent, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, DURATION_DAYS } from "@/types/escrow";
+import { WalletTransaction, EscrowEvent, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, DURATION_DAYS, LATE_CLOCKIN_PENALTY, CLOCKIN_GRACE_MS, DISPUTE_WINDOW_MS } from "@/types/escrow";
 import { WorkerProfile, isVerified } from "@/types/worker-profile";
 import { AuthUser } from "@/types/auth";
 import {
@@ -37,6 +37,16 @@ import {
 } from "lucide-react";
 
 let nextJobId = 100;
+
+function fmtCountdown(ms: number): string {
+  if (ms < 0) ms = 0;
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
 let nextNotifId = 1;
 
 function randomJakartaCoords() {
@@ -152,6 +162,13 @@ export default function Home() {
   const [clockedOutAt, setClockedOutAt] = useState<Date | null>(null);
   const [showClockIn, setShowClockIn] = useState(false);
 
+  // ── Discipline & dispute-window engines ─────────────────────────
+  const [graceDeadline, setGraceDeadline] = useState<number | null>(null);   // 15-min Clock-In grace
+  const [disputeDeadline, setDisputeDeadline] = useState<number | null>(null); // 24-hour post-shift window
+  const [disputeJob, setDisputeJob] = useState<CustomJob | null>(null);       // job snapshot for auto-release (survives UI close)
+  const [contractClosed, setContractClosed] = useState(false);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
   // ── Ratings ─────────────────────────────────────────────────────
   const [ratings, setRatings] = useState<RatingPayload[]>([]);
   const [pendingRating, setPendingRating] = useState<{
@@ -228,6 +245,10 @@ export default function Home() {
     setWorkerProfile(null);
     setActiveJob(null);
     setJobStatus(null);
+    setGraceDeadline(null);
+    setDisputeDeadline(null);
+    setDisputeJob(null);
+    setContractClosed(false);
     setReputationPoints(100);
     setWalletBalance(0);
     setWalletTransactions([]);
@@ -277,6 +298,7 @@ export default function Home() {
   const handleNotifDispute = useCallback((notifId: number) => {
     const notif = notifications.find(n => n.id === notifId);
     if (!notif) return;
+    if (disputeJob && notif.jobId === disputeJob.id) { setDisputeDeadline(null); setDisputeJob(null); }
     setCustomJobs(prev => prev.map(j =>
       j.id === notif.jobId ? { ...j, escrowStatus: "disputed" as const } : j
     ));
@@ -290,7 +312,7 @@ export default function Home() {
       timestamp: new Date(),
       note: `Perusahaan mengajukan sengketa. Dana dibekukan otomatis oleh sistem Rekhastha.`,
     }]);
-  }, [notifications]);
+  }, [notifications, disputeJob]);
 
   const handleCancelJob = useCallback((jobId: number, deductFee: boolean) => {
     setCustomJobs(prev => prev.map(j =>
@@ -336,6 +358,7 @@ export default function Home() {
 
   const handleJobDispute = useCallback((jobId: number) => {
     const job = customJobs.find(j => j.id === jobId);
+    if (disputeJob && jobId === disputeJob.id) { setDisputeDeadline(null); setDisputeJob(null); }
     setCustomJobs(prev => prev.map(j =>
       j.id === jobId ? { ...j, escrowStatus: "disputed" as const } : j
     ));
@@ -351,10 +374,12 @@ export default function Home() {
         note: `Perusahaan mengajukan sengketa dari panel profil. Dana dibekukan otomatis.`,
       }]);
     }
-  }, [customJobs]);
+  }, [customJobs, disputeJob]);
 
   const handleWorkerDispute = useCallback(() => {
     if (!activeJob) return;
+    setDisputeDeadline(null);
+    setDisputeJob(null);
     setCustomJobs(prev => prev.map(j =>
       j.id === activeJob.id ? { ...j, escrowStatus: "disputed" as const } : j
     ));
@@ -616,6 +641,10 @@ export default function Home() {
     setNotifications((p) => [notif, ...p]);
     setActiveJob(job);
     setJobStatus("accepted");
+    setContractClosed(false);
+    setDisputeDeadline(null);
+    setDisputeJob(null);
+    setGraceDeadline(Date.now() + CLOCKIN_GRACE_MS); // start 15-min Clock-In grace timer
   }, []);
 
   const handleStatusChange = useCallback((id: number, status: ApplicationStatus) => {
@@ -653,13 +682,102 @@ export default function Home() {
     setCustomJobs((p) => p.map((j) => j.id === jobId ? { ...j, flaggedSuspect: true } : j));
   }, []);
 
+  // ── Worker discipline: 15-min late Clock-In penalty ─────────────
+  const handleLateClockInPenalty = useCallback(() => {
+    if (!activeJob) return;
+    setWalletBalance(prev => prev - LATE_CLOCKIN_PENALTY);
+    setWalletTransactions(prev => [{
+      id: Date.now(), type: "debit" as const,
+      amount: LATE_CLOCKIN_PENALTY,
+      label: "Denda Gagal Clock-In Tepat Waktu (15 Menit)",
+      jobTitle: activeJob.posisi,
+      timestamp: new Date(),
+      note: "Dikreditkan ke Pemberi Kerja sebagai kompensasi kehilangan waktu (lost-time).",
+    }, ...prev]);
+    setReputationPoints(p => Math.max(0, p - 15));
+    setEscrowEvents(prev => [...prev, {
+      id: Date.now(), jobId: activeJob.id, jobTitle: activeJob.posisi,
+      toStatus: "locked" as const, actor: "system" as const,
+      amount: LATE_CLOCKIN_PENALTY, timestamp: new Date(),
+      note: "Pekerja gagal Clock-In dalam 15 menit sejak shift dimulai. Denda Rp15.000 dipotong otomatis & dikreditkan ke Pemberi Kerja.",
+    }]);
+  }, [activeJob]);
+
+  // ── Dispute window: auto-release escrow after 24h ───────────────
+  // Uses the captured `disputeJob` snapshot (not `activeJob`) so it still fires
+  // even if the worker closed the completed-job card before the window expired.
+  const handleAutoRelease = useCallback(() => {
+    const job = disputeJob;
+    if (!job) return;
+    // Guard: never auto-release a job that was already disputed or released.
+    const live = customJobs.find(j => j.id === job.id);
+    if (live && (live.escrowStatus === "disputed" || live.escrowStatus === "released")) return;
+    const gross = job.escrowAmount ?? calcTotal(job.nominal, job.pembayaran);
+    const hasNpwp = workerProfile ? !workerProfile.belumPunyaNpwp : true;
+    const { platformCut, pphCut, workerNet } = calcSplit(gross, hasNpwp);
+    setWalletBalance(prev => prev + workerNet);
+    setWalletTransactions(prev => [{
+      id: Date.now(), type: "credit" as const,
+      amount: workerNet,
+      label: "Escrow Cair Otomatis — Kontrak Ditutup (24 Jam)",
+      jobTitle: job.posisi,
+      timestamp: new Date(),
+      note: `Jendela sengketa 24 jam berakhir tanpa keberatan. PPh ${hasNpwp ? "2.5%" : "3%"} Rp ${pphCut.toLocaleString("id-ID")} + komisi Rp ${platformCut.toLocaleString("id-ID")} dipotong.`,
+    }, ...prev]);
+    setPlatformBalance(prev => prev + platformCut);
+    setCustomJobs(prev => prev.map(j =>
+      j.id === job.id ? { ...j, escrowStatus: "released" as const } : j
+    ));
+    setEscrowEvents(prev => [...prev, {
+      id: Date.now(), jobId: job.id, jobTitle: job.posisi,
+      fromStatus: "locked" as const, toStatus: "released" as const, actor: "system" as const,
+      amount: workerNet, timestamp: new Date(),
+      note: "Jendela validasi 24 jam berakhir tanpa sengketa. Escrow otomatis cair ke pekerja. Status: CLOSED & UNAPPEALABLE.",
+    }]);
+    setContractClosed(true);
+  }, [disputeJob, customJobs, workerProfile]);
+
+  // ── Countdown ticker (drives both engines) ──────────────────────
+  useEffect(() => {
+    if (graceDeadline == null && disputeDeadline == null) return;
+    const t = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [graceDeadline, disputeDeadline]);
+
+  // ── Grace-timer expiry ──────────────────────────────────────────
+  useEffect(() => {
+    if (graceDeadline == null || jobStatus !== "accepted") return;
+    if (nowTick >= graceDeadline) {
+      handleLateClockInPenalty();
+      setGraceDeadline(null);
+    }
+  }, [nowTick, graceDeadline, jobStatus, handleLateClockInPenalty]);
+
+  // ── Dispute-window expiry ───────────────────────────────────────
+  useEffect(() => {
+    if (disputeDeadline == null) return;
+    if (nowTick >= disputeDeadline) {
+      handleAutoRelease();
+      setDisputeDeadline(null);
+      setDisputeJob(null);
+    }
+  }, [nowTick, disputeDeadline, handleAutoRelease]);
+
   // ── Clock-in/out ────────────────────────────────────────────────
-  const handleClockIn = useCallback(() => { setClockedInAt(new Date()); setJobStatus("clocked_in"); }, []);
+  const handleClockIn = useCallback(() => {
+    setClockedInAt(new Date());
+    setJobStatus("clocked_in");
+    setGraceDeadline(null); // Clock-In succeeded within grace window
+  }, []);
 
   const handleClockOut = useCallback(() => {
     const now = new Date();
     setClockedOutAt(now);
     setJobStatus("completed");
+    setGraceDeadline(null);
+    setContractClosed(false);
+    setDisputeJob(activeJob); // snapshot job so auto-release survives closing the card
+    setDisputeDeadline(now.getTime() + DISPUTE_WINDOW_MS); // start 24h employer validation window
     if (activeJob) {
       setTotalEarned((p) => p + calcTotal(activeJob.nominal, activeJob.pembayaran));
       setCompletedNotifs((p) => [...p, {
@@ -676,6 +794,7 @@ export default function Home() {
 
   const handleWorkerCancelJob = useCallback(() => {
     setActiveJob(null); setJobStatus(null); setClockedInAt(null); setClockedOutAt(null);
+    setGraceDeadline(null); setDisputeDeadline(null); setDisputeJob(null); setContractClosed(false);
     setReputationPoints((p) => Math.max(0, p - 20));
   }, []);
 
@@ -987,6 +1106,45 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
+
+                {activeJob && jobStatus === "accepted" && graceDeadline != null && (
+                  <div className="rounded-xl px-3 py-2 border border-red-200 bg-red-50 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                      <p className="text-[10px] font-semibold text-red-700 leading-tight">
+                        Masa tenggang Clock-In. Denda Rp15.000 bila lewat.
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-mono text-sm font-black text-red-600 tabular-nums">{fmtCountdown(graceDeadline - nowTick)}</p>
+                      <p className="text-[8px] font-bold uppercase tracking-wide text-red-400">Sisa Waktu</p>
+                    </div>
+                  </div>
+                )}
+
+                {activeJob && jobStatus === "completed" && disputeDeadline != null && (
+                  <div className="rounded-xl px-3 py-2 border border-amber-200 bg-amber-50 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <ShieldCheck className="w-4 h-4 text-amber-500 shrink-0" />
+                      <p className="text-[10px] font-semibold text-amber-700 leading-tight">
+                        Jendela sengketa Pemberi Kerja. Escrow cair otomatis bila lewat.
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-mono text-sm font-black text-amber-600 tabular-nums">{fmtCountdown(disputeDeadline - nowTick)}</p>
+                      <p className="text-[8px] font-bold uppercase tracking-wide text-amber-400">Sisa 24 Jam</p>
+                    </div>
+                  </div>
+                )}
+
+                {activeJob && jobStatus === "completed" && contractClosed && (
+                  <div className="rounded-xl px-3 py-2 border border-emerald-200 bg-emerald-50 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <p className="text-[10px] font-bold text-emerald-700 leading-tight">
+                      Kontrak DITUTUP & FINAL (CLOSED & UNAPPEALABLE) — escrow telah cair otomatis.
+                    </p>
+                  </div>
+                )}
 
                 {activeJob && (
                   <div className={`rounded-xl px-3 py-2.5 border flex items-center justify-between gap-2 ${jobStatus === "clocked_in" ? "bg-primary text-white border-primary" : jobStatus === "completed" ? "bg-gray-50 border-gray-200" : "bg-amber-50 border-amber-200"}`}>

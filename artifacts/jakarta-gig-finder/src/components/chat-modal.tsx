@@ -3,10 +3,10 @@ import {
   X, Send, ShieldCheck, Lock, AlertTriangle, Briefcase, ChevronRight,
   CheckCircle2, RefreshCw, Zap, BadgeDollarSign,
 } from "lucide-react";
-import { PLATFORM_FEE_LAMA } from "@/types/escrow";
+import { PLATFORM_FEE_LAMA, MAX_BYPASS_STRIKES } from "@/types/escrow";
 
 // ── Bypass detection (RegEx + keyword) ─────────────────────────────
-const BYPASS_RE = /(?:0[0-9]{8,13}|\+62[0-9]{8,12}|(?<![a-z])wa(?![a-z])|whatsapp|transfer\s*langsung|bayar\s*(?:di\s*luar|langsung|cash|tunai)|di\s*luar\s*(?:aplikasi|sistem)|kasih\s*nomor|minta\s*(?:wa|nomor|kontak|hp)|hubungi\s*(?:langsung|saya)|pindah\s*wa|bb[mn]|telpon(?:an)?|line\s*aja)/gi;
+const BYPASS_RE = /(?:0[0-9]{8,13}|\+62[0-9]{8,12}|(?<![a-z])wa(?![a-z])|whatsapp|transfer\s*langsung|rekening|no\.?\s*rek|bayar\s*(?:di\s*luar|langsung|cash|tunai)|di\s*luar\s*(?:aplikasi|sistem)|kasih\s*nomor|minta\s*(?:wa|nomor|kontak|hp)|hubungi\s*(?:langsung|saya)|pindah\s*wa|bb[mn]|telpon(?:an)?|line\s*aja)/gi;
 
 function hasBypass(text: string): boolean {
   BYPASS_RE.lastIndex = 0;
@@ -99,6 +99,8 @@ export default function ChatModal({
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState("");
   const [bypassWarning, setBypassWarning] = useState(false);
+  const [bypassStrikes, setBypassStrikes] = useState(0);
+  const [blacklisted, setBlacklisted] = useState(false);
   const [showBuyOut, setShowBuyOut] = useState(false);
 
   // ── Negotiation state ─────────────────────────────────────────────
@@ -122,7 +124,20 @@ export default function ChatModal({
   const handleSend = useCallback(() => {
     const text = input.trim();
     if (!text) return;
-    if (hasBypass(text)) { setBypassWarning(true); return; }
+    if (blacklisted) return;
+    if (hasBypass(text)) {
+      setBypassStrikes(prev => {
+        const next = prev + 1;
+        if (next >= MAX_BYPASS_STRIKES) {
+          setBlacklisted(true);
+        } else {
+          setBypassWarning(true);
+        }
+        return next;
+      });
+      setInput("");
+      return;
+    }
     setMessages(prev => [...prev, { id: ++msgId, sender: currentRole, text, time: new Date() }]);
     setInput("");
     setTimeout(() => {
@@ -214,12 +229,53 @@ export default function ChatModal({
                   : "⚠️ Pembayaran di luar escrow menghilangkan jaminan anti-pencurian tenaga kerja dan tidak ada bukti hukum yang melindungi perusahaan."}
               </p>
             </div>
-            <p className="text-[10px] text-gray-500 text-center">Pelanggaran berulang mengakibatkan pembekuan akun permanen.</p>
+            <div className="bg-red-600 text-white rounded-xl px-3 py-2 text-center">
+              <p className="text-xs font-black">⚠️ Peringatan {bypassStrikes} dari {MAX_BYPASS_STRIKES}</p>
+              <p className="text-[10px] mt-0.5 opacity-90">
+                {MAX_BYPASS_STRIKES - bypassStrikes} pelanggaran lagi → KTP/NPWP Anda diblacklist permanen.
+              </p>
+            </div>
             <button
               onClick={() => { setBypassWarning(false); setInput(""); inputRef.current?.focus(); }}
               className="w-full bg-gray-100 text-gray-700 font-semibold py-3 rounded-xl text-sm hover:bg-gray-200 transition-colors">
               Mengerti, Hapus Pesan
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── PERMANENT BLACKLIST — Un-dismissable ──────────────────── */}
+      {blacklisted && (
+        <div
+          className="fixed inset-0 z-[400] flex items-center justify-center p-5 bg-red-700"
+          style={{ animation: "popIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275)" }}
+        >
+          <div className="max-w-sm w-full text-center space-y-5">
+            <div className="w-20 h-20 rounded-full bg-white/15 flex items-center justify-center mx-auto ring-4 ring-white/30">
+              <AlertTriangle className="w-11 h-11 text-white" />
+            </div>
+            <div className="space-y-2">
+              <p className="text-white/80 text-xs font-bold tracking-[0.3em] uppercase">Akun Diblokir Permanen</p>
+              <h2 className="text-white text-2xl font-black leading-tight">PERMANENTLY BLACKLISTED</h2>
+            </div>
+            <div className="bg-black/25 rounded-2xl px-4 py-4 space-y-3 text-left">
+              <p className="text-white text-sm font-semibold leading-relaxed">
+                Anda telah melanggar Sanksi Zero-Tolerance Bypass sebanyak {MAX_BYPASS_STRIKES} kali.
+              </p>
+              <p className="text-white/90 text-[12px] leading-relaxed">
+                Profil KTP/NPWP terdaftar Anda kini <b>terkunci secara hukum (legally locked out)</b> dari
+                platform Rekhastha untuk selamanya. Seluruh Jaminan Pembayaran Escrow hangus, perlindungan
+                asuransi dibatalkan, dan Anda diblokir permanen dari radar platform.
+              </p>
+              <div className="bg-black/30 rounded-lg px-3 py-2">
+                <p className="text-red-200 font-mono text-[11px] break-all">
+                  [ STATUS: PERMANENTLY_BLACKLISTED · KTP/NPWP_LOCKED ]
+                </p>
+              </div>
+            </div>
+            <p className="text-white/60 text-[10px] leading-relaxed">
+              Keputusan ini bersifat final dan tidak dapat diganggu gugat sesuai Ketentuan Layanan Rekhastha.
+            </p>
           </div>
         </div>
       )}

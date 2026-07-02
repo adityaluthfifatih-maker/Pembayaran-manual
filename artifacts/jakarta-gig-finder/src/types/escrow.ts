@@ -32,6 +32,12 @@ export const PPH_WITHOUT_NPWP = 0.03;      // Catatan: pajak menjadi tanggung ja
 export const ADMIN_DISPUTE_FEE = 0.05;     // 5% biaya admin sengketa
 export const CANCELLATION_FEE_1HR = 20_000; // Rp 20.000 potongan jika pemberi kerja batal <1 jam
 
+// ── Kedisiplinan & jendela sengketa ───────────────────
+export const LATE_CLOCKIN_PENALTY = 15_000;         // Rp 15.000 denda gagal Clock-In tepat waktu
+export const CLOCKIN_GRACE_MS = 15 * 60 * 1000;      // 15 menit masa tenggang Clock-In sejak shift dimulai
+export const DISPUTE_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 jam jendela validasi/sengketa pasca Clock-Out
+export const MAX_BYPASS_STRIKES = 3;                  // 3 pelanggaran = blacklist permanen
+
 export const DURATION_DAYS: Record<string, number> = {
   harian: 1,
   "1_bulan": 22,

@@ -1,4 +1,4 @@
-import { X, ShieldCheck, Briefcase, UserCheck } from "lucide-react";
+import { X, ShieldCheck, Briefcase, UserCheck, Scale } from "lucide-react";
 
 interface TermsModalProps {
   onClose: () => void;
@@ -137,6 +137,33 @@ export default function TermsModal({ onClose }: TermsModalProps) {
               label="Kewajiban Mitra Pekerja"
               clauses={WORKER_CLAUSES}
             />
+          </div>
+
+          {/* PASAL III — Pelepasan Tanggung Jawab */}
+          <div className="border-t-2 border-red-200 pt-5">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-7 h-7 rounded-lg bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                <Scale className="w-4 h-4" />
+              </div>
+              <h3 className="text-sm font-black text-red-700 leading-tight uppercase">
+                Pasal III: Pelepasan Tanggung Jawab Kriminal & Perdata
+              </h3>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-2.5">
+              <p className="text-[11px] text-red-900 leading-relaxed text-justify font-semibold">
+                Rekhastha bertindak semata-mata sebagai kerangka utilitas teknologi escrow
+                (technological escrow utility framework). Platform memiliki imunitas hukum absolut
+                dan TIDAK bertanggung jawab atas segala bentuk kelalaian di tempat kerja (workspace
+                negligence), pencurian properti, maupun tindak pidana yang dilakukan oleh salah satu
+                pihak di lokasi kerja.
+              </p>
+              <p className="text-[11px] text-red-900 leading-relaxed text-justify">
+                Untuk kepentingan penegakan hukum, Rekhastha akan secara langsung menyerahkan seluruh
+                profil data latar belakang KTP/NPWP yang telah terverifikasi kepada Kepolisian Negara
+                Republik Indonesia (POLRI) guna proses penuntutan pidana secara langsung terhadap
+                pihak yang bersangkutan.
+              </p>
+            </div>
           </div>
         </div>
 

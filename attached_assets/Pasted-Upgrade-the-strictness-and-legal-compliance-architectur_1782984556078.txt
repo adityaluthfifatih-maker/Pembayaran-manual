@@ -1,0 +1,16 @@
+Upgrade the strictness and legal compliance architecture of the Rekhastha (GigFinder) application. Inject the following high-security automated logic and update the "Syarat & Ketentuan" (Terms & Conditions) modal components completely:
+
+1. WORKER INDISCIPLINARY PENALTY SYSTEM:
+- Implement a 15-minute operational grace timer state. If a Worker accepts a job but fails to execute the on-site QR Clock-In within 15 minutes of the shift starting time, trigger an automated event: deduct a flat 15,000 IDR penalty from the Worker's wallet balance and instantly credit it to the Employer as lost-time compensation.
+
+2. REFINED AUTOMATED ANTI-BYPASS SHIELD (3-STRIKE BLACKLIST):
+- Enhance the RegEx sensor chat filter. Maintain a dynamic variable counter named `bypassStrikes` for each user session.
+- If a user types off-platform keywords ("WA", "WhatsApp", "0812...", "transfer langsung", "rekening") up to 3 times, instantly freeze the layout container, change the status state to "PERMANENTLY BLACKLISTED", and render an un-dismissable red screen warning stating that their registered KTP/NPWP is legally locked out of Rekhastha indefinitely.
+
+3. DISPUTE WINDOW LOCK ENGINE (24-HOUR VALIDATION):
+- Enforce a strict 24-hour post-shift validation window. Once the Worker triggers "Clock-Out / Selesai Kerja", initialize a countdown state. The Employer has exactly 24 hours to inspect results and click "Ajukan Sengketa". If the timer expires with no action, automatically execute the Escrow Ledger payout to the Worker, setting the contract state to "CLOSED & UNAPPEALABLE".
+
+4. LEGAL COMPLIANCE DISCLAIMER UPDATES (Inside the T&C Scrollable Box):
+- Explicitly add a bold section: "PASAL III: PELEPASAN TANGGUNG JAWAB KRIMINAL & PERDATA". State that Rekhastha acts solely as a technological escrow utility framework. The platform holds absolute legal immunity against workspace negligence, property theft, or criminal acts committed by either party on-site. The platform will directly surrender full verified background KTP/NPWP data profiles to the Indonesian National Police (POLRI) for direct criminal prosecution.
+
+Re-generate the fully integrated Javascript handlers, CSS states, and layout templates using the Emerald Green design parameters with no missing code structures. Run the reinforced secure version.
