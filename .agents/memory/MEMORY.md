@@ -1,3 +1,4 @@
 - [Escrow Engine Architecture](escrow-engine.md) — Rekhastha escrow: rates, split calc, status flow, and which component owns each action.
+- [Payment type & wage model](payment-model.md) — 4 categories (no per_jam), legacy `per_projek` key kept, flat wage math, clean-integer WS payload, withdrawal callback shape.
 - [Realtime gig sync](realtime-gig-sync.md) — Postgres + WS live feed: client-provided PK, employer-silent/worker-alert gating, reconnect re-hydrate, drizzle-zod (not OpenAPI).
 - [Real accounts & sessions](auth-accounts.md) — custom bcrypt email/password auth (not Clerk), httpOnly cookie, profile jsonb, never purge sessions on login (multi-device).

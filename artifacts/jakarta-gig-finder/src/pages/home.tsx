@@ -35,7 +35,7 @@ import WorkerProfilePage from "@/components/worker-profile-page";
 import CompanyProfilePage from "@/components/company-profile-page";
 import { workers, Worker } from "@/data/workers";
 import { jobs } from "@/data/jobs";
-import { CustomJob, calcTotal } from "@/types/custom-job";
+import { CustomJob, calcTotal, paymentUnits } from "@/types/custom-job";
 import { WalletTransaction, EscrowEvent, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, DURATION_DAYS, LATE_CLOCKIN_PENALTY, CLOCKIN_GRACE_MS, DISPUTE_WINDOW_MS, PLATFORM_FEE_CEPAT } from "@/types/escrow";
 import { WorkerProfile, isVerified } from "@/types/worker-profile";
 import { AuthUser } from "@/types/auth";
@@ -104,7 +104,7 @@ function makeDemoJobs(): CustomJob[] {
     { posisi: "Crew Packing Gudang", nominal: 175_000, nama: "PT Lazada Logistik" },
   ];
   return tipes.map((t, i) => {
-    const pembayaran: CustomJob["pembayaran"] = i < 2 || i === 4 ? "per_shift" : i === 3 ? "per_projek" : "per_jam";
+    const pembayaran: CustomJob["pembayaran"] = i < 2 || i === 4 ? "per_shift" : i === 3 ? "per_projek" : "per_hari";
     const kuota = i === 1 ? 20 : 3;
     const jumlahHari = DURATION_DAYS[durations[i] ?? "harian"] ?? 1;
     const escrowAmount = calcEscrowAmount(t.nominal, pembayaran, jumlahHari, kuota);
@@ -550,19 +550,20 @@ export default function Home() {
     }]);
   }, [customJobs, workerProfile]);
 
-  const handleWithdraw = useCallback(() => {
+  const handleWithdraw = useCallback((method: string, account: string) => {
     if (walletBalance <= 0) return;
+    const masked = account.length > 4 ? `••••${account.slice(-4)}` : account;
     setWalletTransactions(prev => [...prev, {
       id: Date.now(),
       type: "debit" as const,
       amount: walletBalance,
-      label: "Penarikan ke Rekening Bank",
-      jobTitle: workerProfile?.namaBank ?? "Bank",
+      label: `Pencairan via ${method}`,
+      jobTitle: method,
       timestamp: new Date(),
-      note: `Rekening: ••••${workerProfile?.nomorRekening?.slice(-4) ?? "****"}`,
+      note: `Nomor tujuan: ${masked} · Net 100% bebas potongan`,
     }]);
     setWalletBalance(0);
-  }, [walletBalance, workerProfile]);
+  }, [walletBalance]);
 
   // ── Demo inject ─────────────────────────────────────────────────
   const handleDemoInject = useCallback(() => {
@@ -1098,7 +1099,7 @@ export default function Home() {
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-gray-900 truncate">{job.posisi}</p>
                         <p className="text-xs text-gray-500 truncate">{job.namaPerusahaan || "Perusahaan"}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">Rp {job.nominal.toLocaleString("id-ID")} / {job.pembayaran === "per_jam" ? "Jam" : job.pembayaran === "per_shift" ? "Shift" : "Projek"}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Rp {job.nominal.toLocaleString("id-ID")} / {paymentUnits[job.pembayaran]}</p>
                       </div>
                     </div>
                     <button
@@ -1501,7 +1502,7 @@ export default function Home() {
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <Banknote className="w-4 h-4 text-primary shrink-0" />
                         <span className="font-semibold text-gray-900">
-                          Rp {job.nominal.toLocaleString("id-ID")}{job.pembayaran === "per_jam" ? " / Jam" : job.pembayaran === "per_shift" ? " / Shift" : " / Projek"}
+                          Rp {job.nominal.toLocaleString("id-ID")} / {paymentUnits[job.pembayaran]}
                         </span>
                         {job.isAgency && <span className="text-[10px] text-blue-600 font-semibold">{job.kuota} orang</span>}
                       </div>

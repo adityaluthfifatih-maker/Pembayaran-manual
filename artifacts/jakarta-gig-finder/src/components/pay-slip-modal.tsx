@@ -1,5 +1,5 @@
 import { X, Download, Printer } from "lucide-react";
-import { CustomJob, calcTotal, calcCommission, paymentLabels } from "@/types/custom-job";
+import { CustomJob, calcTotal, calcCommission, paymentLabels, paymentUnits } from "@/types/custom-job";
 import { WorkerProfile } from "@/types/worker-profile";
 
 interface PaySlipModalProps {
@@ -109,7 +109,7 @@ export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedO
               <Row label="Sistem Bayaran" value={paymentLabels[job.pembayaran]} />
               <Row
                 label="Tarif"
-                value={`${formatRp(job.nominal)}${job.pembayaran === "per_jam" ? " / Jam" : job.pembayaran === "per_shift" ? " / Shift" : " / Projek"}`}
+                value={`${formatRp(job.nominal)} / ${paymentUnits[job.pembayaran]}`}
               />
               <Row label="Durasi Kerja" value={`${durationHours} Jam`} />
               {clockedInAt && <Row label="Clock-In" value={clockedInAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} />}
@@ -119,7 +119,7 @@ export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedO
             {/* Earnings breakdown */}
             <div className="py-3 border-b border-dashed border-gray-300 space-y-1">
               <p className="font-bold text-[10px] text-gray-700 mb-1.5">RINCIAN PENGHASILAN</p>
-              <Row label={job.pembayaran === "per_jam" ? `${formatRp(job.nominal)} × 8 Jam` : "Total Kotor"} value={formatRp(gross)} />
+              <Row label={`Total Kotor (${paymentLabels[job.pembayaran]})`} value={formatRp(gross)} />
             </div>
 
             {/* Deductions */}

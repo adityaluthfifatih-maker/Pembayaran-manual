@@ -5,7 +5,7 @@ import {
   MapPin, Clock, MessageSquare, Filter, ShieldCheck, Briefcase,
   QrCode, XCircle,
 } from "lucide-react";
-import { CustomJob, PaymentType, HiringMode, paymentLabels } from "@/types/custom-job";
+import { CustomJob, PaymentType, HiringMode, paymentLabels, paymentInputLabels, paymentUnits } from "@/types/custom-job";
 import { ApplicationNotification, ApplicationStatus, maskName } from "@/types/notification";
 import { PLATFORM_FEE_CEPAT, CANCELLATION_FEE_1HR } from "@/types/escrow";
 import { AuthUser } from "@/types/auth";
@@ -493,7 +493,7 @@ export default function HiringModePanel({
                   </div>
                   <div>
                     <label className={labelCls}>
-                      Upah {pembayaran === "per_jam" ? "Per Jam" : pembayaran === "per_shift" ? "Per Shift" : "Per Projek"} *
+                      {paymentInputLabels[pembayaran]} *
                     </label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium">Rp</span>
@@ -743,7 +743,7 @@ export default function HiringModePanel({
                 <div className="flex items-center gap-3 text-[10px] text-gray-500 flex-wrap">
                   <span className="flex items-center gap-1">
                     <Banknote className="w-3 h-3" />
-                    {formatRp(job.nominal)} / {job.pembayaran === "per_jam" ? "Jam" : job.pembayaran === "per_shift" ? "Shift" : "Projek"}
+                    {formatRp(job.nominal)} / {paymentUnits[job.pembayaran]}
                   </span>
                   <span>· {job.kuota} orang</span>
                   {isJobLocked && job.escrowAmount ? (

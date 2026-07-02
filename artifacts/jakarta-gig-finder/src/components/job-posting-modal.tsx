@@ -19,7 +19,7 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
   // Form fields
   const [posisi, setPosisi] = useState("");
   const [deskripsi, setDeskripsi] = useState("");
-  const [pembayaran, setPembayaran] = useState<PaymentType>("per_jam");
+  const [pembayaran, setPembayaran] = useState<PaymentType>("per_shift");
   const [nominal, setNominal] = useState("");
   const [dresscode, setDresscode] = useState("");
   const [kuota, setKuota] = useState("1");
@@ -96,7 +96,7 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
     });
 
     // Reset
-    setPosisi(""); setDeskripsi(""); setPembayaran("per_jam"); setNominal("");
+    setPosisi(""); setDeskripsi(""); setPembayaran("per_shift"); setNominal("");
     setDresscode(""); setKuota("1"); setNamaPerusahaan(""); setNibPerusahaan("");
     setDurasiKontrak("harian"); setTipeAkun("perusahaan"); setKuotaMassal("20");
     setFraudWarning(null); setBlocked(false); setNibError(null);
@@ -316,7 +316,7 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-gray-800">Sistem Bayaran</label>
                 <div className="flex gap-2">
-                  {(["per_jam", "per_shift", "per_projek"] as PaymentType[]).map((type) => (
+                  {(["per_shift", "per_hari", "per_projek", "per_bulan"] as PaymentType[]).map((type) => (
                     <button key={type} type="button" data-testid={`button-payment-${type}`}
                       onClick={() => setPembayaran(type)}
                       className={`flex-1 py-2.5 px-2 rounded-xl text-xs font-semibold border transition-all ${pembayaran === type ? "bg-primary text-white border-primary" : "bg-white text-gray-600 border-gray-200"}`}>
@@ -342,7 +342,7 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
                 {nominalNum > 0 && (
                   <div className="mt-2 rounded-xl border border-primary/15 bg-primary/5 px-4 py-3 space-y-2" data-testid="commission-preview">
                     <div className="flex justify-between text-xs text-gray-600">
-                      <span>{pembayaran === "per_jam" ? `${formatRupiah(nominalNum)} × 8 jam` : "Total pembayaran"}</span>
+                      <span>Total pembayaran</span>
                       <span className="font-medium text-gray-900">{formatRupiah(total)}</span>
                     </div>
                     <div className="flex justify-between text-xs border-t border-primary/10 pt-2">

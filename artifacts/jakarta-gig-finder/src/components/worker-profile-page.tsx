@@ -25,7 +25,7 @@ interface WorkerProfilePageProps {
   onLogout: () => void;
   onDemoInject: () => void;
   onEditProfile: () => void;
-  onWithdraw: () => void;
+  onWithdraw: (method: string, account: string) => void;
 }
 
 type ProfileTab = "data" | "analitik" | "wallet";

@@ -1,0 +1,28 @@
+Implement the finalized Indonesian financial localization features over the new Replit built-in backend (Postgres + WebSocket) infrastructure. 
+
+Please execute these precise front-end input masks and back-end state synchronization upgrades:
+
+1. AUTOMATIC RUPIAH CURRENCY FORMATTING (INPUT MASK):
+- In both the "Broadcast Instan" and "Posting Reguler" wage input fields, implement a real-time JavaScript input mask. 
+- As the Employer types numbers (e.g., "150000"), dynamically format the display value to Indonesian Rupiah standard format: "Rp 150.000". 
+- In the underlying code and database payload, strip the "Rp" and dots to save it as a clean integer (e.g., `150000`) to prevent ledger calculation bugs.
+
+2. LOCALIZED PAYMENT TYPE SCHEMA & CONDITIONAL LABELS:
+Ensure the 4 Indonesian work categories are perfectly active with dynamic labeling:
+- "Per Shift" -> Updates input label to: "Upah Per Shift *"
+- "Per Hari (Harian Lepas)" -> Updates input label to: "Upah Per Hari *"
+- "Per Proyek (Borongan)" -> Updates input label to: "Total Nilai Proyek / Borongan *"
+- "Per Bulan (Kontrak Lepas)" -> Updates input label to: "Gaji Per Bulan *"
+
+3. WORKER E-WALLET WITHDRAWAL UI BLOCK:
+- Inside the Worker's Dashboard layout under a new tab or section titled "Dompet Rekhastha (Pencairan Upah)", create a clean premium interface component.
+- Add an integrated withdrawal form containing:
+  * A dropdown select menu for "Pilih Metode Pencairan": GoPay, DANA, OVO, ShopeePay, and Transfer Bank.
+  * A text input field for "Nomor HP / Nomor Rekening Terdaftar *".
+  * A disabled summary field showing: "Total Saldo Tersedia (Net 100% Bebas Potongan)".
+
+4. END-TO-END MULTI-DEVICE REAL-TIME VALIDATION:
+- When Device A (Employer) clicks the broadcast button, ensure the payload sent via WebSockets carries the formatted currency string and correct payment type.
+- Device B (Worker) must instantly capture this event via the backend network stream. Play the physical Web Audio API chime sound alert, trigger the native OS notification popup, and mount a pulsing green radar pin displaying the job title and the exact Rupiah wage (e.g., "Mencari: Barista | Upah: Rp 150.000 / Shift").
+
+Keep the application branding locked perfectly onto "Rekhastha by Tilu Company" with its signature emerald green and gold shield icon. Run the updated synchronized application.

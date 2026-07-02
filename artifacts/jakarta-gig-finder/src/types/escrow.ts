@@ -50,7 +50,7 @@ export function calcEscrowAmount(
   kuota: number
 ): number {
   if (pembayaran === "per_projek") return nominal * kuota;
-  const perDay = pembayaran === "per_jam" ? nominal * 8 : nominal;
+  const perDay = nominal;
   return perDay * jumlahHari * kuota;
 }
 

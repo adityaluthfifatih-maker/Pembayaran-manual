@@ -128,7 +128,7 @@ export default function JobSheet({
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">
-                  {job.pembayaran === "per_jam" ? `${formatRp(job.nominal)} × 8 jam` : "Total kotor"}
+                  Total kotor ({paymentLabels[job.pembayaran]})
                 </span>
                 <span className="font-medium text-gray-900">{formatRp(total)}</span>
               </div>

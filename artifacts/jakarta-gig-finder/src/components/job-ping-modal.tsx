@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { MapPin, Banknote, Building2, X, Zap, CheckCircle2 } from "lucide-react";
-import { CustomJob } from "@/types/custom-job";
+import { CustomJob, paymentUnits } from "@/types/custom-job";
 
 interface JobPingModalProps {
   job: CustomJob;
@@ -142,7 +142,7 @@ export default function JobPingModal({ job, userLat, userLng, onAccept, onDeclin
                 Rp {job.nominal.toLocaleString("id-ID")}
               </p>
               <p className="text-[9px] text-gray-600 mt-0.5">
-                {job.pembayaran === "per_jam" ? "/jam" : job.pembayaran === "per_shift" ? "/shift" : "/projek"}
+                /{paymentUnits[job.pembayaran].toLowerCase()}
               </p>
             </div>
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 text-center">

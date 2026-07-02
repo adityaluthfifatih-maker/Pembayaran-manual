@@ -1,7 +1,7 @@
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MapContainer, TileLayer, Marker, Polyline, Tooltip } from "react-leaflet";
-import { CustomJob } from "@/types/custom-job";
+import { CustomJob, paymentUnits } from "@/types/custom-job";
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -138,7 +138,7 @@ export default function WorkerMap({
             eventHandlers={{ click: () => onJobClick(gig) }}
           >
             <Tooltip direction="top" offset={[0, -20]} className="!bg-emerald-600 !text-white !text-[10px] !font-semibold !border-0 !rounded-lg !shadow-lg">
-              ⚡ {gig.posisi}
+              ⚡ Mencari: {gig.posisi} | Upah: Rp {gig.nominal.toLocaleString("id-ID")} / {paymentUnits[gig.pembayaran]}
             </Tooltip>
           </Marker>
         ))}
