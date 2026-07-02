@@ -4,7 +4,7 @@ import {
   ArrowUpRight, Shield, Users,
 } from "lucide-react";
 import { CustomJob, calcTotal, durasiKontrakOptions } from "@/types/custom-job";
-import { calcEmployerFee } from "@/types/escrow";
+import { calcEmployerFee, PLATFORM_FEE_CEPAT } from "@/types/escrow";
 import { RatingPayload } from "@/components/rating-modal";
 
 interface AnalyticsDashboardProps {
@@ -15,13 +15,6 @@ interface AnalyticsDashboardProps {
 
 function fmt(n: number) { return "Rp " + Math.round(n).toLocaleString("id-ID"); }
 
-const CONTRACT_SCENARIOS = [
-  { label: "Harian", durasi: "harian" as const, rate: 0.15, color: "#EF4444", glow: false },
-  { label: "1 Bulan", durasi: "1_bulan" as const, rate: 0.10, color: "#F97316", glow: false },
-  { label: "3 Bulan", durasi: "3_bulan" as const, rate: 0.075, color: "#EAB308", glow: false },
-  { label: "6 Bulan", durasi: "6_bulan" as const, rate: 0.05, color: "#22C55E", glow: true },
-  { label: "Agensi\n>15 org", durasi: "harian" as const, rate: 0.07, color: "#3B82F6", glow: true },
-];
 
 export default function AnalyticsDashboard({ customJobs, ratings, totalApplicants }: AnalyticsDashboardProps) {
   // ── Computed metrics ────────────────────────────────────────────
@@ -44,11 +37,6 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
 
     return { totalGross, totalComm, avgRating, agencies };
   }, [customJobs, ratings]);
-
-  // ── Savings simulation (assume 500k/shift baseline) ─────────────
-  const BASE_NOMINAL = 500_000;
-  const BASE_GROSS = BASE_NOMINAL;
-  const baseDailyComm = BASE_GROSS * 0.15;
 
   // ── Per-job breakdown ────────────────────────────────────────────
   const jobBreakdowns = useMemo(() =>
@@ -109,75 +97,48 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
           />
         </div>
 
-        {/* Cost-efficiency chart */}
+        {/* Platform fee transparency */}
         <div className="rounded-2xl overflow-hidden" style={{ background: "#1E293B", border: "1px solid #334155" }}>
           <div className="px-4 pt-4 pb-3 border-b" style={{ borderColor: "#334155" }}>
             <div className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-emerald-400" />
-              <p className="text-sm font-bold text-white">Grafik Efisiensi Komisi</p>
+              <p className="text-sm font-bold text-white">Biaya Platform</p>
             </div>
             <p className="text-[10px] text-slate-400 mt-0.5">
-              Basis: lowongan Rp 500.000 / shift · Semakin kecil = semakin efisien
+              Biaya layanan yang dikenakan ke perusahaan · Berlaku seragam untuk semua jenis kontrak
             </p>
           </div>
 
-          <div className="px-4 py-5">
-            {/* Y-axis labels + bars */}
-            <div className="flex items-end gap-3 h-36">
-              {CONTRACT_SCENARIOS.map((s) => {
-                const commCost = BASE_GROSS * s.rate;
-                const savings = baseDailyComm - commCost;
-                const barPct = (s.rate / 0.15) * 100;
-
-                return (
-                  <div key={s.label} className="flex-1 flex flex-col items-center gap-1.5">
-                    {/* Value label */}
-                    <p className="text-[9px] font-bold" style={{ color: s.color }}>
-                      {fmt(commCost)}
-                    </p>
-                    {/* Bar */}
-                    <div className="w-full flex items-end justify-center" style={{ height: "80px" }}>
-                      <div
-                        className="w-full rounded-t-lg relative overflow-hidden transition-all duration-700"
-                        style={{
-                          height: `${barPct}%`,
-                          background: s.glow
-                            ? `linear-gradient(to top, ${s.color}CC, ${s.color})`
-                            : s.color,
-                          boxShadow: s.glow ? `0 0 12px ${s.color}80` : "none",
-                          minHeight: "8px",
-                        }}
-                      >
-                        {savings > 0 && (
-                          <div
-                            className="absolute top-1 inset-x-0 flex items-center justify-center"
-                            title={`Hemat ${fmt(savings)}`}
-                          />
-                        )}
-                      </div>
-                    </div>
-                    {/* Label */}
-                    <p className="text-[9px] text-slate-400 text-center leading-tight whitespace-pre-line">{s.label}</p>
-                    <p className="text-[9px] font-bold" style={{ color: s.color }}>{(s.rate * 100)}%</p>
-                  </div>
-                );
-              })}
+          <div className="px-4 py-5 space-y-4">
+            {/* Flat-rate callout */}
+            <div
+              className="rounded-xl px-4 py-4 flex items-center justify-between"
+              style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)" }}
+            >
+              <div>
+                <p className="text-xs text-slate-400">Biaya Sistem Rekhastha</p>
+                <p className="text-2xl font-black text-emerald-400 mt-0.5">{(PLATFORM_FEE_CEPAT * 100).toFixed(0)}%</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">dari nominal gaji · beban perusahaan</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] text-slate-400">Contoh: Rp 500.000 / shift</p>
+                <p className="text-sm font-bold text-white mt-0.5">{fmt(500_000 * PLATFORM_FEE_CEPAT)}</p>
+                <p className="text-[10px] text-slate-500">biaya per shift</p>
+              </div>
             </div>
 
-            {/* Savings callout */}
-            <div
-              className="mt-4 rounded-xl px-3 py-2.5 flex items-center gap-2"
-              style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)" }}
-            >
-              <ArrowUpRight className="w-4 h-4 text-emerald-400 shrink-0" />
-              <div>
-                <p className="text-xs font-bold text-emerald-400">
-                  Hemat {fmt(baseDailyComm - BASE_GROSS * 0.05)} per siklus
-                </p>
-                <p className="text-[10px] text-slate-400">
-                  Beralih dari kontrak Harian ke 6 Bulan pada lowongan Rp 500K/shift
-                </p>
-              </div>
+            {/* What the fee covers */}
+            <div className="space-y-2">
+              {[
+                { label: "Escrow & perlindungan pembayaran", color: "#10B981" },
+                { label: "Verifikasi identitas & anti-penipuan", color: "#10B981" },
+                { label: "Mediasi sengketa & dukungan 24 jam", color: "#10B981" },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center gap-2">
+                  <ArrowUpRight className="w-3.5 h-3.5 shrink-0" style={{ color: item.color }} />
+                  <p className="text-[11px] text-slate-400">{item.label}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -203,7 +164,6 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
             <div className="divide-y" style={{ borderColor: "#334155" }}>
               {jobBreakdowns.map(({ job, gross, comm, workerPay, rate }) => {
                 const durasiLabel = durasiKontrakOptions.find((o) => o.value === (job.durasiKontrak ?? "harian"))?.label?.split(" ")[0] ?? "Harian";
-                const isAgencyDiscount = job.isAgency && (job.kuota > 15);
                 return (
                   <div key={job.id} className="px-4 py-3.5">
                     <div className="flex items-start justify-between gap-2">
@@ -217,9 +177,6 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
                             >
                               AGENCY JOB
                             </span>
-                          )}
-                          {isAgencyDiscount && (
-                            <span className="text-[9px] font-bold text-emerald-400">Vol. Disc.</span>
                           )}
                         </div>
                         <p className="text-[10px] text-slate-500 mt-0.5">
