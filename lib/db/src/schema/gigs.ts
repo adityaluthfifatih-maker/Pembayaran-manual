@@ -43,6 +43,8 @@ export const gigsTable = pgTable("gigs", {
   escrowStatus: text("escrow_status"),
   escrowAmount: integer("escrow_amount"),
   jumlahHari: integer("jumlah_hari"),
+  employerId: text("employer_id"),
+  employerName: text("employer_name"),
   postedAt: timestamp("posted_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

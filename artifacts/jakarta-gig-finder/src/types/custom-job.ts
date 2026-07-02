@@ -35,6 +35,9 @@ export interface CustomJob {
   escrowStatus?: EscrowStatus;
   escrowAmount?: number;   // Total gross locked in escrow (per ALL workers)
   jumlahHari?: number;     // Working days for this contract
+  // ── Poster identity (for blacklist filtering) ────────
+  employerId?: string;     // real account id of the employer who posted
+  employerName?: string;   // display name of the poster
 }
 
 export const durasiKontrakOptions: { value: DurasiKontrak; label: string; rate: number }[] = [

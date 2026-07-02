@@ -19,3 +19,5 @@
 
 export * from "./gigs";
 export * from "./users";
+export * from "./attendance";
+export * from "./blacklist";

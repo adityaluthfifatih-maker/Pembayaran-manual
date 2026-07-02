@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Star, X, Building2, User } from "lucide-react";
+import { Star, X, Building2, User, Ban } from "lucide-react";
 
 export interface RatingPayload {
   stars: number;
   comment: string;
   raterType: "company" | "worker";
   targetName: string;
+  blacklist?: boolean;
 }
 
 interface RatingModalProps {
@@ -20,6 +21,7 @@ export default function RatingModal({ raterType, targetName, jobTitle, onSubmit,
   const [stars, setStars] = useState(0);
   const [hovered, setHovered] = useState(0);
   const [comment, setComment] = useState("");
+  const [blacklist, setBlacklist] = useState(false);
 
   const isCompany = raterType === "company";
   const title = isCompany ? "Beri Rating Pekerja" : "Beri Rating Perusahaan";
@@ -31,7 +33,7 @@ export default function RatingModal({ raterType, targetName, jobTitle, onSubmit,
 
   const handleSubmit = () => {
     if (stars === 0) return;
-    onSubmit({ stars, comment, raterType, targetName });
+    onSubmit({ stars, comment, raterType, targetName, blacklist: isCompany ? blacklist : false });
   };
 
   return (
@@ -119,6 +121,47 @@ export default function RatingModal({ raterType, targetName, jobTitle, onSubmit,
             rows={3}
             className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all resize-none"
           />
+
+          {/* Blacklist toggle — employers only */}
+          {isCompany && (
+            <button
+              type="button"
+              onClick={() => setBlacklist((b) => !b)}
+              data-testid="toggle-blacklist"
+              className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-all ${
+                blacklist ? "border-red-300 bg-red-50" : "border-gray-200 bg-white"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                    blacklist ? "bg-red-100" : "bg-gray-100"
+                  }`}
+                >
+                  <Ban className={`h-5 w-5 ${blacklist ? "text-red-500" : "text-gray-400"}`} />
+                </div>
+                <div>
+                  <p className={`text-sm font-bold ${blacklist ? "text-red-700" : "text-gray-800"}`}>
+                    Blacklist pekerja ini
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-gray-500">
+                    {targetName} tidak akan melihat lowongan Anda lagi.
+                  </p>
+                </div>
+              </div>
+              <div
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                  blacklist ? "bg-red-500" : "bg-gray-200"
+                }`}
+              >
+                <div
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                    blacklist ? "translate-x-5" : "translate-x-0.5"
+                  }`}
+                />
+              </div>
+            </button>
+          )}
 
           <div className="pb-4">
             <button

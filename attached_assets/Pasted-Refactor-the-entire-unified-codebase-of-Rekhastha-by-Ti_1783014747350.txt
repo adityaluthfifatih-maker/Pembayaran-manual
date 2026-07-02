@@ -1,0 +1,42 @@
+Refactor the entire unified codebase of "Rekhastha by Tilu Company" to implement the ultimate dual-recruitment architecture (Instant & Regular) featuring a secure QR Code Presensi engine, aggressive instant alerts, and localized Indonesian financial workflows. 
+
+Please entirely rebuild the application with these strict algorithmic and UI rules over the Replit built-in backend (Postgres + live WebSocket):
+
+1. WORKER RADAR INTERFACE & ON/OFF TOGGLE SWITCH:
+- At the top of the Worker's screen, build an interactive Toggle Switch: "Status Radar Mencari Kerja".
+- RADAR ACTIVE (ON): Render the live map with a pulsing ring around the worker's location, connect to real-time WebSockets, and show an emerald toast: "🟢 Radar Aktif: Anda siap menerima lowongan instan terdekat!".
+- RADAR INACTIVE (OFF): Dim the map view, disconnect/filter out incoming real-time broadcast events, hide dynamic pulsing pins, and show a toast: "⚪ Radar Mati: Anda tidak akan menerima panggilan kerja instan sementara waktu".
+
+2. PERSISTENT URGENT ALARM & FLASHING SCREEN FOR INSTANT JOBS:
+- When a new "Broadcast Instan" payload arrives via WebSockets AND the Worker's Radar is turned ON:
+  * PERSISTENT AUDIO: Use a looping JavaScript Audio engine to repeatedly play a loud alert chime/buzzer every 2 seconds.
+  * FLASHING UI: Trigger a full-screen modal banner with a high-intensity pulsing red/emerald flashing background animation (`animate-pulse`).
+  * DISMISS REQUIRED: This audio chime and screen flashing MUST NOT STOP until the Worker explicitly clicks: "🟢 Terima Kerja" or "❌ Lewati". If accepted, render dynamic pulsing green pins on the interactive map layer.
+
+3. THE "CARI KERJA TERJADWAL" TAB & INDONESIAN WORK CATEGORIES:
+- Alongside the Radar view, provide a second tab titled "📅 Cari Kerja Terjadwal" to display regular jobs. Regular jobs push silently into this feed list over WebSockets without loud alarms or flashing screens.
+- In both Instant and Regular forms, implement the 4 Indonesian work categories inside the "Tipe Pembayaran" dropdown with dynamic labels:
+  * "Per Shift" -> Updates wage input label to: "Upah Per Shift *"
+  * "Per Hari (Harian Lepas)" -> Updates wage input label to: "Upah Per Hari *"
+  * "Per Proyek (Borongan)" -> Updates wage input label to: "Total Nilai Proyek / Borongan *"
+  * "Per Bulan (Kontrak Lepas)" -> Updates wage input label to: "Gaji Per Bulan *"
+
+4. AUTOMATIC RUPIAH FORMATTING & WORKER E-WALLET:
+- Apply a live JavaScript input mask on wage fields. Typing "150000" dynamically renders as "Rp 150.000" in the UI, while saving a clean integer (`150000`) in the backend database.
+- Inside the Worker's Dashboard, add a "Dompet Rekhastha" tab with a withdrawal form: Dropdown for GoPay, DANA, OVO, ShopeePay, and Bank Transfer, an account number field, and a summary: "Total Saldo Tersedia (Net 100% Bebas Potongan via 15% Employer Escrow Markup)".
+
+5. ADDING QR CODE PRESENSI SYSTEM (CHECK-IN & CHECK-OUT):
+- Add a secure QR Code scanning validation engine using a lightweight JS library (like qrcode.js or html5-qrcode API) to handle starting and ending work:
+  * STEP 1 (CHECK-IN): Once a Worker accepts a job, the Employer's UI renders a "📱 Tampilkan QR Presensi Masuk" button generating a unique secure QR code on screen. The Worker clicks "📷 Scan QR Code Masuk", initializing an integrated native live camera stream container. Scanning the Employer's screen successfully updates the database state to "Pekerja Sedang Bekerja" on both clients instantly.
+  * STEP 2 (CHECK-OUT): At shift completion, the Employer's UI outputs a "📱 Tampilkan QR Presensi Keluar" code. The Worker scans it via "📷 Scan QR Code Pulang" to close the camera stream, log the end timestamp, and trigger the escrow payment distribution release.
+
+6. EMPLOYER EVALUATION, RATING, & BLACKLIST MODAL:
+- The exact microsecond the worker finishes the Check-Out scan, pop open an automatic modal evaluation overlay on the Employer's screen:
+  * Render an interactive 1-5 Star rating selector and a short review comment text box.
+  * Add a "🚫 Masukkan Blacklist" toggle button (if active, flags a relation in Postgres so this worker can never see this employer's job pins/cards again).
+  * Add a "Selesaikan & Cairkan Dana Escrow" submit button to close the transaction state.
+
+7. BRANDING CONSISTENCY:
+- Wrap all new camera viewports, QR graphic displays, and modals cleanly using the premium Emerald Green and Gold luxury motif. Ensure the application name remains "Rekhastha by Tilu Company" with its iconic signature letter "R" inside the Emerald-Gold Shield crest icon.
+
+Compile this entire dual-device synchronized operational workflow into a clean single-file codebase structure and run the live application.

@@ -1,4 +1,5 @@
 - [Escrow Engine Architecture](escrow-engine.md) — Rekhastha escrow: rates, split calc, status flow, and which component owns each action.
+- [QR Presensi & Blacklist](attendance-blacklist.md) — attendance/blacklist routes derive identity from session (not body); tokens single-use+TTL; escrow release deduped on WS event id.
 - [Worker radar & instant classification](worker-radar.md) — isInstantGig is cepat-only; locked lama jobs broadcast but must stay silent (scheduled feed + purple pins).
 - [Payment type & wage model](payment-model.md) — 4 categories (no per_jam), legacy `per_projek` key kept, flat wage math, clean-integer WS payload, withdrawal callback shape.
 - [Realtime gig sync](realtime-gig-sync.md) — Postgres + WS live feed: client-provided PK, employer-silent/worker-alert gating, reconnect re-hydrate, drizzle-zod (not OpenAPI).

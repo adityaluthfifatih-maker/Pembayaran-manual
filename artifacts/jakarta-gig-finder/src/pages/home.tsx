@@ -7,6 +7,7 @@ import JobPostingModal from "@/components/job-posting-modal";
 import WorkerOnboarding from "@/components/worker-onboarding";
 import NotificationPanel from "@/components/notification-panel";
 import ClockInModal from "@/components/clock-in-modal";
+import AttendanceQrModal from "@/components/attendance-qr-modal";
 import RatingModal, { RatingPayload } from "@/components/rating-modal";
 import SOSButton from "@/components/sos-button";
 import PaySlipModal from "@/components/pay-slip-modal";
@@ -21,6 +22,8 @@ import ScheduledJobsFeed from "@/components/scheduled-jobs-feed";
 import { RekhasthaLogo } from "@/components/rekhastha-logo";
 import {
   subscribeToServer,
+  subscribeAttendance,
+  type AttendanceEvent,
   getActiveGigs,
   resetServer,
   randomGeofenceCoords,
@@ -29,6 +32,7 @@ import {
   fireNativeNotification,
   unlockAudio,
 } from "@/lib/central-server";
+import { createBlacklist, fetchEmployerIdsBlockingWorker } from "@/lib/blacklist-client";
 import AuthPage from "@/pages/auth";
 import { fetchMe, logout as logoutRequest } from "@/lib/auth-client";
 import WorkerProfilePage from "@/components/worker-profile-page";
@@ -48,7 +52,7 @@ import {
   MapPin, Clock, Banknote, Search, X, ShieldCheck, UserCircle,
   Map as MapIcon, Briefcase, TrendingUp, XCircle, MessageSquare,
   BarChart2, Home as HomeIcon, User, Users, Lock, CheckCircle2, AlertTriangle,
-  CalendarDays,
+  CalendarDays, QrCode,
 } from "lucide-react";
 
 // Device-unique, monotonic id base so gigs posted from two different physical
@@ -232,6 +236,12 @@ export default function Home() {
 
   // ── Central virtual server: live employer→worker broadcast sync ──
   const [centralGigs, setCentralGigs] = useState<CustomJob[]>(() => getActiveGigs());
+  // Employer ids that have blacklisted THIS worker (worker viewport only) — every
+  // gig from these employers is hidden from the radar, pins, and feeds.
+  const [blockedEmployerIds, setBlockedEmployerIds] = useState<Set<string>>(new Set());
+  const blockedEmployerIdsRef = useRef<Set<string>>(new Set());
+  // Employer-side QR Presensi board target (the job the employer is showing a QR for).
+  const [attendanceQrJob, setAttendanceQrJob] = useState<CustomJob | null>(null);
   const [alarmGig, setAlarmGig] = useState<CustomJob | null>(null);
   const [radarOn, setRadarOn] = useState(true);
   const radarOnRef = useRef(true);
@@ -251,6 +261,8 @@ export default function Home() {
       // accurate for any viewport.
       setCentralGigs([...gigs]);
       if (!gig) return; // bulk/reset signal — never a notification
+      // Suppress everything from an employer that has blacklisted this worker.
+      if (gig.employerId && blockedEmployerIdsRef.current.has(gig.employerId)) return;
       // Regular (lama) scheduled jobs are SILENT: they simply appear in the
       // "Cari Kerja Terjadwal" feed via centralGigs above — no buzzer, no flash.
       if (!isInstantGig(gig)) return;
@@ -268,6 +280,58 @@ export default function Home() {
     });
     return unsubscribe;
   }, []);
+
+  // ── Real-time QR attendance (Presensi) — EMPLOYER side ───────────
+  // The worker device flips its own shift state locally on a successful scan
+  // (see ClockInModal). This subscriber acts ONLY on the employer device that
+  // posted the job: a "pulang" scan releases escrow and opens the rating modal.
+  const attendanceHandlerRef = useRef<(e: AttendanceEvent) => void>(() => {});
+  // Guards against duplicate WebSocket frames of the same scan double-releasing
+  // escrow: each persisted attendance row has a unique id, so a repeat frame is
+  // dropped before it can trigger a second payout.
+  const processedAttendanceRef = useRef<Set<number>>(new Set());
+  attendanceHandlerRef.current = (e: AttendanceEvent) => {
+    if (!currentUser || currentUser.role !== "perusahaan") return;
+    const gig = allJobs.find((j) => j.id === e.jobId);
+    if (!gig || gig.employerId !== currentUser.id) return; // only my own jobs
+    if (e.kind !== "pulang") return; // masuk is confirmed inside the QR modal
+    if (processedAttendanceRef.current.has(e.id)) return; // duplicate frame
+    const notif = notifications.find(
+      (n) => n.jobId === e.jobId && n.status !== "selesai",
+    );
+    if (notif) {
+      processedAttendanceRef.current.add(e.id);
+      handleSplitPayment(notif.id);
+      setPendingRating({
+        raterType: "company",
+        targetName: e.workerName,
+        job: gig,
+      });
+    }
+  };
+  useEffect(() => {
+    return subscribeAttendance((e) => attendanceHandlerRef.current(e));
+  }, []);
+
+  // ── Worker: fetch which employers have blacklisted me ────────────
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "pekerja") {
+      const empty = new Set<string>();
+      setBlockedEmployerIds(empty);
+      blockedEmployerIdsRef.current = empty;
+      return;
+    }
+    const workerName = workerProfile?.namaLengkap || currentUser.name;
+    let cancelled = false;
+    fetchEmployerIdsBlockingWorker(workerName).then((ids) => {
+      if (cancelled) return;
+      setBlockedEmployerIds(ids);
+      blockedEmployerIdsRef.current = ids;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser, workerProfile]);
 
   // App init: request OS notification permission, and unlock the shared audio
   // context on the first user gesture so later chimes (incl. the role-switch
@@ -718,10 +782,12 @@ export default function Home() {
     for (const j of [...centralGigs, ...customJobs]) {
       if (seen.has(j.id)) continue;
       seen.add(j.id);
+      // Worker viewport: hide every gig from an employer that blacklisted me.
+      if (j.employerId && blockedEmployerIds.has(j.employerId)) continue;
       out.push(j);
     }
     return out;
-  }, [centralGigs, customJobs]);
+  }, [centralGigs, customJobs, blockedEmployerIds]);
 
   // Instant broadcasts → pulsing GREEN radar pins. Regular scheduled jobs → the
   // "Cari Kerja Terjadwal" feed. Purple pins = anything non-instant on the map.
@@ -786,7 +852,13 @@ export default function Home() {
     const coords = isBroadcast ? randomGeofenceCoords(5) : randomJakartaCoords();
     const newId = nextJobId++;
     const now = new Date();
-    const newJob: CustomJob = { id: newId, type: "custom_job", ...data, ...coords, postedAt: now };
+    const newJob: CustomJob = {
+      id: newId, type: "custom_job", ...data, ...coords, postedAt: now,
+      // Stamp the poster's identity so a blacklisted worker can be filtered out
+      // of this employer's feed on the worker's device.
+      employerId: data.employerId ?? currentUser?.id,
+      employerName: data.employerName ?? currentUser?.namaPerusahaan ?? currentUser?.name,
+    };
     setCustomJobs(p => [...p, newJob]);
     // Publish EVERY posting to the live server so it fans out to worker devices:
     // instant (cepat) jobs raise the persistent radar alarm on receivers, while
@@ -804,7 +876,7 @@ export default function Home() {
         note: `Dana dikunci otomatis oleh sistem. Lowongan aktif di peta setelah verifikasi.`,
       }]);
     }
-  }, []);
+  }, [currentUser]);
 
   // ── Apply ───────────────────────────────────────────────────────
   const handleApply = useCallback((job: CustomJob, profile: WorkerProfile) => {
@@ -1008,8 +1080,17 @@ export default function Home() {
 
   const handleRatingSubmit = useCallback((payload: RatingPayload) => {
     setRatings((p) => [...p, payload]);
+    // Employer opted to blacklist the worker from the rating modal → persist it.
+    if (payload.blacklist && payload.raterType === "company" && currentUser) {
+      void createBlacklist({
+        employerId: currentUser.id,
+        employerName: currentUser.namaPerusahaan || currentUser.name,
+        workerName: payload.targetName,
+        jobId: pendingRating?.job.id ?? null,
+      });
+    }
     setPendingRating(null);
-  }, []);
+  }, [currentUser, pendingRating]);
 
   const verified = workerProfile ? isVerified(workerProfile) : false;
 
@@ -1100,7 +1181,12 @@ export default function Home() {
         <ClockInModal job={activeJob} userLat={userLocation.lat} userLng={userLocation.lng}
           locationAccuracy={locationAccuracy}
           isClockedIn={jobStatus === "clocked_in"} clockedInAt={clockedInAt}
+          workerName={workerProfile?.namaLengkap || currentUser.name}
           onClockIn={handleClockIn} onClockOut={handleClockOut} onClose={() => setShowClockIn(false)} />
+      )}
+      {attendanceQrJob && (
+        <AttendanceQrModal jobId={attendanceQrJob.id} jobTitle={attendanceQrJob.posisi}
+          onClose={() => setAttendanceQrJob(null)} />
       )}
       {pendingRating && (
         <RatingModal raterType={pendingRating.raterType} targetName={pendingRating.targetName}
@@ -1212,11 +1298,21 @@ export default function Home() {
                             {n.hasNpwp && <p className="text-[10px] text-primary font-medium mt-0.5">✓ NPWP Terverifikasi</p>}
                           </div>
                         </div>
-                        <button
-                          onClick={() => setChatContext({ jobTitle: n.jobTitle, nominal: job?.nominal ?? 0, companyName: job?.namaPerusahaan || "Perusahaan Anda", workerName: n.applicantName, currentRole: "company", hiringMode: job?.hiringMode, jobId: job?.id })}
-                          className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-xl shrink-0 hover:bg-primary/90 transition-colors">
-                          <MessageSquare className="w-3.5 h-3.5" /> Chat
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {job && (
+                            <button
+                              onClick={() => setAttendanceQrJob(job)}
+                              data-testid={`button-presensi-qr-${n.id}`}
+                              className="flex items-center gap-1.5 bg-emerald-50 text-primary border border-primary/20 text-xs font-bold px-3 py-2 rounded-xl hover:bg-primary/10 transition-colors">
+                              <QrCode className="w-3.5 h-3.5" /> Presensi QR
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setChatContext({ jobTitle: n.jobTitle, nominal: job?.nominal ?? 0, companyName: job?.namaPerusahaan || "Perusahaan Anda", workerName: n.applicantName, currentRole: "company", hiringMode: job?.hiringMode, jobId: job?.id })}
+                            className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-primary/90 transition-colors">
+                            <MessageSquare className="w-3.5 h-3.5" /> Chat
+                          </button>
+                        </div>
                       </div>
                     );
                   })}

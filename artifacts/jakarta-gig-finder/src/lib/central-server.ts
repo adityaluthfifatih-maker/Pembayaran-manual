@@ -23,10 +23,21 @@ export type Gig = CustomJob;
 // `gig` is the newly broadcast gig, or `null` for a bulk state change (hydrate/reset).
 export type ServerSubscriber = (gig: Gig | null, activeGigs: Gig[]) => void;
 
+/** A live QR attendance (Presensi) event fanned out over the WebSocket. */
+export interface AttendanceEvent {
+  id: number;
+  jobId: number;
+  workerName: string;
+  kind: "masuk" | "pulang";
+  at: string;
+}
+export type AttendanceSubscriber = (event: AttendanceEvent) => void;
+
 const API_BASE = "/api";
 
 let activeGigs: Gig[] = [];
 let subscribers: ServerSubscriber[] = [];
+let attendanceSubscribers: AttendanceSubscriber[] = [];
 
 function notify(gig: Gig | null): void {
   for (const cb of [...subscribers]) {
@@ -114,11 +125,21 @@ function connectWs(): void {
         const msg = JSON.parse(ev.data as string) as {
           type: string;
           gig?: Record<string, unknown>;
+          attendance?: Record<string, unknown>;
         };
         if (msg.type === "gig_broadcast" && msg.gig) {
           const gig = reviveGig(msg.gig);
           upsertLocal(gig);
           notify(gig); // per-gig → receiving worker device alerts
+        } else if (msg.type === "attendance" && msg.attendance) {
+          const event = msg.attendance as unknown as AttendanceEvent;
+          for (const cb of [...attendanceSubscribers]) {
+            try {
+              cb(event);
+            } catch {
+              /* a broken subscriber must not break the fan-out */
+            }
+          }
         }
       } catch {
         /* ignore malformed frames */
@@ -194,6 +215,18 @@ export function subscribeToServer(cb: ServerSubscriber): () => void {
   }
   return () => {
     subscribers = subscribers.filter((s) => s !== cb);
+  };
+}
+
+/**
+ * Subscribe to live QR attendance events (a worker scanned a masuk/pulang QR).
+ * Ensures the WebSocket is started. Returns an unsubscribe function.
+ */
+export function subscribeAttendance(cb: AttendanceSubscriber): () => void {
+  attendanceSubscribers.push(cb);
+  ensureStarted();
+  return () => {
+    attendanceSubscribers = attendanceSubscribers.filter((s) => s !== cb);
   };
 }
 

@@ -68,3 +68,12 @@ function broadcast(payload: unknown): void {
 export function broadcastGig(gig: unknown): void {
   broadcast({ type: "gig_broadcast", gig });
 }
+
+/**
+ * Push a QR attendance event (a worker scanned an employer's masuk/pulang QR)
+ * to every connected device. The employer device that posted the job releases
+ * escrow on a "pulang"; the worker device flips its shift state.
+ */
+export function broadcastAttendance(attendance: unknown): void {
+  broadcast({ type: "attendance", attendance });
+}
