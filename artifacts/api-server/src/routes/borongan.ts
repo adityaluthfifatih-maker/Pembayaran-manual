@@ -36,7 +36,10 @@ function dailyFractionFor(
 
 const submitBody = z.object({
   jobId: z.coerce.number(),
-  proofUrl: z.string().min(3),
+  proofUrl: z.string().url().refine(
+    (u) => u.startsWith("https://") || u.startsWith("http://"),
+    { message: "URL bukti kerja harus menggunakan protokol http atau https." },
+  ),
 });
 
 /** Worker submits a proof-of-work URL to claim milestone payment. */
