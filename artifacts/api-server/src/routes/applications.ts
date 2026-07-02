@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, desc, and, or } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, applicationsTable, gigsTable } from "@workspace/db";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
@@ -34,6 +34,10 @@ router.post("/applications", async (req, res): Promise<void> => {
   const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
   if (!user) {
     res.status(401).json({ error: "Tidak terautentikasi." });
+    return;
+  }
+  if (user.role !== "pekerja") {
+    res.status(403).json({ error: "Hanya pekerja yang dapat melamar pekerjaan." });
     return;
   }
   const parsed = applyBody.safeParse(req.body);
@@ -115,6 +119,10 @@ router.patch("/applications/:id/status", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Tidak terautentikasi." });
     return;
   }
+  if (user.role !== "perusahaan") {
+    res.status(403).json({ error: "Hanya pemberi kerja yang dapat mengubah status lamaran." });
+    return;
+  }
   const id = Number(req.params.id);
   if (!id || isNaN(id)) {
     res.status(400).json({ error: "ID lamaran tidak valid." });
@@ -135,10 +143,7 @@ router.patch("/applications/:id/status", async (req, res): Promise<void> => {
     .where(
       and(
         eq(applicationsTable.id, id),
-        or(
-          eq(applicationsTable.employerId, user.id),
-          eq(applicationsTable.employerId, ""), // demo/unregistered gig fallback
-        ),
+        eq(applicationsTable.employerId, user.id),
       ),
     )
     .returning();

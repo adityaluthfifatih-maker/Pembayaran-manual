@@ -326,29 +326,44 @@ export default function Home() {
   const applicationHandlerRef = useRef<(e: ApplicationEvent) => void>(() => {});
   const processedApplicationRef = useRef<Set<number>>(new Set());
   applicationHandlerRef.current = (e: ApplicationEvent) => {
-    if (!currentUser || currentUser.role !== "perusahaan") return;
-    // Ignore `application_status` partial events (workerName is absent)
-    if (!e.workerName) return;
-    const gig = allJobs.find((j) => j.id === e.jobId);
-    if (!gig || gig.employerId !== currentUser.id) return; // only my own jobs
-    if (processedApplicationRef.current.has(e.id)) return; // duplicate WS frame
-    processedApplicationRef.current.add(e.id);
-    const notif: ApplicationNotification = {
-      id: nextNotifId++,
-      serverId: e.id,  // DB row id for server-side status persistence
-      jobId: e.jobId,
-      jobTitle: e.jobTitle || gig.posisi,
-      applicantName: e.workerName,
-      applicantNikMasked: e.workerNikMasked,
-      applicantNpwpMasked: e.workerNpwpMasked,
-      hasNpwp: e.hasNpwp,
-      bank: e.bank,
-      rekening: e.rekening,
-      timestamp: new Date(e.createdAt),
-      status: e.status as ApplicationStatus,
-    };
-    setNotifications((p) => [notif, ...p]);
-    setApplicantToast(notif);
+    if (!currentUser) return;
+
+    if (currentUser.role === "perusahaan") {
+      // ── Employer side: new application arrived (application_new) ──────
+      // Partial status events have no workerName — skip them on the employer.
+      if (!e.workerName) return;
+      const gig = allJobs.find((j) => j.id === e.jobId);
+      if (!gig || gig.employerId !== currentUser.id) return; // only my own jobs
+      if (processedApplicationRef.current.has(e.id)) return; // duplicate WS frame
+      processedApplicationRef.current.add(e.id);
+      const notif: ApplicationNotification = {
+        id: nextNotifId++,
+        serverId: e.id,  // DB row id for server-side status persistence
+        jobId: e.jobId,
+        jobTitle: e.jobTitle || gig.posisi,
+        applicantName: e.workerName,
+        applicantNikMasked: e.workerNikMasked,
+        applicantNpwpMasked: e.workerNpwpMasked,
+        hasNpwp: e.hasNpwp,
+        bank: e.bank,
+        rekening: e.rekening,
+        timestamp: new Date(e.createdAt),
+        status: e.status as ApplicationStatus,
+      };
+      setNotifications((p) => [notif, ...p]);
+      setApplicantToast(notif);
+    } else if (currentUser.role === "pekerja" && !e.workerName) {
+      // ── Worker side: employer changed their application status ─────────
+      // Partial application_status events carry id/status/jobId only. We match
+      // on `serverId` (DB row id back-filled when postApplication succeeded).
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.serverId === e.id
+            ? { ...n, status: e.status as ApplicationStatus }
+            : n,
+        ),
+      );
+    }
   };
   useEffect(() => {
     return subscribeApplication((e) => applicationHandlerRef.current(e));
