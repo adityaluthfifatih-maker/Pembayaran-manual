@@ -30,6 +30,7 @@ import {
   unlockAudio,
 } from "@/lib/central-server";
 import AuthPage from "@/pages/auth";
+import { fetchMe, logout as logoutRequest } from "@/lib/auth-client";
 import WorkerProfilePage from "@/components/worker-profile-page";
 import CompanyProfilePage from "@/components/company-profile-page";
 import { workers, Worker } from "@/data/workers";
@@ -152,6 +153,7 @@ function makeDemoNotifs(jobs: CustomJob[]): ApplicationNotification[] {
 export default function Home() {
   // ── Auth & navigation ──────────────────────────────────────────
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
   const [activeTab, setActiveTab] = useState<AppTab>("home");
   const [mode, setMode] = useState<"perusahaan" | "pekerja">("perusahaan");
   const [companyView, setCompanyView] = useState<CompanyView>("jobs");
@@ -319,6 +321,7 @@ export default function Home() {
   }, []);
 
   const handleLogout = useCallback(() => {
+    void logoutRequest();
     setCurrentUser(null);
     setActiveTab("home");
     setMode("perusahaan");
@@ -346,6 +349,21 @@ export default function Home() {
     setPlatformBalance(0);
     setEscrowEvents([]);
   }, []);
+
+  // ── Restore a persisted session on load ─────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    fetchMe()
+      .then((user) => {
+        if (!cancelled && user) handleAuthComplete(user);
+      })
+      .finally(() => {
+        if (!cancelled) setAuthChecking(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [handleAuthComplete]);
 
   // ── Escrow handlers ─────────────────────────────────────────────
   const handleSplitPayment = useCallback((notifId: number) => {
@@ -934,6 +952,18 @@ export default function Home() {
   const verified = workerProfile ? isVerified(workerProfile) : false;
 
   // ── Auth gate ───────────────────────────────────────────────────
+  if (authChecking) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center h-[100dvh] w-full gap-4"
+        style={{ background: "linear-gradient(160deg, #065F46 0%, #059669 55%, #10B981 100%)" }}
+      >
+        <RekhasthaLogo size={48} variant="light" showSubtitle wordmarkClassName="text-2xl" />
+        <span className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   if (!currentUser) {
     return <AuthPage onComplete={handleAuthComplete} />;
   }

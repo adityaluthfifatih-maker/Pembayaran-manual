@@ -4,14 +4,13 @@ import { AuthUser, UserRole, EmployerCategory } from "@/types/auth";
 import RoleSelectModal from "@/components/role-select-modal";
 import TermsModal from "@/components/terms-modal";
 import { RekhasthaLogo } from "@/components/rekhastha-logo";
+import { AuthError, login, loginWithGoogle, register, type RegisterPayload } from "@/lib/auth-client";
 
 interface AuthPageProps {
   onComplete: (user: AuthUser) => void;
 }
 
 type AuthTab = "masuk" | "daftar";
-
-let uidCounter = 1;
 
 export default function AuthPage({ onComplete }: AuthPageProps) {
   const [tab, setTab] = useState<AuthTab>("masuk");
@@ -36,43 +35,68 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
   const [namaOrganisasi, setNamaOrganisasi] = useState("");
   const [kodeWilayah, setKodeWilayah] = useState("");
 
-  // Role selection state
-  const [pendingUser, setPendingUser] = useState<Omit<AuthUser, "role"> | null>(null);
+  // Role selection state — the role modal is shown for registration (and for a
+  // first-time Google login) so the user picks pekerja vs perusahaan.
+  const [pendingRegister, setPendingRegister] = useState<Omit<RegisterPayload, "role"> | null>(null);
+  const [pendingGoogle, setPendingGoogle] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
 
-  const triggerRoleSelect = (partial: Omit<AuthUser, "role">) => {
-    setPendingUser(partial);
-    setShowRoleModal(true);
+  const describeError = (e: unknown, fallback: string) =>
+    e instanceof AuthError ? e.message : fallback;
+
+  const handleRoleSelected = async (role: UserRole) => {
+    setError(null);
+    setLoading(true);
+    try {
+      const user = pendingGoogle
+        ? await loginWithGoogle(role)
+        : pendingRegister
+          ? await register({ ...pendingRegister, role })
+          : null;
+      if (user) {
+        setShowRoleModal(false);
+        onComplete(user);
+      }
+    } catch (e) {
+      setShowRoleModal(false);
+      setError(describeError(e, "Gagal membuat akun."));
+    } finally {
+      setLoading(false);
+      setPendingGoogle(false);
+      setPendingRegister(null);
+    }
   };
 
-  const handleRoleSelected = (role: UserRole) => {
-    if (!pendingUser) return;
-    setShowRoleModal(false);
-    onComplete({ ...pendingUser, role });
-  };
-
-  const handleConventional = (e: React.FormEvent) => {
+  const handleConventional = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!email.includes("@")) { setError("Email tidak valid."); return; }
     if (password.length < 6) { setError("Password minimal 6 karakter."); return; }
-    if (tab === "daftar" && !name.trim()) { setError("Nama akun wajib diisi."); return; }
 
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      const employerFields =
-        tab === "daftar" && isEmployer ? buildEmployerFields() : {};
-      triggerRoleSelect({
-        id: `user-${++uidCounter}`,
-        name: tab === "daftar" ? name.trim() : email.split("@")[0],
-        email,
-        whatsapp: whatsapp || undefined,
-        linkedWithGoogle: false,
-        ...employerFields,
-      });
-    }, 900);
+    if (tab === "masuk") {
+      setLoading(true);
+      try {
+        onComplete(await login(email, password));
+      } catch (e) {
+        setError(describeError(e, "Gagal masuk."));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Registration: validate, stash the payload, then ask for a role.
+    if (!name.trim()) { setError("Nama akun wajib diisi."); return; }
+    const employerFields = isEmployer ? buildEmployerFields() : {};
+    setPendingRegister({
+      name: name.trim(),
+      email,
+      password,
+      whatsapp: whatsapp || undefined,
+      ...employerFields,
+    });
+    setShowRoleModal(true);
   };
 
   const buildEmployerFields = (): Partial<AuthUser> => {
@@ -98,21 +122,23 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
     }
   };
 
-  const handleGoogle = () => {
+  const handleGoogle = async () => {
+    setError(null);
     setLoading(true);
-    const googleNames = ["Andi Pratama", "Sari Dewi", "Rizky Firmansyah", "Mega Putri", "Doni Setiawan"];
-    const googleName = googleNames[Math.floor(Math.random() * googleNames.length)];
-    const googleEmail = googleName.toLowerCase().replace(" ", ".") + "@gmail.com";
-    setTimeout(() => {
+    try {
+      // Existing Google account logs straight in.
+      onComplete(await loginWithGoogle());
+    } catch (e) {
+      // First-time Google login needs a role → show the role modal.
+      if (e instanceof AuthError && e.status === 422) {
+        setPendingGoogle(true);
+        setShowRoleModal(true);
+      } else {
+        setError(describeError(e, "Gagal masuk dengan Google."));
+      }
+    } finally {
       setLoading(false);
-      triggerRoleSelect({
-        id: `google-${++uidCounter}`,
-        name: googleName,
-        email: googleEmail,
-        linkedWithGoogle: true,
-        googleAvatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(googleName)}&background=4285F4&color=fff&size=64`,
-      });
-    }, 1100);
+    }
   };
 
   return (
@@ -324,7 +350,7 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
       </div>
 
       {showRoleModal && (
-        <RoleSelectModal onSelect={handleRoleSelected} isGoogle={pendingUser?.linkedWithGoogle ?? false} />
+        <RoleSelectModal onSelect={handleRoleSelected} isGoogle={pendingGoogle} />
       )}
 
       {showTerms && <TermsModal onClose={() => setShowTerms(false)} />}

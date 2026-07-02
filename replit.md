@@ -25,8 +25,11 @@ _Replace the heading above with the project's name, and this line with one sente
 - `artifacts/jakarta-gig-finder` — the Rekhastha web app (React + Vite), served at `/`.
 - `artifacts/api-server` — Express API, served at `/api`; REST + WebSocket.
 - `lib/db/src/schema/gigs.ts` — source of truth for the live gig table.
+- `lib/db/src/schema/users.ts` — users + sessions tables (real accounts).
 - `artifacts/jakarta-gig-finder/src/lib/central-server.ts` — browser client for the gig feed (fetch hydrate + WebSocket) plus the audio/notification alert engine.
+- `artifacts/jakarta-gig-finder/src/lib/auth-client.ts` — browser auth client (register/login/logout/me).
 - `artifacts/api-server/src/lib/realtime.ts` — WebSocket hub (`/api/ws`, fan-out).
+- `artifacts/api-server/src/lib/auth.ts` + `src/routes/auth.ts` — session helpers and the `/api/auth/*` endpoints.
 
 ## Architecture decisions
 
@@ -34,6 +37,7 @@ _Replace the heading above with the project's name, and this line with one sente
 - Gig primary keys are **client-provided** (device-random prefix + counter), not `serial`, so an optimistic local entry reconciles with the WS echo by id.
 - The device that posts a gig stays silent; the chime + OS notification fire only on receiving worker-mode devices (gated in `home.tsx`'s subscriber).
 - Gig POST bodies are validated with `drizzle-zod` (`insertGigSchema`), a deliberate deviation from the repo's OpenAPI/Orval contract-first default, because the payload is the bespoke frontend `CustomJob`.
+- Auth is custom bcrypt email/password over an httpOnly session cookie (not Clerk/Replit Auth), to preserve the bespoke Indonesian login UI and rich `AuthUser` shape. See `.agents/memory/auth-accounts.md`.
 
 ## Product
 
