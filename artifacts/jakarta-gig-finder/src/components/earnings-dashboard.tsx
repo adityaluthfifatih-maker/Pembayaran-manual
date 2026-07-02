@@ -1,5 +1,5 @@
 import { X, TrendingUp, Banknote, ShieldCheck, AlertCircle, Star, FileText } from "lucide-react";
-import { WorkerProfile, pph21Rate, isVerified } from "@/types/worker-profile";
+import { WorkerProfile, isVerified } from "@/types/worker-profile";
 import { ApplicationNotification } from "@/types/notification";
 
 interface EarningsDashboardProps {
@@ -16,11 +16,9 @@ function formatRp(v: number) { return "Rp " + v.toLocaleString("id-ID"); }
 export default function EarningsDashboard({
   workerProfile, reputationPoints, completedJobs, totalEarned, onDownloadSlip, onClose,
 }: EarningsDashboardProps) {
-  const pphRate = pph21Rate(workerProfile);
   const totalGross = totalEarned;
   const totalCommission = Math.round(totalGross * 0.15);
-  const totalPph = Math.round(totalGross * pphRate);
-  const totalNet = totalGross - totalCommission - totalPph;
+  const totalNet = totalGross - totalCommission;
   const verified = isVerified(workerProfile);
 
   const repColor = reputationPoints >= 80 ? "text-primary" : reputationPoints >= 50 ? "text-amber-600" : "text-red-600";
@@ -56,7 +54,7 @@ export default function EarningsDashboard({
               : <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />}
             <div>
               <p className={`text-sm font-bold ${verified ? "text-primary" : "text-amber-700"}`}>
-                {verified ? "Akun Terverifikasi Pajak" : "Profil Belum Lengkap"}
+                {verified ? "Akun Terverifikasi" : "Profil Belum Lengkap"}
               </p>
               <p className="text-xs text-gray-500">
                 {verified ? "Data KTP, NPWP, dan rekening terverifikasi" : "Lengkapi data untuk meningkatkan kepercayaan perusahaan"}
@@ -108,11 +106,10 @@ export default function EarningsDashboard({
                   <span className="opacity-70">Komisi Platform (15%)</span>
                   <span className="font-semibold">- {formatRp(totalCommission)}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="opacity-70">PPh 21 ({workerProfile.belumPunyaNpwp ? "6%" : "5%"})</span>
-                  <span className="font-semibold">- {formatRp(totalPph)}</span>
-                </div>
               </div>
+              <p className="text-[10px] opacity-70 leading-relaxed border-t border-white/20 pt-2.5">
+                Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.
+              </p>
             </div>
           </div>
 
@@ -168,7 +165,7 @@ export default function EarningsDashboard({
               className="w-full border-2 border-primary text-primary font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 hover:bg-primary/5 active:scale-[0.98] transition-all"
             >
               <FileText className="w-5 h-5" />
-              Unduh Slip Gaji & Bukti Potong PPh 21
+              Unduh Slip Gaji
             </button>
           </div>
         </div>

@@ -6,7 +6,7 @@ interface NotificationPanelProps {
   notifications: ApplicationNotification[];
   onStatusChange: (id: number, status: ApplicationStatus) => void;
   onOpenChat?: (notif: ApplicationNotification) => void;
-  onMarkComplete?: (notifId: number, hasNpwp: boolean) => void;
+  onMarkComplete?: (notifId: number) => void;
   onDispute?: (notifId: number) => void;
 }
 
@@ -145,14 +145,12 @@ export default function NotificationPanel({ notifications, onStatusChange, onOpe
                               <DataRow label="No. Rekening" value={n.rekening} />
                             </div>
 
-                            {!n.hasNpwp && (
-                              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
-                                <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-                                <p className="text-[11px] text-amber-700 leading-relaxed">
-                                  Pelamar belum memiliki NPWP. Pemotongan PPh 21 akan lebih tinggi 20% (tarif 6%).
-                                </p>
-                              </div>
-                            )}
+                            <div className="flex items-start gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+                              <ShieldCheck className="w-3.5 h-3.5 text-gray-400 shrink-0 mt-0.5" />
+                              <p className="text-[11px] text-gray-600 leading-relaxed">
+                                Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.
+                              </p>
+                            </div>
 
                             {/* Open chat button (available for accepted/reviewed) */}
                             {onOpenChat && (n.status === "diterima" || n.status === "ditinjau") && (
@@ -201,7 +199,7 @@ export default function NotificationPanel({ notifications, onStatusChange, onOpe
                                   {onMarkComplete && (
                                     <button
                                       data-testid={`button-complete-${n.id}`}
-                                      onClick={() => { onMarkComplete(n.id, n.hasNpwp); setOpen(false); }}
+                                      onClick={() => { onMarkComplete(n.id); setOpen(false); }}
                                       className="flex-1 flex items-center justify-center gap-1.5 bg-primary text-white text-xs font-bold py-2.5 rounded-xl hover:bg-primary/90 active:scale-[0.97] transition-all"
                                     >
                                       <CheckCircle className="w-3.5 h-3.5" /> Selesai &amp; Bayar Pekerja

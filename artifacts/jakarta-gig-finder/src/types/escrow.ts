@@ -27,8 +27,6 @@ export interface WalletTransaction {
 export const PLATFORM_RATE = 0.10;         // 10% komisi platform (default/legacy)
 export const PLATFORM_FEE_CEPAT = 0.15;   // 15% biaya sistem — Mode Butuh Cepat (instant broadcast)
 export const PLATFORM_FEE_LAMA = 0.07;    // 7%  biaya sistem — Mode Bisa Lama (scheduled contract)
-export const PPH_WITH_NPWP = 0.025;        // Catatan: pajak menjadi tanggung jawab mandiri pihak
-export const PPH_WITHOUT_NPWP = 0.03;      // Catatan: pajak menjadi tanggung jawab mandiri pihak
 export const ADMIN_DISPUTE_FEE = 0.05;     // 5% biaya admin sengketa
 export const CANCELLATION_FEE_1HR = 20_000; // Rp 20.000 potongan jika pemberi kerja batal <1 jam
 
@@ -56,11 +54,8 @@ export function calcEscrowAmount(
   return perDay * jumlahHari * kuota;
 }
 
-export function calcSplit(grossAmount: number, hasNpwp: boolean) {
+export function calcSplit(grossAmount: number) {
   const platformCut = Math.round(grossAmount * PLATFORM_RATE);
-  const remainAfterPlatform = grossAmount - platformCut;
-  const pphRate = hasNpwp ? PPH_WITH_NPWP : PPH_WITHOUT_NPWP;
-  const pphCut = Math.round(remainAfterPlatform * pphRate);
-  const workerNet = remainAfterPlatform - pphCut;
-  return { platformCut, pphCut, workerNet, pphRate };
+  const workerNet = grossAmount - platformCut;
+  return { platformCut, workerNet };
 }

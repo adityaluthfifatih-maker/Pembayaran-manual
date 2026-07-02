@@ -38,6 +38,9 @@ import {
 
 let nextJobId = 100;
 
+// Standby / backup workers for Butuh Cepat re-route on no-show
+const STANDBY_WORKERS = ["Ahmad", "Rian", "Siti"];
+
 function fmtCountdown(ms: number): string {
   if (ms < 0) ms = 0;
   const totalSec = Math.floor(ms / 1000);
@@ -164,10 +167,12 @@ export default function Home() {
 
   // ── Discipline & dispute-window engines ─────────────────────────
   const [graceDeadline, setGraceDeadline] = useState<number | null>(null);   // 15-min Clock-In grace
+  const [graceJob, setGraceJob] = useState<CustomJob | null>(null);           // job snapshot for grace-expiry penalty/re-route (survives activeJob changes)
   const [disputeDeadline, setDisputeDeadline] = useState<number | null>(null); // 24-hour post-shift window
   const [disputeJob, setDisputeJob] = useState<CustomJob | null>(null);       // job snapshot for auto-release (survives UI close)
   const [contractClosed, setContractClosed] = useState(false);
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [standbyReroute, setStandbyReroute] = useState<{ workerName: string; jobTitle: string } | null>(null); // Butuh Cepat re-route on no-show
 
   // ── Ratings ─────────────────────────────────────────────────────
   const [ratings, setRatings] = useState<RatingPayload[]>([]);
@@ -246,9 +251,11 @@ export default function Home() {
     setActiveJob(null);
     setJobStatus(null);
     setGraceDeadline(null);
+    setGraceJob(null);
     setDisputeDeadline(null);
     setDisputeJob(null);
     setContractClosed(false);
+    setStandbyReroute(null);
     setReputationPoints(100);
     setWalletBalance(0);
     setWalletTransactions([]);
@@ -257,12 +264,12 @@ export default function Home() {
   }, []);
 
   // ── Escrow handlers ─────────────────────────────────────────────
-  const handleSplitPayment = useCallback((notifId: number, hasNpwp: boolean) => {
+  const handleSplitPayment = useCallback((notifId: number) => {
     const notif = notifications.find(n => n.id === notifId);
     if (!notif || notif.status === "selesai") return;
     const job = customJobs.find(j => j.id === notif.jobId);
     const gross = job?.escrowAmount ?? calcTotal(job?.nominal ?? 0, job?.pembayaran ?? "per_shift");
-    const { platformCut, pphCut, workerNet } = calcSplit(gross, hasNpwp);
+    const { platformCut, workerNet } = calcSplit(gross);
 
     setCustomJobs(prev => prev.map(j =>
       j.id === notif.jobId ? { ...j, escrowStatus: "released" as const } : j
@@ -275,7 +282,7 @@ export default function Home() {
       label: "Gaji bersih — pekerjaan selesai",
       jobTitle: notif.jobTitle,
       timestamp: new Date(),
-      note: `PPh ${hasNpwp ? "2.5%" : "3%"} Rp ${pphCut.toLocaleString("id-ID")} + Komisi 10% Rp ${platformCut.toLocaleString("id-ID")}`,
+      note: `Komisi platform 10% Rp ${platformCut.toLocaleString("id-ID")} dipotong. Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.`,
     }]);
     setPlatformBalance(prev => prev + platformCut);
     setTotalEarned(prev => prev + gross);
@@ -291,7 +298,7 @@ export default function Home() {
       actor: "company",
       amount: workerNet,
       timestamp: new Date(),
-      note: `Pekerja: ${notif.applicantName}. PPh ${hasNpwp ? "2.5%" : "3%"} + komisi 10% dipotong. Dana ditransfer ke e-wallet pekerja.`,
+      note: `Pekerja: ${notif.applicantName}. Komisi platform 10% dipotong. Dana ditransfer ke e-wallet pekerja.`,
     }]);
   }, [notifications, customJobs]);
 
@@ -400,8 +407,7 @@ export default function Home() {
     const job = customJobs.find(j => j.id === jobId);
     if (!job || !job.escrowAmount) return;
     if (winner === "worker") {
-      const hasNpwp = workerProfile ? !workerProfile.belumPunyaNpwp : true;
-      const { platformCut, pphCut, workerNet } = calcSplit(job.escrowAmount, hasNpwp);
+      const { platformCut, workerNet } = calcSplit(job.escrowAmount);
       setWalletBalance(prev => prev + workerNet);
       setWalletTransactions(prev => [...prev, {
         id: Date.now(),
@@ -410,7 +416,7 @@ export default function Home() {
         label: "Keputusan Admin — Pekerja Menang",
         jobTitle: job.posisi,
         timestamp: new Date(),
-        note: `Dipotong: Rp ${(pphCut + platformCut).toLocaleString("id-ID")}`,
+        note: `Dipotong komisi platform: Rp ${platformCut.toLocaleString("id-ID")}`,
       }]);
       setPlatformBalance(prev => prev + platformCut);
     } else {
@@ -428,10 +434,9 @@ export default function Home() {
       fromStatus: "disputed",
       toStatus: finalStatus,
       actor: "admin",
-      amount: winner === "worker" ? (() => {
-        const hasNpwp = workerProfile ? !workerProfile.belumPunyaNpwp : true;
-        return calcSplit(job.escrowAmount!, hasNpwp).workerNet;
-      })() : Math.round((job.escrowAmount ?? 0) * (1 - ADMIN_DISPUTE_FEE)),
+      amount: winner === "worker"
+        ? calcSplit(job.escrowAmount!).workerNet
+        : Math.round((job.escrowAmount ?? 0) * (1 - ADMIN_DISPUTE_FEE)),
       timestamp: new Date(),
       note: winner === "worker"
         ? `Admin memutuskan pekerja menang. Dana dilepas ke e-wallet pekerja setelah potongan.`
@@ -466,13 +471,13 @@ export default function Home() {
         id: 1, type: "credit", amount: 2_835_000,
         label: "Gaji bersih — pekerjaan selesai", jobTitle: "Event Staff Runner",
         timestamp: new Date(Date.now() - 2 * 86_400_000),
-        note: "PPh 2.5% Rp 72.000 + Komisi 10% Rp 315.000",
+        note: "Komisi platform 10% Rp 315.000 dipotong.",
       };
       const demoTx2: WalletTransaction = {
         id: 2, type: "credit", amount: 936_000,
         label: "Gaji bersih — pekerjaan selesai", jobTitle: "Barista Part-Time",
         timestamp: new Date(Date.now() - 5 * 86_400_000),
-        note: "PPh 2.5% Rp 24.000 + Komisi 10% Rp 104.000",
+        note: "Komisi platform 10% Rp 104.000 dipotong.",
       };
       setWalletBalance(3_771_000);
       setWalletTransactions([demoTx2, demoTx1]);
@@ -505,7 +510,7 @@ export default function Home() {
           actor: "company",
           amount: 2_835_000,
           timestamp: new Date(Date.now() - 2 * 86_400_000),
-          note: `Perusahaan menyetujui pembayaran. PPh 2.5% + komisi 10% dipotong otomatis.`,
+          note: `Perusahaan menyetujui pembayaran. Komisi platform 10% dipotong.`,
         },
         {
           id: Date.now() + 101,
@@ -516,7 +521,7 @@ export default function Home() {
           actor: "company",
           amount: 936_000,
           timestamp: new Date(Date.now() - 5 * 86_400_000),
-          note: `Perusahaan menyetujui pembayaran. PPh 2.5% + komisi 10% dipotong otomatis.`,
+          note: `Perusahaan menyetujui pembayaran. Komisi platform 10% dipotong.`,
         },
       ]);
       setRatings([
@@ -644,6 +649,8 @@ export default function Home() {
     setContractClosed(false);
     setDisputeDeadline(null);
     setDisputeJob(null);
+    setStandbyReroute(null);
+    setGraceJob(job); // snapshot job so grace-expiry penalty/re-route target the right job
     setGraceDeadline(Date.now() + CLOCKIN_GRACE_MS); // start 15-min Clock-In grace timer
   }, []);
 
@@ -684,24 +691,47 @@ export default function Home() {
 
   // ── Worker discipline: 15-min late Clock-In penalty ─────────────
   const handleLateClockInPenalty = useCallback(() => {
-    if (!activeJob) return;
+    if (!graceJob) return;
     setWalletBalance(prev => prev - LATE_CLOCKIN_PENALTY);
     setWalletTransactions(prev => [{
       id: Date.now(), type: "debit" as const,
       amount: LATE_CLOCKIN_PENALTY,
       label: "Denda Gagal Clock-In Tepat Waktu (15 Menit)",
-      jobTitle: activeJob.posisi,
+      jobTitle: graceJob.posisi,
       timestamp: new Date(),
       note: "Dikreditkan ke Pemberi Kerja sebagai kompensasi kehilangan waktu (lost-time).",
     }, ...prev]);
     setReputationPoints(p => Math.max(0, p - 15));
     setEscrowEvents(prev => [...prev, {
-      id: Date.now(), jobId: activeJob.id, jobTitle: activeJob.posisi,
+      id: Date.now(), jobId: graceJob.id, jobTitle: graceJob.posisi,
       toStatus: "locked" as const, actor: "system" as const,
       amount: LATE_CLOCKIN_PENALTY, timestamp: new Date(),
       note: "Pekerja gagal Clock-In dalam 15 menit sejak shift dimulai. Denda Rp15.000 dipotong otomatis & dikreditkan ke Pemberi Kerja.",
     }]);
-  }, [activeJob]);
+  }, [graceJob]);
+
+  // ── Butuh Cepat: re-route to next standby worker on 15-min no-show ─
+  // Only fires for Mode Butuh Cepat (cepat) jobs; scheduled (lama) jobs only incur the penalty.
+  const handleStandbyReroute = useCallback(() => {
+    if (!graceJob || graceJob.hiringMode !== "cepat") return;
+    const standbyName = STANDBY_WORKERS[Math.floor(Math.random() * STANDBY_WORKERS.length)] ?? "Ahmad";
+    setStandbyReroute({ workerName: standbyName, jobTitle: graceJob.posisi });
+    setEscrowEvents(prev => [...prev, {
+      id: Date.now() + 1, jobId: graceJob.id, jobTitle: graceJob.posisi,
+      toStatus: "locked" as const, actor: "system" as const,
+      timestamp: new Date(),
+      note: `Mode Butuh Cepat: lowongan dialihkan otomatis ke pekerja standby berikutnya (${standbyName}). Dana escrow tetap terkunci untuk pekerja pengganti.`,
+    }]);
+    setNotifications(prev => [{
+      id: nextNotifId++, jobId: graceJob.id, jobTitle: graceJob.posisi,
+      applicantName: standbyName,
+      applicantNikMasked: "3175••••••••0001",
+      applicantNpwpMasked: "••••••0001",
+      hasNpwp: true,
+      bank: "BCA", rekening: "123••••789",
+      timestamp: new Date(), status: "baru" as ApplicationStatus,
+    }, ...prev]);
+  }, [graceJob]);
 
   // ── Dispute window: auto-release escrow after 24h ───────────────
   // Uses the captured `disputeJob` snapshot (not `activeJob`) so it still fires
@@ -713,8 +743,7 @@ export default function Home() {
     const live = customJobs.find(j => j.id === job.id);
     if (live && (live.escrowStatus === "disputed" || live.escrowStatus === "released")) return;
     const gross = job.escrowAmount ?? calcTotal(job.nominal, job.pembayaran);
-    const hasNpwp = workerProfile ? !workerProfile.belumPunyaNpwp : true;
-    const { platformCut, pphCut, workerNet } = calcSplit(gross, hasNpwp);
+    const { platformCut, workerNet } = calcSplit(gross);
     setWalletBalance(prev => prev + workerNet);
     setWalletTransactions(prev => [{
       id: Date.now(), type: "credit" as const,
@@ -722,7 +751,7 @@ export default function Home() {
       label: "Escrow Cair Otomatis — Kontrak Ditutup (24 Jam)",
       jobTitle: job.posisi,
       timestamp: new Date(),
-      note: `Jendela sengketa 24 jam berakhir tanpa keberatan. PPh ${hasNpwp ? "2.5%" : "3%"} Rp ${pphCut.toLocaleString("id-ID")} + komisi Rp ${platformCut.toLocaleString("id-ID")} dipotong.`,
+      note: `Jendela sengketa 24 jam berakhir tanpa keberatan. Komisi platform Rp ${platformCut.toLocaleString("id-ID")} dipotong.`,
     }, ...prev]);
     setPlatformBalance(prev => prev + platformCut);
     setCustomJobs(prev => prev.map(j =>
@@ -749,9 +778,11 @@ export default function Home() {
     if (graceDeadline == null || jobStatus !== "accepted") return;
     if (nowTick >= graceDeadline) {
       handleLateClockInPenalty();
+      handleStandbyReroute(); // no-ops unless the snapshot job is Mode Butuh Cepat
       setGraceDeadline(null);
+      setGraceJob(null);
     }
-  }, [nowTick, graceDeadline, jobStatus, handleLateClockInPenalty]);
+  }, [nowTick, graceDeadline, jobStatus, handleLateClockInPenalty, handleStandbyReroute]);
 
   // ── Dispute-window expiry ───────────────────────────────────────
   useEffect(() => {
@@ -768,6 +799,7 @@ export default function Home() {
     setClockedInAt(new Date());
     setJobStatus("clocked_in");
     setGraceDeadline(null); // Clock-In succeeded within grace window
+    setGraceJob(null);
   }, []);
 
   const handleClockOut = useCallback(() => {
@@ -775,6 +807,7 @@ export default function Home() {
     setClockedOutAt(now);
     setJobStatus("completed");
     setGraceDeadline(null);
+    setGraceJob(null);
     setContractClosed(false);
     setDisputeJob(activeJob); // snapshot job so auto-release survives closing the card
     setDisputeDeadline(now.getTime() + DISPUTE_WINDOW_MS); // start 24h employer validation window
@@ -794,7 +827,7 @@ export default function Home() {
 
   const handleWorkerCancelJob = useCallback(() => {
     setActiveJob(null); setJobStatus(null); setClockedInAt(null); setClockedOutAt(null);
-    setGraceDeadline(null); setDisputeDeadline(null); setDisputeJob(null); setContractClosed(false);
+    setGraceDeadline(null); setGraceJob(null); setDisputeDeadline(null); setDisputeJob(null); setContractClosed(false);
     setReputationPoints((p) => Math.max(0, p - 20));
   }, []);
 
@@ -1119,6 +1152,20 @@ export default function Home() {
                       <p className="font-mono text-sm font-black text-red-600 tabular-nums">{fmtCountdown(graceDeadline - nowTick)}</p>
                       <p className="text-[8px] font-bold uppercase tracking-wide text-red-400">Sisa Waktu</p>
                     </div>
+                  </div>
+                )}
+
+                {standbyReroute && (
+                  <div className="rounded-xl px-3 py-2 border border-orange-200 bg-orange-50 flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2 min-w-0">
+                      <Users className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
+                      <p className="text-[10px] font-semibold text-orange-700 leading-tight">
+                        Mode Butuh Cepat: Anda melewati masa tenggang. Lowongan "{standbyReroute.jobTitle}" dialihkan otomatis ke pekerja standby berikutnya (<span className="font-black">{standbyReroute.workerName}</span>).
+                      </p>
+                    </div>
+                    <button onClick={() => setStandbyReroute(null)} className="text-orange-400 p-0.5 shrink-0">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 )}
 

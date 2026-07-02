@@ -73,7 +73,7 @@ export default function RoleSelectModal({ onSelect, isGoogle }: RoleSelectModalP
           >
             {selected === "pekerja" ? (
               <ul className="space-y-1">
-                {["Lamar kerja harian di peta radar", "Clock-In/Out dengan GPS + selfie", "Slip gaji + bukti potong PPh 21", "Dashboard reputasi & riwayat pendapatan"].map((f) => (
+                {["Lamar kerja harian di peta radar", "Clock-In/Out dengan GPS + selfie", "Slip gaji & rincian upah bersih", "Dashboard reputasi & riwayat pendapatan"].map((f) => (
                   <li key={f} className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 shrink-0" />{f}</li>
                 ))}
               </ul>

@@ -3,7 +3,7 @@ import {
   CustomJob, calcCommission, calcTotal, paymentLabels,
   durasiKontrakOptions,
 } from "@/types/custom-job";
-import { WorkerProfile, pph21Rate, isVerified } from "@/types/worker-profile";
+import { WorkerProfile, isVerified } from "@/types/worker-profile";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -36,9 +36,7 @@ export default function JobSheet({
   const total = calcTotal(job.nominal, job.pembayaran);
   const commission = calcCommission(job.nominal, job.pembayaran, job.durasiKontrak);
   const commRate = durasiKontrakOptions.find((o) => o.value === (job.durasiKontrak ?? "harian"))?.rate ?? 0.15;
-  const pph21 = workerProfile ? total * pph21Rate(workerProfile) : total * 0.05;
-  const workerGets = total - commission - pph21;
-  const hasNpwp = workerProfile ? !workerProfile.belumPunyaNpwp : true;
+  const workerGets = total - commission;
   const verified = workerProfile ? isVerified(workerProfile) : false;
   const durasiLabel = durasiKontrakOptions.find((o) => o.value === (job.durasiKontrak ?? "harian"))?.label ?? "Harian";
 
@@ -139,24 +137,14 @@ export default function JobSheet({
                   <span>Komisi platform ({(commRate * 100)}%)</span>
                   <span>−{formatRp(commission)}</span>
                 </div>
-                <div className="flex justify-between text-xs">
-                  <span className={!hasNpwp ? "text-amber-600" : "text-gray-500"}>
-                    PPh 21 ({hasNpwp ? "5%" : "6% — tanpa NPWP"})
-                  </span>
-                  <span className={!hasNpwp ? "text-amber-600" : "text-gray-500"}>
-                    −{formatRp(pph21)}
-                  </span>
-                </div>
               </div>
               <div className="flex justify-between border-t border-primary/10 pt-2.5">
                 <span className="font-bold text-gray-800">Anda terima bersih</span>
                 <span className="font-bold text-primary text-lg">{formatRp(workerGets)}</span>
               </div>
-              {!hasNpwp && (
-                <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
-                  Daftarkan NPWP di pajak.go.id untuk menghemat pajak.
-                </p>
-              )}
+              <p className="text-[10px] text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 leading-relaxed">
+                Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.
+              </p>
             </div>
           </div>
 
@@ -218,7 +206,7 @@ export default function JobSheet({
                 )}
                 <div className="bg-primary/5 border border-primary/15 rounded-xl px-4 py-3">
                   <p className="text-xs text-gray-700 text-center leading-relaxed">
-                    Perusahaan akan memvalidasi data pajak dan identitas Anda.
+                    Perusahaan akan memvalidasi identitas dan kelengkapan data Anda.
                   </p>
                 </div>
               </div>

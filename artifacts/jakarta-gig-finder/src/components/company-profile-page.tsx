@@ -238,7 +238,7 @@ export default function CompanyProfilePage({
                           <RefreshCcw className="w-3.5 h-3.5" /> Refund ke Perusahaan
                         </button>
                       </div>
-                      <p className="text-[10px] text-gray-500 text-center">Menangkan pekerja → gaji dilepas (potong 10% + PPh). Refund → dikembalikan (potong 5% biaya admin).</p>
+                      <p className="text-[10px] text-gray-500 text-center">Menangkan pekerja → gaji dilepas (potong komisi 10%). Refund → dikembalikan (potong 5% biaya admin).</p>
                     </div>
                   ))}
                 </div>

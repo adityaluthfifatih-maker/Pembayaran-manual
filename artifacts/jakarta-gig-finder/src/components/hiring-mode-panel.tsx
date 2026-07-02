@@ -60,6 +60,56 @@ function EmployerQRDisplay() {
   );
 }
 
+// Named standby Mitra pins shown on the Butuh Cepat broadcast radar
+const RADAR_WORKERS = [
+  { name: "Ahmad", top: "24%", left: "28%", km: "1.2" },
+  { name: "Rian",  top: "60%", left: "70%", km: "2.4" },
+  { name: "Siti",  top: "42%", left: "52%", km: "0.8" },
+];
+
+function BroadcastRadar() {
+  return (
+    <div className="relative mx-auto w-full h-44 rounded-2xl bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-200 overflow-hidden">
+      {/* Radar rings */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        {[1, 2, 3].map(i => (
+          <div
+            key={i}
+            className="absolute rounded-full border-2 border-orange-400/40"
+            style={{
+              width: `${i * 72}px`,
+              height: `${i * 72}px`,
+              animation: "radar-expand 2.2s ease-out infinite",
+              animationDelay: `${(i - 1) * 0.6}s`,
+            }}
+          />
+        ))}
+        <div className="absolute w-3.5 h-3.5 rounded-full bg-orange-500 border-2 border-white shadow-lg" />
+      </div>
+
+      {/* Named standby worker pins */}
+      {RADAR_WORKERS.map(w => (
+        <div
+          key={w.name}
+          className="absolute flex flex-col items-center gap-1 -translate-x-1/2 -translate-y-1/2"
+          style={{ top: w.top, left: w.left }}
+        >
+          <div className="w-7 h-7 rounded-full bg-white border-2 border-emerald-500 flex items-center justify-center text-[11px] font-black text-emerald-700 shadow-md">
+            {w.name.slice(0, 1)}
+          </div>
+          <span className="flex items-center gap-0.5 text-[9px] font-bold text-gray-800 bg-white/95 px-1.5 py-0.5 rounded-full shadow-sm whitespace-nowrap">
+            <ShieldCheck className="w-2.5 h-2.5 text-emerald-600 shrink-0" /> {w.name} · {w.km} km
+          </span>
+        </div>
+      ))}
+
+      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[9px] font-semibold text-orange-700 bg-white/85 px-2 py-0.5 rounded-full whitespace-nowrap">
+        📡 Mitra standby terdekat: Ahmad · Rian · Siti
+      </div>
+    </div>
+  );
+}
+
 type BroadcastState = "idle" | "locking" | "broadcasting" | "done";
 type SortKey = "rating" | "jarak";
 
@@ -349,28 +399,34 @@ export default function HiringModePanel({
             <div className="p-4 space-y-3">
               {/* Broadcast success banner */}
               {broadcastState === "done" && (
-                <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-bold text-emerald-800">Broadcast Berhasil! 🎉</p>
-                    <p className="text-xs text-emerald-700 mt-0.5">
-                      <span className="font-bold">{broadcastCount} pekerja</span> dalam radius 5km menerima notifikasi
-                      untuk posisi <span className="font-bold">"{lastBroadcastJob}"</span>.
-                    </p>
-                    <p className="text-[10px] text-emerald-600 mt-1">Dana escrow terkunci aman · Rekhastha melindungi transaksi Anda</p>
+                <>
+                  <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-bold text-emerald-800">Broadcast Berhasil! 🎉</p>
+                      <p className="text-xs text-emerald-700 mt-0.5">
+                        <span className="font-bold">{broadcastCount} pekerja</span> dalam radius 5km menerima notifikasi
+                        untuk posisi <span className="font-bold">"{lastBroadcastJob}"</span>.
+                      </p>
+                      <p className="text-[10px] text-emerald-600 mt-1">Dana escrow terkunci aman · Rekhastha melindungi transaksi Anda</p>
+                    </div>
                   </div>
-                </div>
+                  <BroadcastRadar />
+                </>
               )}
 
               {/* Broadcasting animation */}
               {broadcastState === "broadcasting" && (
-                <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3 animate-pulse">
-                  <Radio className="w-5 h-5 text-amber-600 shrink-0 animate-spin" />
-                  <div>
-                    <p className="text-sm font-bold text-amber-800">Sedang Broadcast...</p>
-                    <p className="text-xs text-amber-700">Menjangkau pekerja aktif dalam radius 5km</p>
+                <>
+                  <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3 animate-pulse">
+                    <Radio className="w-5 h-5 text-amber-600 shrink-0 animate-spin" />
+                    <div>
+                      <p className="text-sm font-bold text-amber-800">Sedang Broadcast...</p>
+                      <p className="text-xs text-amber-700">Menjangkau pekerja aktif dalam radius 5km</p>
+                    </div>
                   </div>
-                </div>
+                  <BroadcastRadar />
+                </>
               )}
 
               {/* Locking animation */}
@@ -663,8 +719,8 @@ export default function HiringModePanel({
                                 <MapPin className="w-2.5 h-2.5" /> {km} km
                               </span>
                               {notif.hasNpwp && (
-                                <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-0.5">
-                                  <ShieldCheck className="w-2.5 h-2.5" /> NPWP
+                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                  <ShieldCheck className="w-2.5 h-2.5" /> Verified Mitra
                                 </span>
                               )}
                             </div>

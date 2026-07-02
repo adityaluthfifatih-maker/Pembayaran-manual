@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Eye, EyeOff, Mail, Lock, User, Phone, ArrowRight, ShieldCheck } from "lucide-react";
-import { AuthUser, UserRole } from "@/types/auth";
+import { Eye, EyeOff, Mail, Lock, User, Phone, ArrowRight, ShieldCheck, Building2, Home, Landmark, MapPin, IdCard, FileText } from "lucide-react";
+import { AuthUser, UserRole, EmployerCategory } from "@/types/auth";
 import RoleSelectModal from "@/components/role-select-modal";
 import TermsModal from "@/components/terms-modal";
 
@@ -21,6 +21,19 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Employer registration sub-category state (Daftar as Perusahaan)
+  const [isEmployer, setIsEmployer] = useState(false);
+  const [employerCategory, setEmployerCategory] = useState<EmployerCategory>("corporate");
+  // Corporate
+  const [namaPerusahaan, setNamaPerusahaan] = useState("");
+  const [npwpPerusahaan, setNpwpPerusahaan] = useState("");
+  // Rumah Tangga / Individu
+  const [namaKtp, setNamaKtp] = useState("");
+  const [alamat, setAlamat] = useState("");
+  // Organisasi Politik
+  const [namaOrganisasi, setNamaOrganisasi] = useState("");
+  const [kodeWilayah, setKodeWilayah] = useState("");
 
   // Role selection state
   const [pendingUser, setPendingUser] = useState<Omit<AuthUser, "role"> | null>(null);
@@ -48,14 +61,40 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
+      const employerFields =
+        tab === "daftar" && isEmployer ? buildEmployerFields() : {};
       triggerRoleSelect({
         id: `user-${++uidCounter}`,
         name: tab === "daftar" ? name.trim() : email.split("@")[0],
         email,
         whatsapp: whatsapp || undefined,
         linkedWithGoogle: false,
+        ...employerFields,
       });
     }, 900);
+  };
+
+  const buildEmployerFields = (): Partial<AuthUser> => {
+    switch (employerCategory) {
+      case "corporate":
+        return {
+          employerCategory,
+          namaPerusahaan: namaPerusahaan.trim() || undefined,
+          npwpPerusahaan: npwpPerusahaan.trim() || undefined,
+        };
+      case "household":
+        return {
+          employerCategory,
+          namaKtp: namaKtp.trim() || undefined,
+          alamat: alamat.trim() || undefined,
+        };
+      case "political":
+        return {
+          employerCategory,
+          namaOrganisasi: namaOrganisasi.trim() || undefined,
+          kodeWilayah: kodeWilayah.trim() || undefined,
+        };
+    }
   };
 
   const handleGoogle = () => {
@@ -149,6 +188,80 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
             <InputField icon={<Phone className="w-4 h-4" />} type="tel" placeholder="Nomor WhatsApp (opsional)"
               value={whatsapp} onChange={setWhatsapp} />
           )}
+
+          {tab === "daftar" && (
+            <div className="rounded-2xl border border-gray-200 bg-white px-3.5 py-3">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isEmployer}
+                  onChange={(e) => setIsEmployer(e.target.checked)}
+                  className="w-4 h-4 accent-emerald-600"
+                  data-testid="checkbox-employer"
+                />
+                <span className="text-xs font-semibold text-gray-700">
+                  Saya mendaftar sebagai Pemberi Kerja (Perusahaan / Individu / Organisasi)
+                </span>
+              </label>
+
+              {isEmployer && (
+                <div className="mt-3 space-y-3">
+                  <p className="text-[11px] font-semibold text-gray-500 px-0.5">Kategori Pemberi Kerja</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <CategoryRadio
+                      icon={<Building2 className="w-4 h-4" />}
+                      label="Corporate"
+                      selected={employerCategory === "corporate"}
+                      onClick={() => setEmployerCategory("corporate")}
+                      testId="radio-corporate"
+                    />
+                    <CategoryRadio
+                      icon={<Home className="w-4 h-4" />}
+                      label="Rumah Tangga"
+                      selected={employerCategory === "household"}
+                      onClick={() => setEmployerCategory("household")}
+                      testId="radio-household"
+                    />
+                    <CategoryRadio
+                      icon={<Landmark className="w-4 h-4" />}
+                      label="Org. Politik"
+                      selected={employerCategory === "political"}
+                      onClick={() => setEmployerCategory("political")}
+                      testId="radio-political"
+                    />
+                  </div>
+
+                  {employerCategory === "corporate" && (
+                    <div className="space-y-3" data-testid="fields-corporate">
+                      <InputField icon={<Building2 className="w-4 h-4" />} type="text" placeholder="Nama PT / CV"
+                        value={namaPerusahaan} onChange={setNamaPerusahaan} />
+                      <InputField icon={<FileText className="w-4 h-4" />} type="text" placeholder="Nomor NPWP Perusahaan"
+                        value={npwpPerusahaan} onChange={setNpwpPerusahaan} />
+                    </div>
+                  )}
+
+                  {employerCategory === "household" && (
+                    <div className="space-y-3" data-testid="fields-household">
+                      <InputField icon={<IdCard className="w-4 h-4" />} type="text" placeholder="Nama Lengkap Sesuai KTP"
+                        value={namaKtp} onChange={setNamaKtp} />
+                      <InputField icon={<MapPin className="w-4 h-4" />} type="text" placeholder="Alamat"
+                        value={alamat} onChange={setAlamat} />
+                    </div>
+                  )}
+
+                  {employerCategory === "political" && (
+                    <div className="space-y-3" data-testid="fields-political">
+                      <InputField icon={<Landmark className="w-4 h-4" />} type="text" placeholder="Nama Organisasi / Sayap Partai"
+                        value={namaOrganisasi} onChange={setNamaOrganisasi} />
+                      <InputField icon={<MapPin className="w-4 h-4" />} type="text" placeholder="Kode Wilayah / Dapil"
+                        value={kodeWilayah} onChange={setKodeWilayah} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="relative">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
               <Lock className="w-4 h-4" />
@@ -188,7 +301,7 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
           {[
             { icon: "🔒", text: "Data Terenkripsi" },
             { icon: "✅", text: "Terverifikasi KTP" },
-            { icon: "🧾", text: "PPh 21 Resmi" },
+            { icon: "🛡️", text: "Escrow Terjamin" },
           ].map((b) => (
             <div key={b.text} className="flex items-center gap-1">
               <span className="text-sm">{b.icon}</span>
@@ -220,6 +333,22 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
 
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.animate-spin{animation:spin 1s linear infinite}`}</style>
     </div>
+  );
+}
+
+function CategoryRadio({ icon, label, selected, onClick, testId }: {
+  icon: React.ReactNode; label: string; selected: boolean; onClick: () => void; testId?: string;
+}) {
+  return (
+    <button type="button" onClick={onClick} data-testid={testId}
+      className={`flex flex-col items-center justify-center gap-1 py-2.5 px-1 rounded-xl border-2 transition-all active:scale-[0.97] ${
+        selected
+          ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+          : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+      }`}>
+      <span className={selected ? "text-white" : "text-emerald-500"}>{icon}</span>
+      <span className="text-[10px] font-bold leading-tight text-center">{label}</span>
+    </button>
   );
 }
 

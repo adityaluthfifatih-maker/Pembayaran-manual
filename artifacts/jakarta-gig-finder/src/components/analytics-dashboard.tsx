@@ -287,7 +287,7 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
         >
           <Shield className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
           <p className="text-[11px] text-slate-400 leading-relaxed">
-            Semua transaksi dilindungi oleh sistem validasi PPh 21 dan anti-penipuan GigFinder.
+            Semua transaksi dilindungi oleh sistem escrow dan anti-penipuan GigFinder.
             Data diperbarui secara <span className="text-emerald-400 font-semibold">real-time</span> setiap transaksi baru.
           </p>
         </div>

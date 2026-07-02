@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { X, MapPin, QrCode, CheckCircle, AlertTriangle, Clock, ShieldCheck, Zap } from "lucide-react";
+import { X, MapPin, QrCode, CheckCircle, AlertTriangle, Clock, ShieldCheck, Zap, Camera, Scan } from "lucide-react";
 import { CustomJob } from "@/types/custom-job";
 
 interface ClockInModalProps {
@@ -72,6 +72,7 @@ function QRDisplay() {
 }
 
 type QrStep = "idle" | "scanning" | "verified";
+type ProofStep = "idle" | "capturing" | "captured";
 
 export default function ClockInModal({
   job, userLat, userLng, locationAccuracy, isClockedIn, clockedInAt,
@@ -80,8 +81,11 @@ export default function ClockInModal({
   const [qrStep, setQrStep] = useState<QrStep>("idle");
   const [timer, setTimer] = useState("00:00:00");
   const [scanProgress, setScanProgress] = useState(0);
+  const [proofStep, setProofStep] = useState<ProofStep>("idle");
+  const [captureProgress, setCaptureProgress] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const captureRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const distance = haversineMeters(userLat, userLng, job.lat, job.lng);
   const withinRange = distance < 500;
@@ -92,6 +96,24 @@ export default function ClockInModal({
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [isClockedIn, clockedInAt]);
+
+  useEffect(() => {
+    return () => { if (captureRef.current) clearInterval(captureRef.current); };
+  }, []);
+
+  const handleStartCapture = () => {
+    setProofStep("capturing");
+    setCaptureProgress(0);
+    let p = 0;
+    captureRef.current = setInterval(() => {
+      p += 5;
+      setCaptureProgress(p);
+      if (p >= 100) {
+        clearInterval(captureRef.current!);
+        setProofStep("captured");
+      }
+    }, 70);
+  };
 
   const handleStartScan = () => {
     setQrStep("scanning");
@@ -298,11 +320,74 @@ export default function ClockInModal({
           )}
 
           {isClockedIn && (
-            <button
-              onClick={() => { onClockOut(); onClose(); }}
-              className="w-full bg-red-500 text-white font-bold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-red-600 active:scale-[0.98] transition-all">
-              Selesai Kerja (Clock-Out)
-            </button>
+            <div className="space-y-4">
+              {/* Photo proof requirement */}
+              {proofStep === "idle" && (
+                <>
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Camera className="w-5 h-5 text-blue-600" />
+                      <p className="text-sm font-bold text-blue-900">Bukti Foto Live Wajib</p>
+                    </div>
+                    <p className="text-xs text-blue-800 leading-relaxed">
+                      Sebelum Clock-Out, ambil foto bukti kehadiran langsung via kamera (live) sebagai verifikasi anti-joki. Clock-Out tidak dapat dilakukan tanpa foto bukti.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleStartCapture}
+                    className="w-full bg-primary text-white font-bold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-primary/90 active:scale-[0.98] transition-all"
+                    style={{ boxShadow: "0 4px 16px rgba(6,95,70,0.35)" }}>
+                    <Camera className="w-5 h-5" />
+                    Ambil Foto Bukti Live
+                  </button>
+                </>
+              )}
+
+              {/* Capturing step */}
+              {proofStep === "capturing" && (
+                <div className="space-y-4">
+                  <div className="bg-gray-900 rounded-2xl overflow-hidden aspect-video flex flex-col items-center justify-center relative">
+                    {/* Face outline guide */}
+                    <div className="relative">
+                      <div className="absolute -top-2 -left-2 w-6 h-6 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg" />
+                      <div className="absolute -top-2 -right-2 w-6 h-6 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg" />
+                      <div className="absolute -bottom-2 -left-2 w-6 h-6 border-b-4 border-l-4 border-emerald-400 rounded-bl-lg" />
+                      <div className="absolute -bottom-2 -right-2 w-6 h-6 border-b-4 border-r-4 border-emerald-400 rounded-br-lg" />
+                      <div className="w-28 h-36 rounded-[45%] border-2 border-dashed border-emerald-400/70 flex items-center justify-center">
+                        <Scan className="w-10 h-10 text-emerald-400/80 animate-pulse" />
+                      </div>
+                    </div>
+                    <p className="absolute bottom-4 text-white/90 text-xs font-semibold bg-black/50 px-3 py-1 rounded-full">
+                      Memindai wajah... {captureProgress}%
+                    </p>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-400 to-green-500 rounded-full transition-all"
+                      style={{ width: `${captureProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Captured step */}
+              {proofStep === "captured" && (
+                <>
+                  <div className="bg-primary/10 border border-primary/20 rounded-2xl p-5 flex flex-col items-center gap-2">
+                    <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
+                      <CheckCircle className="w-9 h-9 text-emerald-600" />
+                    </div>
+                    <p className="font-black text-emerald-800 text-base">Foto Bukti Terverifikasi! ✅</p>
+                    <p className="text-xs text-gray-600 text-center">Bukti kehadiran live berhasil direkam. Anda kini dapat menyelesaikan shift.</p>
+                  </div>
+                  <button
+                    onClick={() => { onClockOut(); onClose(); }}
+                    className="w-full bg-red-500 text-white font-bold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-red-600 active:scale-[0.98] transition-all">
+                    Selesai Kerja (Clock-Out)
+                  </button>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>

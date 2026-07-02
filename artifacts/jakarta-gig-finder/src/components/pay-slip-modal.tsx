@@ -1,6 +1,6 @@
 import { X, Download, Printer } from "lucide-react";
 import { CustomJob, calcTotal, calcCommission, paymentLabels } from "@/types/custom-job";
-import { WorkerProfile, pph21Rate } from "@/types/worker-profile";
+import { WorkerProfile } from "@/types/worker-profile";
 
 interface PaySlipModalProps {
   job: CustomJob;
@@ -21,9 +21,7 @@ function formatDate(d: Date) {
 export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedOutAt, onClose }: PaySlipModalProps) {
   const gross = calcTotal(job.nominal, job.pembayaran);
   const commission = calcCommission(job.nominal, job.pembayaran);
-  const pph21Pct = pph21Rate(workerProfile);
-  const pph21 = Math.round(gross * pph21Pct);
-  const net = gross - commission - pph21;
+  const net = gross - commission;
 
   const durationHours = clockedInAt && clockedOutAt
     ? ((clockedOutAt.getTime() - clockedInAt.getTime()) / 3600000).toFixed(1)
@@ -68,8 +66,8 @@ export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedO
 
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 shrink-0">
           <div>
-            <h2 className="font-bold text-gray-900">Slip Gaji & Bukti Potong</h2>
-            <p className="text-xs text-gray-500 mt-0.5">PPh 21 — {formatDate(slipDate)}</p>
+            <h2 className="font-bold text-gray-900">Slip Gaji</h2>
+            <p className="text-xs text-gray-500 mt-0.5">{formatDate(slipDate)}</p>
           </div>
           <div className="flex gap-2">
             <button
@@ -93,7 +91,7 @@ export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedO
               <p className="font-bold text-base text-gray-900">JAKARTA GIG FINDER</p>
               <p className="text-gray-500 text-[10px]">Platform Tenaga Kerja Harian</p>
               <p className="text-gray-500 text-[10px]">Jakarta, Indonesia</p>
-              <p className="font-bold text-sm mt-2 text-gray-800">SLIP GAJI & BUKTI POTONG PPh 21</p>
+              <p className="font-bold text-sm mt-2 text-gray-800">SLIP GAJI</p>
               <p className="text-[10px] text-gray-500">No: JGF/{slipDate.getFullYear()}/{String(job.id).padStart(4, "0")}</p>
             </div>
 
@@ -128,15 +126,6 @@ export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedO
             <div className="py-3 border-b border-dashed border-gray-300 space-y-1">
               <p className="font-bold text-[10px] text-gray-700 mb-1.5">POTONGAN</p>
               <Row label="Komisi Platform (15%)" value={`- ${formatRp(commission)}`} />
-              <Row
-                label={`PPh 21 (${workerProfile.belumPunyaNpwp ? "6% - Tanpa NPWP" : "5% - Ber-NPWP"})`}
-                value={`- ${formatRp(pph21)}`}
-              />
-              {workerProfile.belumPunyaNpwp && (
-                <p className="text-[9px] text-amber-600 mt-1 leading-tight">
-                  * Tarif PPh 21 lebih tinggi 20% karena tidak memiliki NPWP (Pasal 21 UU PPh)
-                </p>
-              )}
             </div>
 
             {/* Net */}
@@ -151,8 +140,8 @@ export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedO
 
             {/* Footer */}
             <div className="pt-4 text-center text-[9px] text-gray-400 border-t border-dashed border-gray-300 mt-3 space-y-0.5">
-              <p>Dokumen ini merupakan bukti potong PPh 21</p>
-              <p>yang sah sesuai PER-16/PJ/2016 DJP.</p>
+              <p className="leading-tight">Segala kewajiban perpajakan menjadi tanggung jawab</p>
+              <p className="leading-tight">mandiri masing-masing pihak sesuai hukum yang berlaku.</p>
               <p className="mt-1">Dicetak: {new Date().toLocaleString("id-ID")}</p>
             </div>
           </div>

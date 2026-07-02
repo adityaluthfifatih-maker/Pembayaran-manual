@@ -1,5 +1,6 @@
 export type UserRole = "pekerja" | "perusahaan";
 export type TipeAkun = "perusahaan" | "agensi";
+export type EmployerCategory = "corporate" | "household" | "political";
 
 export interface AuthUser {
   id: string;
@@ -13,6 +14,13 @@ export interface AuthUser {
   namaPerusahaan?: string;
   nibPerusahaan?: string;
   tipeAkun?: TipeAkun;
+  // Employer registration sub-category (Perusahaan)
+  employerCategory?: EmployerCategory;
+  npwpPerusahaan?: string;
+  namaKtp?: string;
+  alamat?: string;
+  namaOrganisasi?: string;
+  kodeWilayah?: string;
   // Worker extra (mirrors WorkerProfile)
   nik?: string;
   npwp?: string;

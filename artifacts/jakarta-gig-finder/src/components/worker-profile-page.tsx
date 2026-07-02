@@ -45,8 +45,7 @@ export default function WorkerProfilePage({
   const workerRatings = ratings.filter((r) => r.raterType === "company");
   const avgRating = workerRatings.length ? workerRatings.reduce((s, r) => s + r.stars, 0) / workerRatings.length : 0;
   const totalHours = completedJobs.length * 8;
-  const pphRate = hasNpwp ? 0.05 : 0.06;
-  const netEarned = totalEarned * (1 - pphRate);
+  const netEarned = totalEarned * 0.85;
 
   const initials = currentUser.name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
 
@@ -91,18 +90,11 @@ export default function WorkerProfilePage({
           </div>
         </div>
 
-        {/* Tax badge */}
-        {hasNpwp ? (
-          <div className="flex items-center gap-2 bg-white/20 border border-white/30 rounded-xl px-4 py-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-200" />
-            <span className="text-xs font-semibold text-white">Akun Patuh Pajak (PPh 21 Resmi)</span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 bg-amber-400/20 border border-amber-300/40 rounded-xl px-4 py-2">
-            <AlertCircle className="w-4 h-4 text-amber-200" />
-            <span className="text-xs font-semibold text-amber-100">Tanpa NPWP — Potongan Pajak +20% Lebih Tinggi</span>
-          </div>
-        )}
+        {/* Escrow guarantee badge */}
+        <div className="flex items-center gap-2 bg-white/20 border border-white/30 rounded-xl px-4 py-2">
+          <ShieldCheck className="w-4 h-4 text-emerald-200" />
+          <span className="text-xs font-semibold text-white">Escrow Terjamin · Bebas Pajak Platform</span>
+        </div>
       </div>
 
       {/* ── Tab bar ─────────────────────────────────────── */}
@@ -175,7 +167,7 @@ export default function WorkerProfilePage({
             {/* Summary cards */}
             <div className="grid grid-cols-2 gap-3">
               <WorkerMetricCard icon={<Clock className="w-4 h-4" />} label="Total Jam Kerja" value={`${totalHours} Jam`} sub={`${completedJobs.length} proyek selesai`} color="emerald" />
-              <WorkerMetricCard icon={<Banknote className="w-4 h-4" />} label="Pendapatan Bersih" value={completedJobs.length ? fmt(netEarned) : "—"} sub={hasNpwp ? "Setelah PPh 5%" : "Setelah PPh 6%"} color="blue" />
+              <WorkerMetricCard icon={<Banknote className="w-4 h-4" />} label="Pendapatan Bersih" value={completedJobs.length ? fmt(netEarned) : "—"} sub="Setelah komisi platform" color="blue" />
               <WorkerMetricCard icon={<Star className="w-4 h-4 fill-amber-400" />} label="Rating Rata-Rata" value={avgRating ? avgRating.toFixed(1) + " ★" : "—"} sub={`${workerRatings.length} ulasan`} color="amber" />
               <WorkerMetricCard icon={<Award className="w-4 h-4" />} label="Skor Reputasi" value={`${reputationPoints}/100`} sub={reputationPoints >= 80 ? "Terpercaya" : reputationPoints >= 50 ? "Perlu Perhatian" : "Ditangguhkan"} color={reputationPoints >= 80 ? "emerald" : reputationPoints >= 50 ? "amber" : "red"} />
             </div>
@@ -235,9 +227,10 @@ export default function WorkerProfilePage({
                 <p className="text-sm font-bold text-gray-900">Estimasi E-Wallet</p>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between text-gray-600"><span>Total Gross Pendapatan</span><span className="font-semibold text-gray-900">{fmt(totalEarned)}</span></div>
-                  <div className="flex justify-between text-gray-600"><span>PPh 21 ({hasNpwp ? "5%" : "6%"})</span><span className="font-semibold text-red-500">−{fmt(totalEarned * pphRate)}</span></div>
+                  <div className="flex justify-between text-gray-600"><span>Komisi Platform (15%)</span><span className="font-semibold text-red-500">−{fmt(totalEarned * 0.15)}</span></div>
                   <div className="flex justify-between text-gray-700 border-t border-gray-100 pt-2"><span className="font-bold">Bersih Diterima</span><span className="font-black text-emerald-600">{fmt(netEarned)}</span></div>
                 </div>
+                <p className="text-[10px] text-gray-400 leading-relaxed">Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.</p>
               </div>
             )}
 
@@ -253,7 +246,6 @@ export default function WorkerProfilePage({
               balance={walletBalance}
               transactions={walletTransactions}
               isWithdrawLocked={isWithdrawLocked}
-              hasNpwp={!!hasNpwp}
               onWithdraw={onWithdraw}
             />
 

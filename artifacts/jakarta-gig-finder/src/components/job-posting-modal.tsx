@@ -5,7 +5,7 @@ import {
   DurasiKontrak, TipeAkun, durasiKontrakOptions, detectFraud,
   effectiveCommissionRate,
 } from "@/types/custom-job";
-import { calcEscrowAmount, DURATION_DAYS, PLATFORM_RATE, PPH_WITH_NPWP, PPH_WITHOUT_NPWP, calcSplit } from "@/types/escrow";
+import { calcEscrowAmount, DURATION_DAYS, PLATFORM_RATE, calcSplit } from "@/types/escrow";
 
 interface JobPostingModalProps {
   onSubmit: (job: Omit<CustomJob, "id" | "type" | "lat" | "lng" | "postedAt">) => void;
@@ -49,7 +49,7 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
 
   // Escrow calculations
   const escrowGross = calcEscrowAmount(nominalNum, pembayaran, jumlahHari, effectiveKuota);
-  const escrowSplit = calcSplit(escrowGross, true); // use NPWP rate for estimate
+  const escrowSplit = calcSplit(escrowGross);
 
   const handleNominalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/\D/g, "");
@@ -486,14 +486,13 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
                         <span className="text-gray-600">Komisi Platform Rekhastha ({(PLATFORM_RATE * 100).toFixed(0)}%)</span>
                         <span className="font-semibold text-red-500">−Rp {escrowSplit.platformCut.toLocaleString("id-ID")}</span>
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">PPh 21 Pekerja ({(PPH_WITH_NPWP * 100).toFixed(1)}% NPWP / {(PPH_WITHOUT_NPWP * 100).toFixed(0)}% tanpa)</span>
-                        <span className="font-semibold text-amber-600">−Rp {escrowSplit.pphCut.toLocaleString("id-ID")}±</span>
-                      </div>
                       <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2.5">
-                        <span className="text-primary">Estimasi Bersih ke Pekerja</span>
+                        <span className="text-primary">Bersih ke Pekerja</span>
                         <span className="text-primary">Rp {escrowSplit.workerNet.toLocaleString("id-ID")}</span>
                       </div>
+                      <p className="text-[10px] text-gray-400 leading-relaxed border-t border-gray-200 pt-2.5">
+                        Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.
+                      </p>
                     </div>
                   </div>
 

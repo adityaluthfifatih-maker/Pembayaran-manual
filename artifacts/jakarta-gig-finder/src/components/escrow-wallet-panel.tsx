@@ -5,7 +5,6 @@ interface EscrowWalletPanelProps {
   balance: number;
   transactions: WalletTransaction[];
   isWithdrawLocked: boolean;
-  hasNpwp: boolean;
   onWithdraw: () => void;
 }
 
@@ -20,7 +19,7 @@ function timeAgo(d: Date) {
 }
 
 export default function EscrowWalletPanel({
-  balance, transactions, isWithdrawLocked, hasNpwp, onWithdraw,
+  balance, transactions, isWithdrawLocked, onWithdraw,
 }: EscrowWalletPanelProps) {
   const credits = transactions.filter(t => t.type === "credit");
   const debits  = transactions.filter(t => t.type === "debit");
@@ -45,7 +44,7 @@ export default function EscrowWalletPanel({
               </div>
               <div>
                 <p className="text-[10px] text-emerald-200 font-semibold uppercase tracking-wider">Rekhastha E-Wallet</p>
-                <p className="text-[9px] text-emerald-300">{hasNpwp ? "✓ PPh 21 2.5% (NPWP)" : "⚠ PPh 21 3% (Tanpa NPWP)"}</p>
+                <p className="text-[9px] text-emerald-300">✓ Escrow Terjamin · Bebas Pajak Platform</p>
               </div>
             </div>
             {isWithdrawLocked && (
@@ -146,12 +145,11 @@ export default function EscrowWalletPanel({
         )}
       </div>
 
-      {/* ── PPh notice ───────────────────────────── */}
-      <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5">
-        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-        <p className="text-[11px] text-amber-700 leading-relaxed">
-          PPh 21 dipotong otomatis saat dana escrow dilepas: <strong>{hasNpwp ? "2.5%" : "3.0%"}</strong> dari upah bersih (setelah komisi platform 10%).
-          {!hasNpwp && " Daftarkan NPWP untuk tarif lebih rendah."}
+      {/* ── Tax self-responsibility notice ───────────────────────────── */}
+      <div className="flex items-start gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
+        <AlertTriangle className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
+        <p className="text-[11px] text-gray-600 leading-relaxed">
+          Saat dana escrow dilepas, hanya komisi platform yang dipotong. Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.
         </p>
       </div>
     </div>

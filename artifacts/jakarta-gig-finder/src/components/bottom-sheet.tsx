@@ -2,7 +2,7 @@ import { Worker } from "../data/workers";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Star } from "lucide-react";
+import { Star, ShieldCheck } from "lucide-react";
 
 interface WorkerSheetProps {
   worker: Worker | null;
@@ -33,7 +33,14 @@ export default function WorkerSheet({ worker, onClose }: WorkerSheetProps) {
               className="w-16 h-16 rounded-full object-cover border-2 border-primary/10"
             />
             <div>
-              <h2 className="text-xl font-bold text-gray-900">{worker.name}</h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl font-bold text-gray-900">{worker.name}</h2>
+                {worker.rating >= 4.5 && (
+                  <span className="flex items-center gap-1 text-[11px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                    <ShieldCheck className="w-3 h-3" /> Verified Mitra
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-2 mt-1">
                 <span className="flex items-center gap-1 text-sm font-medium bg-primary/10 text-primary px-2 py-0.5 rounded">
                   {worker.rating} <Star className="w-3 h-3 fill-current" />

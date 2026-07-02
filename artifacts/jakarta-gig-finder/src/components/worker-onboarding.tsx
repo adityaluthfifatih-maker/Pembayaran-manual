@@ -232,7 +232,7 @@ export default function WorkerOnboarding({ onComplete, onDismiss }: WorkerOnboar
               <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex gap-3 items-start">
                 <ShieldCheck className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
                 <p className="text-xs text-blue-700 leading-relaxed">
-                  Data pajak diperlukan untuk pemotongan PPh 21 sesuai peraturan DJP. Platform akan memotong pajak secara otomatis sebelum pencairan dana.
+                  NPWP dikumpulkan sebagai data verifikasi. Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.
                 </p>
               </div>
 
@@ -260,7 +260,7 @@ export default function WorkerOnboarding({ onComplete, onDismiss }: WorkerOnboar
                   <span className="text-sm font-medium text-gray-800">Saya belum memiliki NPWP</span>
                   {profile.belumPunyaNpwp && (
                     <p className="text-[11px] text-amber-600 mt-1 leading-tight bg-amber-50 border border-amber-200 rounded-lg p-2">
-                      Potongan PPh 21 akan lebih tinggi 20% sesuai Pasal 21 ayat (5a) UU PPh. Tarif efektif: 6% (vs 5% dengan NPWP). Disarankan segera daftar NPWP di pajak.go.id.
+                      NPWP hanya digunakan sebagai data verifikasi. Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku. Disarankan segera daftar NPWP di pajak.go.id.
                     </p>
                   )}
                 </div>
