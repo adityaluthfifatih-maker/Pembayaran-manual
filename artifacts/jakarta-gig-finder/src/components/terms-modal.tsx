@@ -96,7 +96,7 @@ export default function TermsModal({ onClose }: TermsModalProps) {
             </div>
             <div>
               <h2 className="text-white font-bold text-base leading-tight">Syarat & Ketentuan</h2>
-              <p className="text-emerald-100 text-[11px]">Rekhastha · GigFinder</p>
+              <p className="text-emerald-100 text-[11px]">Rekhastha · by Tilu Company</p>
             </div>
           </div>
           <button
@@ -112,7 +112,7 @@ export default function TermsModal({ onClose }: TermsModalProps) {
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
           <p className="text-[11px] text-gray-500 leading-relaxed text-justify">
-            Dokumen ini mengatur hubungan hukum antara seluruh pengguna platform Rekhastha (GigFinder).
+            Dokumen ini mengatur hubungan hukum antara seluruh pengguna platform Rekhastha.
             Dengan menekan tombol persetujuan, Anda menyatakan telah membaca, memahami, dan tunduk pada
             seluruh ketentuan di bawah ini.
           </p>

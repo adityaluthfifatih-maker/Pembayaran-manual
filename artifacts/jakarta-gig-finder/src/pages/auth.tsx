@@ -3,6 +3,7 @@ import { Eye, EyeOff, Mail, Lock, User, Phone, ArrowRight, ShieldCheck, Building
 import { AuthUser, UserRole, EmployerCategory } from "@/types/auth";
 import RoleSelectModal from "@/components/role-select-modal";
 import TermsModal from "@/components/terms-modal";
+import { RekhasthaLogo } from "@/components/rekhastha-logo";
 
 interface AuthPageProps {
   onComplete: (user: AuthUser) => void;
@@ -126,11 +127,8 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
           borderBottomRightRadius: "32px",
         }}
       >
-        <div className="flex items-center gap-2.5 mb-2">
-          <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-            <span className="text-white font-black text-lg">G</span>
-          </div>
-          <span className="text-2xl font-black text-white tracking-tight">GigFinder</span>
+        <div className="mb-2">
+          <RekhasthaLogo size={44} variant="light" showSubtitle wordmarkClassName="text-2xl" />
         </div>
         <p className="text-sm text-emerald-100 text-center leading-relaxed">
           Platform kerja harian terpercaya Jakarta<br />
@@ -289,7 +287,7 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
             {loading
               ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               : <>
-                  {tab === "masuk" ? "Masuk ke GigFinder" : "Buat Akun Baru"}
+                  {tab === "masuk" ? "Masuk ke Rekhastha" : "Buat Akun Baru"}
                   <ArrowRight className="w-4 h-4" />
                 </>
             }
@@ -321,7 +319,7 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
             Syarat & Ketentuan
           </button>{" "}
           dan{" "}
-          <span className="text-emerald-600 font-semibold">Kebijakan Privasi</span> GigFinder.
+          <span className="text-emerald-600 font-semibold">Kebijakan Privasi</span> Rekhastha.
         </p>
       </div>
 

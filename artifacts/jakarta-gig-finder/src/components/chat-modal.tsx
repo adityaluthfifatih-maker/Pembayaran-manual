@@ -85,7 +85,7 @@ function BuyOutModal({ jobTitle, nominal, onClose }: { jobTitle: string; nominal
             <div key={t} className="flex items-start gap-2"><ShieldCheck className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" /><span>{t}</span></div>
           ))}
         </div>
-        <button onClick={onClose} className="w-full bg-primary text-white font-bold py-3 rounded-xl text-sm">Hubungi Tim Legal GigFinder</button>
+        <button onClick={onClose} className="w-full bg-primary text-white font-bold py-3 rounded-xl text-sm">Hubungi Tim Legal Rekhastha</button>
       </div>
     </div>
   );

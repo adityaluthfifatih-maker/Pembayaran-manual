@@ -18,7 +18,7 @@ export default function WorkerSheet({ worker, onClose }: WorkerSheetProps) {
       : `Rp ${(worker.flatRate || 0).toLocaleString("id-ID")} / Event (Flat Rate)`;
 
   const handleHire = () => {
-    const text = `Halo ${worker.name}, perusahaan kami tertarik menggunakan jasa Anda sebagai ${worker.category} melalui Jakarta Gig Finder. Apakah Anda tersedia?`;
+    const text = `Halo ${worker.name}, perusahaan kami tertarik menggunakan jasa Anda sebagai ${worker.category} melalui Rekhastha. Apakah Anda tersedia?`;
     window.open(`https://wa.me/${worker.phone}?text=${encodeURIComponent(text)}`);
   };
 

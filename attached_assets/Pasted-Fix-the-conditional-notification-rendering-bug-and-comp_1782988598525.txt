@@ -1,0 +1,20 @@
+Fix the conditional notification rendering bug and completely overhaul the application branding (rename and change logo) inside the entire codebase.
+
+Please execute these explicit structural modifications:
+
+1. COMPREHENSIVE BRANDING OVERHAUL (GIGFINDER TO REKHASTHA):
+- Global Text Replacement: Find and replace all string instances of "GigFinder" or "Gig Finder" across headers, titles, text descriptions, and forms, and change them to "Rekhastha".
+- Subheading Subtitle: Underneath the main "Rekhastha" title in the main entry screen and upper navigation headers, persistently include the text "by Tilu Company".
+- Visual Logo Component Refactor: Locate the old emerald icon placeholder (the box with the letter "G"). Replace it completely with a beautifully coded CSS geometric crest/shield component that represents a premium golden-outlined emerald shield with modern Indonesian batik design hints. Inside this shield icon, prominently render a bold, metallic letter "R".
+
+2. ISOLATE THE NOTIFICATION DISPATCHER (FIX THE BUG):
+- Locate the code section handling `window.centralServer` data broadcasts.
+- Fix the logic layout error: Ensure that when an Employer triggers the "🔒 Kunci Alokasi Dana Kerja" action, the active notification banner and toast message MUST NOT trigger if the current active UI role viewport variable is set to 'employer'.
+
+3. WORKER ROLE CONDITIONAL LISTENER:
+- Refactor the radar map update logic. Create a strict validation check:
+  `if (currentUserRole === 'worker') { triggerWorkerNotificationAndRadarUpdate(newGigData); }`
+- If an Employer posts a job while the dashboard is in the Employer view, push the gig data to `window.centralServer.activeGigs` silently. 
+- The exact moment the user switches tabs or toggles the role view state to "Masuk Sebagai Pekerja", the application must immediately parse the central server array and dynamically render the pulsing green map pins along with the "🔔 Lowongan Kerja Baru Tersedia" toast alert on the worker side viewport only.
+
+Apply these modifications cleanly using JavaScript role states, update the responsive HTML preview layouts using the Emerald Green color palette with golden accent outlines for the new logo, and run the corrected version.

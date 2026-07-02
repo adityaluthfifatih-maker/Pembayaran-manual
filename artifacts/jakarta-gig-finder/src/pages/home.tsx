@@ -17,6 +17,7 @@ import HiringModePanel from "@/components/hiring-mode-panel";
 import JobPingModal from "@/components/job-ping-modal";
 import ApplicantToast from "@/components/applicant-toast";
 import GigBroadcastToast from "@/components/gig-broadcast-toast";
+import { RekhasthaLogo } from "@/components/rekhastha-logo";
 import {
   broadcastToServer,
   subscribeToServer,
@@ -216,13 +217,40 @@ export default function Home() {
   // ── Central virtual server: live employer→worker broadcast sync ──
   const [centralGigs, setCentralGigs] = useState<CustomJob[]>(() => getActiveGigs());
   const [gigToast, setGigToast] = useState<CustomJob | null>(null);
+  // Live mirror of the active UI role so the broadcast subscriber (registered once)
+  // always reads the CURRENT viewport role instead of a stale closure value.
+  const modeRef = useRef<"perusahaan" | "pekerja">(mode);
+  // Gigs broadcast while the viewport is NOT in worker mode are held here and
+  // surfaced the moment the viewport enters "pekerja" (Masuk Sebagai Pekerja).
+  const pendingBroadcastRef = useRef<CustomJob | null>(null);
+
+  // Register the central-server subscriber exactly once.
   useEffect(() => {
     const unsubscribe = subscribeToServer((gig, gigs) => {
+      // Always keep the gig array in sync so radar pins stay accurate for any viewport.
       setCentralGigs([...gigs]);
-      if (gig) setGigToast(gig); // reactive DOM update on the Worker subsystem, even if hidden
+      if (!gig) return; // bulk/reset signal — never a notification
+      // Notification dispatcher: ONLY the worker viewport gets the toast + alert.
+      // An employer broadcasting from employer view stores the gig silently.
+      if (modeRef.current === "pekerja") {
+        setGigToast(gig);
+      } else {
+        pendingBroadcastRef.current = gig;
+      }
     });
     return unsubscribe;
   }, []);
+
+  // Keep modeRef current AND replay any pending broadcast when entering worker view.
+  // Runs for every role transition (login-as-worker or a future in-app toggle),
+  // so the pending toast + pulsing radar pins always surface from one place.
+  useEffect(() => {
+    modeRef.current = mode;
+    if (mode === "pekerja" && pendingBroadcastRef.current) {
+      setGigToast(pendingBroadcastRef.current);
+      pendingBroadcastRef.current = null;
+    }
+  }, [mode]);
   const [activePing, setActivePing] = useState<CustomJob | null>(null);
   const seenNotifIds = useRef<Set<number>>(new Set());
   const seenPingJobIds = useRef<Set<number>>(new Set());
@@ -265,6 +293,7 @@ export default function Home() {
     resetServer();
     setCentralGigs([]);
     setGigToast(null);
+    pendingBroadcastRef.current = null;
     setNotifications([]);
     setRatings([]);
     setCompletedNotifs([]);
@@ -589,12 +618,6 @@ export default function Home() {
       setEscrowEvents(demoEvents);
     }
   }, [currentUser]);
-
-  // ── Mode change ─────────────────────────────────────────────────
-  const handleModeChange = useCallback((m: "perusahaan" | "pekerja") => {
-    setMode(m);
-    if (m === "pekerja" && !workerProfile) setShowOnboarding(true);
-  }, [workerProfile]);
 
   // ── Search ──────────────────────────────────────────────────────
   const suggestedTags = ["Barista", "Waiter / Waitress", "Event Crew / Runner", "Latte Art", "POS/Kasir", "Crowd Control"];
@@ -1113,7 +1136,7 @@ export default function Home() {
           <header className="z-10 bg-white border-b border-gray-100 shadow-sm flex flex-col shrink-0">
             <div className="flex items-center justify-between px-4 py-3">
               <div className="flex items-center gap-2">
-                <h1 className="font-bold text-lg text-primary tracking-tight">GigFinder</h1>
+                <RekhasthaLogo size={34} showSubtitle wordmarkClassName="text-lg" />
                 {mode === "perusahaan" && (
                   <NotificationPanel notifications={notifications} onStatusChange={handleStatusChange} onOpenChat={handleOpenChatFromNotif} onMarkComplete={handleSplitPayment} onDispute={handleNotifDispute} />
                 )}
