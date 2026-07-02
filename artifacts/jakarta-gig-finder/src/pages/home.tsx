@@ -50,7 +50,11 @@ import {
   CalendarDays,
 } from "lucide-react";
 
-let nextJobId = 100;
+// Device-unique, monotonic id base so gigs posted from two different physical
+// devices never collide on the shared server (client-provided primary key).
+// A 29-bit random device prefix is shifted left by 20 bits, leaving ~1M
+// monotonic ids per session; the whole space stays well under 2^53.
+let nextJobId = Math.floor(Math.random() * 0x20000000) * 0x100000;
 
 // Standby / backup workers for Butuh Cepat re-route on no-show
 const STANDBY_WORKERS = ["Ahmad", "Rian", "Siti"];
@@ -238,7 +242,11 @@ export default function Home() {
       // Notification dispatcher: ONLY the worker viewport gets the toast + alert.
       // An employer broadcasting from employer view stores the gig silently.
       if (modeRef.current === "pekerja") {
+        // This device is a worker → alert on arrival: toast + chime + native OS
+        // notification. (The employer device that posted stays silent.)
         setGigToast(gig);
+        playAlertChime();
+        fireNativeNotification();
       } else {
         pendingBroadcastRef.current = gig;
       }

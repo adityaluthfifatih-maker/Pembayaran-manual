@@ -22,15 +22,22 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/jakarta-gig-finder` — the Rekhastha web app (React + Vite), served at `/`.
+- `artifacts/api-server` — Express API, served at `/api`; REST + WebSocket.
+- `lib/db/src/schema/gigs.ts` — source of truth for the live gig table.
+- `artifacts/jakarta-gig-finder/src/lib/central-server.ts` — browser client for the gig feed (fetch hydrate + WebSocket) plus the audio/notification alert engine.
+- `artifacts/api-server/src/lib/realtime.ts` — WebSocket hub (`/api/ws`, fan-out).
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Cross-device gig sync is real: gigs persist in Postgres and fan out over a WebSocket at `/api/ws`. See `.agents/memory/realtime-gig-sync.md` for the full rationale.
+- Gig primary keys are **client-provided** (device-random prefix + counter), not `serial`, so an optimistic local entry reconciles with the WS echo by id.
+- The device that posts a gig stays silent; the chime + OS notification fire only on receiving worker-mode devices (gated in `home.tsx`'s subscriber).
+- Gig POST bodies are validated with `drizzle-zod` (`insertGigSchema`), a deliberate deviation from the repo's OpenAPI/Orval contract-first default, because the payload is the bespoke frontend `CustomJob`.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Rekhastha ("by Tilu Company") is an Indonesian daily-gig marketplace for Jakarta. Employers post gigs (instant "Broadcast Instan" or scheduled "Posting Reguler") with tax-free escrow; workers receive live broadcasts on a radar map with an audible chime and native OS notification the instant a gig is posted nearby. UI is fully Indonesian with an emerald + gold design.
 
 ## User preferences
 

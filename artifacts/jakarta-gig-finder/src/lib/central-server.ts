@@ -1,71 +1,214 @@
 import type { CustomJob } from "@/types/custom-job";
 
 /**
- * Central Virtual Server
- * ----------------------
- * A single reactive source-of-truth that simulates a live multi-user backend
- * inside one browser window. The Employer subsystem pushes broadcast gigs here
- * via `broadcastToServer`, and the Worker subsystem subscribes to receive them
- * in real time (radar markers + toast notification).
+ * Live gig client
+ * ---------------
+ * The real source-of-truth now lives in the Postgres-backed API server. This
+ * module is the browser-side client for it:
  *
- * The store is also mirrored onto `window.centralServer` / `window.broadcastToServer`
- * so it is inspectable and scriptable exactly as specified.
+ *   • hydrates the current gig list via `GET /api/gigs`,
+ *   • opens a WebSocket to `/api/ws` and receives every new gig the instant an
+ *     employer posts it (fan-out from the server),
+ *   • exposes the SAME synchronous API the app already used
+ *     (`subscribeToServer`, `broadcastToServer`, `getActiveGigs`, …) so the UI
+ *     did not need a rewrite.
+ *
+ * IMPORTANT: the audible chime + native OS notification are NOT fired here. They
+ * fire on the *receiving* worker device inside the subscriber (role-gated), so
+ * the employer device that posts stays silent while every worker device alerts.
  */
 
 export type Gig = CustomJob;
 
-// `gig` is the newly broadcast gig, or `null` for a bulk state change (e.g. reset).
+// `gig` is the newly broadcast gig, or `null` for a bulk state change (hydrate/reset).
 export type ServerSubscriber = (gig: Gig | null, activeGigs: Gig[]) => void;
 
-export interface CentralServer {
-  activeGigs: Gig[];
-  subscribers: ServerSubscriber[];
-}
+const API_BASE = "/api";
 
-const server: CentralServer = {
-  activeGigs: [],
-  subscribers: [],
-};
-
-/** Jakarta city centre used as the geofence origin. */
-export const JAKARTA_GEO_CENTER = { lat: -6.2088, lng: 106.8456 };
-
-/**
- * Uniformly-random coordinates within a strict `radiusKm` geofence around a
- * centre point (defaults to the 5 km Jakarta geofence).
- */
-export function randomGeofenceCoords(
-  radiusKm = 5,
-  center = JAKARTA_GEO_CENTER,
-): { lat: number; lng: number } {
-  const radiusDeg = radiusKm / 111; // ~111 km per degree of latitude
-  const angle = 2 * Math.PI * Math.random();
-  const dist = radiusDeg * Math.sqrt(Math.random()); // sqrt => uniform over area
-  const lat = center.lat + dist * Math.cos(angle);
-  const lng =
-    center.lng + (dist * Math.sin(angle)) / Math.cos((center.lat * Math.PI) / 180);
-  return { lat, lng };
-}
+let activeGigs: Gig[] = [];
+let subscribers: ServerSubscriber[] = [];
 
 function notify(gig: Gig | null): void {
-  for (const cb of [...server.subscribers]) {
+  for (const cb of [...subscribers]) {
     try {
-      cb(gig, server.activeGigs);
+      cb(gig, activeGigs);
     } catch {
       /* a broken subscriber must not break the broadcast */
     }
   }
 }
 
+/** Normalise a raw server row into the app's `CustomJob` shape (revive Dates). */
+function reviveGig(raw: Record<string, unknown>): Gig {
+  return {
+    ...(raw as unknown as Gig),
+    type: "custom_job",
+    postedAt: raw.postedAt ? new Date(raw.postedAt as string) : new Date(),
+    jobDate: raw.jobDate ? new Date(raw.jobDate as string) : undefined,
+  };
+}
+
+/** Serialise a gig for the wire (Dates → ISO strings, drop the type tag). */
+function serializeGig(gig: Gig): Record<string, unknown> {
+  const { type: _type, ...rest } = gig;
+  void _type;
+  return {
+    ...rest,
+    postedAt:
+      gig.postedAt instanceof Date ? gig.postedAt.toISOString() : gig.postedAt,
+    jobDate:
+      gig.jobDate instanceof Date ? gig.jobDate.toISOString() : gig.jobDate ?? null,
+  };
+}
+
+function upsertLocal(gig: Gig): void {
+  activeGigs = [gig, ...activeGigs.filter((g) => g.id !== gig.id)];
+}
+
+// ── Hydration + live WebSocket ────────────────────────────────────────
+
+let started = false;
+
+async function hydrate(): Promise<void> {
+  try {
+    const res = await fetch(`${API_BASE}/gigs`);
+    if (!res.ok) return;
+    const rows = (await res.json()) as Record<string, unknown>[];
+    activeGigs = rows.map(reviveGig);
+    notify(null); // bulk refresh — no per-gig alert
+  } catch {
+    /* offline / server not ready — the WebSocket will catch up later */
+  }
+}
+
+let ws: WebSocket | null = null;
+let wsRetry = 0;
+let wsHasOpened = false;
+
+function scheduleReconnect(): void {
+  const delay = Math.min(1000 * 2 ** wsRetry, 15000);
+  wsRetry += 1;
+  setTimeout(connectWs, delay);
+}
+
+function connectWs(): void {
+  if (typeof window === "undefined") return;
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+  try {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    ws = new WebSocket(`${proto}//${window.location.host}${API_BASE}/ws`);
+
+    ws.onopen = () => {
+      wsRetry = 0;
+      // On a RECONNECT, re-hydrate so any gigs broadcast while this client was
+      // offline are recovered (initial hydrate already ran in ensureStarted).
+      if (wsHasOpened) {
+        void hydrate();
+      }
+      wsHasOpened = true;
+    };
+    ws.onmessage = (ev: MessageEvent) => {
+      try {
+        const msg = JSON.parse(ev.data as string) as {
+          type: string;
+          gig?: Record<string, unknown>;
+        };
+        if (msg.type === "gig_broadcast" && msg.gig) {
+          const gig = reviveGig(msg.gig);
+          upsertLocal(gig);
+          notify(gig); // per-gig → receiving worker device alerts
+        }
+      } catch {
+        /* ignore malformed frames */
+      }
+    };
+    ws.onclose = () => {
+      ws = null;
+      scheduleReconnect();
+    };
+    ws.onerror = () => {
+      try {
+        ws?.close();
+      } catch {
+        /* ignore */
+      }
+    };
+  } catch {
+    scheduleReconnect();
+  }
+}
+
+function ensureStarted(): void {
+  if (started) return;
+  started = true;
+  void hydrate();
+  connectWs();
+}
+
+// ── Public API (unchanged surface) ────────────────────────────────────
+
+async function postGig(gig: Gig): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/gigs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(serializeGig(gig)),
+    });
+  } catch {
+    /* the optimistic local copy already showed; retry happens on next post */
+  }
+}
+
 /**
- * Push a gig into the central server and notify every subscriber.
- * Upserts by `id` so re-broadcasting the same job (e.g. lock after posting)
- * replaces the existing entry instead of creating duplicate markers.
+ * Publish a gig to the real server. Optimistically upserts locally (so the
+ * poster's own radar updates instantly, silently) then POSTs — the server
+ * fans it out over WebSocket to every other connected device.
  */
 export function broadcastToServer(gig: Gig): Gig {
-  server.activeGigs = [gig, ...server.activeGigs.filter((g) => g.id !== gig.id)];
-  notify(gig);
+  upsertLocal(gig);
+  notify(null); // silent local refresh — the poster never alerts itself
+  void postGig(gig);
   return gig;
+}
+
+/**
+ * Escrow-locked broadcast dispatcher. Publishes to the server ONLY — the chime
+ * and native notification are raised on the receiving worker device inside the
+ * subscriber, so the employer device that triggered it stays silent.
+ */
+export function triggerGlobalEscrowBroadcast(gig: Gig): Gig {
+  return broadcastToServer(gig);
+}
+
+/** Subscribe to real-time broadcasts. Returns an unsubscribe function. */
+export function subscribeToServer(cb: ServerSubscriber): () => void {
+  subscribers.push(cb);
+  ensureStarted();
+  // Push the current snapshot immediately so late subscribers are in sync.
+  try {
+    cb(null, activeGigs);
+  } catch {
+    /* best effort */
+  }
+  return () => {
+    subscribers = subscribers.filter((s) => s !== cb);
+  };
+}
+
+/** Current snapshot of all active gigs known to this client. */
+export function getActiveGigs(): Gig[] {
+  return activeGigs;
+}
+
+/**
+ * Clear the LOCAL cache only (used on logout so a session's radar clears). This
+ * never deletes server rows — other devices keep their gigs.
+ */
+export function resetServer(): void {
+  activeGigs = [];
+  notify(null);
 }
 
 // ── Alert engine: audible chime + native OS notification ──────────────
@@ -74,8 +217,8 @@ export function broadcastToServer(gig: Gig): Gig {
  * A single shared AudioContext, kept alive for the whole session. Reusing one
  * context (rather than creating a fresh one per chime) is what defeats browser
  * autoplay policies: once it has been resumed inside a trusted user gesture, it
- * stays "running" and later chimes — even ones fired from a React effect on role
- * switch — play reliably (incl. mobile Safari).
+ * stays "running" and later chimes — even ones fired from a React effect on a
+ * WebSocket message — play reliably (incl. mobile Safari).
  */
 let sharedAudioCtx: AudioContext | null = null;
 
@@ -158,49 +301,41 @@ export function fireNativeNotification(body: string = NATIVE_NOTIF_BODY): void {
   }
 }
 
+/** Jakarta city centre used as the geofence origin. */
+export const JAKARTA_GEO_CENTER = { lat: -6.2088, lng: 106.8456 };
+
 /**
- * Global escrow-broadcast dispatcher. Fires the FULL alert pipeline the instant
- * an employer locks escrow, regardless of the current viewport role:
- *   1. pushes the gig to the reactive server → radar pins + role-gated toast
- *      (handled by subscribers),
- *   2. plays the audible device chime,
- *   3. raises a native OS-level notification.
+ * Uniformly-random coordinates within a strict `radiusKm` geofence around a
+ * centre point (defaults to the 5 km Jakarta geofence).
  */
-export function triggerGlobalEscrowBroadcast(gig: Gig): Gig {
-  broadcastToServer(gig);
-  playAlertChime();
-  fireNativeNotification();
-  return gig;
+export function randomGeofenceCoords(
+  radiusKm = 5,
+  center = JAKARTA_GEO_CENTER,
+): { lat: number; lng: number } {
+  const radiusDeg = radiusKm / 111; // ~111 km per degree of latitude
+  const angle = 2 * Math.PI * Math.random();
+  const dist = radiusDeg * Math.sqrt(Math.random()); // sqrt => uniform over area
+  const lat = center.lat + dist * Math.cos(angle);
+  const lng =
+    center.lng + (dist * Math.sin(angle)) / Math.cos((center.lat * Math.PI) / 180);
+  return { lat, lng };
 }
 
-/** Subscribe to real-time broadcasts. Returns an unsubscribe function. */
-export function subscribeToServer(cb: ServerSubscriber): () => void {
-  server.subscribers.push(cb);
-  return () => {
-    server.subscribers = server.subscribers.filter((s) => s !== cb);
-  };
-}
-
-/** Current snapshot of all active gigs on the server. */
-export function getActiveGigs(): Gig[] {
-  return server.activeGigs;
-}
-
-/** Clear the server (used on logout so sessions don't leak gigs). */
-export function resetServer(): void {
-  server.activeGigs = [];
-  notify(null); // push empty state to all live subscribers
-}
-
-// Mirror the store + dispatchers onto `window` so they are the literal,
-// inspectable, scriptable source of truth.
+// Expose a minimal inspectable handle on `window` for debugging/scripting.
 if (typeof window !== "undefined") {
   const w = window as unknown as {
-    centralServer: CentralServer;
+    centralServer: { activeGigs: Gig[]; subscribers: ServerSubscriber[] };
     broadcastToServer: typeof broadcastToServer;
     triggerGlobalEscrowBroadcast: typeof triggerGlobalEscrowBroadcast;
   };
-  w.centralServer = server;
+  w.centralServer = {
+    get activeGigs() {
+      return activeGigs;
+    },
+    get subscribers() {
+      return subscribers;
+    },
+  };
   w.broadcastToServer = broadcastToServer;
   w.triggerGlobalEscrowBroadcast = triggerGlobalEscrowBroadcast;
 }
