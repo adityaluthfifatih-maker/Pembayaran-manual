@@ -1,1 +1,2 @@
 - [Escrow Engine Architecture](escrow-engine.md) — Rekhastha escrow: rates, split calc, status flow, and which component owns each action.
+- [Central Virtual Server Sync](central-server-sync.md) — single-window live employer→worker gig broadcast: upsert-by-id, null-gig reset signal, both broadcast paths must geofence to 5km.

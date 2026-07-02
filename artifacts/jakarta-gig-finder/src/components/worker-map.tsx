@@ -45,6 +45,21 @@ const createJobIcon = () =>
     iconAnchor: [14, 14],
   });
 
+// Live-broadcast gig: pulsing green pin injected in real time by the central server.
+const createBroadcastIcon = () =>
+  L.divIcon({
+    className: "",
+    html: `
+      <div style="position:relative;width:40px;height:40px;display:flex;align-items:center;justify-content:center">
+        <div style="position:absolute;inset:0;border-radius:50%;background:#10B981;opacity:0.25;animation:radarPulse 1.8s ease-out infinite"></div>
+        <div style="position:absolute;inset:0;border-radius:50%;background:#10B981;opacity:0.2;animation:radarPulse 1.8s ease-out 0.9s infinite"></div>
+        <div style="width:26px;height:26px;border-radius:50%;background:#059669;border:3px solid white;box-shadow:0 2px 12px rgba(5,150,105,0.6);display:flex;align-items:center;justify-content:center;color:white;font-size:13px;line-height:1;z-index:1;position:relative">⚡</div>
+      </div>
+    `,
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
+  });
+
 const createMidpointIcon = (text: string) =>
   L.divIcon({
     className: "",
@@ -57,6 +72,7 @@ interface WorkerMapProps {
   userLat: number;
   userLng: number;
   customJobs: CustomJob[];
+  broadcastGigs?: CustomJob[];
   selectedJob: CustomJob | null;
   onJobClick: (job: CustomJob) => void;
 }
@@ -65,6 +81,7 @@ export default function WorkerMap({
   userLat,
   userLng,
   customJobs,
+  broadcastGigs = [],
   selectedJob,
   onJobClick,
 }: WorkerMapProps) {
@@ -108,6 +125,20 @@ export default function WorkerMap({
           >
             <Tooltip direction="top" offset={[0, -14]} className="!bg-violet-700 !text-white !text-[10px] !font-semibold !border-0 !rounded-lg !shadow-lg">
               {job.posisi}
+            </Tooltip>
+          </Marker>
+        ))}
+
+        {/* Live-broadcast gig pins (pulsing green, pushed by central server) */}
+        {broadcastGigs.map((gig) => (
+          <Marker
+            key={`gig-${gig.id}`}
+            position={[gig.lat, gig.lng]}
+            icon={createBroadcastIcon()}
+            eventHandlers={{ click: () => onJobClick(gig) }}
+          >
+            <Tooltip direction="top" offset={[0, -20]} className="!bg-emerald-600 !text-white !text-[10px] !font-semibold !border-0 !rounded-lg !shadow-lg">
+              ⚡ {gig.posisi}
             </Tooltip>
           </Marker>
         ))}

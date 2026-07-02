@@ -1,0 +1,24 @@
+Enhance the core architectural logic of the Rekhastha application by implementing a Single Virtual Server State Connection framework. This will simulate a live multi-user real-time synchronization between the Employer and the Worker dashboards in a single browser window.
+
+Please execute these explicit code refactors:
+
+1. CENTRAL VIRTUAL SERVER ARCHITECTURE:
+- Establish a global reactive object named `window.centralServer = { activeGigs: [], subscribers: [] };` to act as the single source of truth (The Central Server).
+- Create a JavaScript function `broadcastToServer(newGig)` that pushes the employer's vacancy data into `window.centralServer.activeGigs`.
+
+2. REAL-TIME EMPLOYER BROADCAST LOGIC:
+- When the Employer fills out the job form (e.g., Job Title: "Packer Gudang Logistik", Calculated Wage: 172,500 IDR) and clicks "🔒 Kunci Alokasi Dana Kerja", the application must:
+  * Prevent any page reload.
+  * Construct a dynamic Gig Object containing: a unique ID, Job Title, Final Negotiated Wage, and randomized Mock Latitude/Longitude coordinates within the strict 5km Jakarta Geofence radius.
+  * Push this object to `window.centralServer.activeGigs` via the broadcast handler.
+
+3. INSTANT WORKER RADAR & NOTIFICATION INJECTION:
+- Immediately following the Employer's broadcast execution, trigger a reactive DOM update event on the Worker Subsystem (even if the worker view is currently hidden via CSS):
+  * Notification Badge: Render a persistent, floating toast notification block at the top of the screen: "🔔 NOTIFIKASI BARU: Lowongan Kerja [Nama Pekerjaan] Tersedia Dekat Anda!". Give it a subtle clicking sound or flash effect.
+  * Dynamic Map Marker: Automatically parse the new Gig Object coordinates and append a NEW pulsing, clickable green marker pin onto the Worker's Interactive Radar Screen layer.
+  * Clicking this new dynamic marker pin must slide open the Profile Bottom Sheet showing the exact live job details broadcasted by the employer.
+
+4. PRESERVE STRICT COMPLIANCE PILLARS:
+- Ensure this real-time server integration smoothly respects all previous systems: the 24-hour dispute validation window countdown, the 3-strike anti-bypass Regex chat protection shield, and the complete tax-free ledger presentation.
+
+Regenerate the unified clean single-file codebase with fully interactive JavaScript event handlers. Avoid any placeholder logic or cut-off blocks. Run the application.

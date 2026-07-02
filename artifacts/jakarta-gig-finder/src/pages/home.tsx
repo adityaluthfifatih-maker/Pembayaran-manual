@@ -16,6 +16,14 @@ import AnalyticsDashboard from "@/components/analytics-dashboard";
 import HiringModePanel from "@/components/hiring-mode-panel";
 import JobPingModal from "@/components/job-ping-modal";
 import ApplicantToast from "@/components/applicant-toast";
+import GigBroadcastToast from "@/components/gig-broadcast-toast";
+import {
+  broadcastToServer,
+  subscribeToServer,
+  getActiveGigs,
+  resetServer,
+  randomGeofenceCoords,
+} from "@/lib/central-server";
 import AuthPage from "@/pages/auth";
 import WorkerProfilePage from "@/components/worker-profile-page";
 import CompanyProfilePage from "@/components/company-profile-page";
@@ -204,6 +212,17 @@ export default function Home() {
 
   // ── Real-time: employer toast & worker ping ──────────────────────
   const [applicantToast, setApplicantToast] = useState<ApplicationNotification | null>(null);
+
+  // ── Central virtual server: live employer→worker broadcast sync ──
+  const [centralGigs, setCentralGigs] = useState<CustomJob[]>(() => getActiveGigs());
+  const [gigToast, setGigToast] = useState<CustomJob | null>(null);
+  useEffect(() => {
+    const unsubscribe = subscribeToServer((gig, gigs) => {
+      setCentralGigs([...gigs]);
+      if (gig) setGigToast(gig); // reactive DOM update on the Worker subsystem, even if hidden
+    });
+    return unsubscribe;
+  }, []);
   const [activePing, setActivePing] = useState<CustomJob | null>(null);
   const seenNotifIds = useRef<Set<number>>(new Set());
   const seenPingJobIds = useRef<Set<number>>(new Set());
@@ -243,6 +262,9 @@ export default function Home() {
     setActiveTab("home");
     setMode("perusahaan");
     setCustomJobs([]);
+    resetServer();
+    setCentralGigs([]);
+    setGigToast(null);
     setNotifications([]);
     setRatings([]);
     setCompletedNotifs([]);
@@ -346,10 +368,14 @@ export default function Home() {
 
   const handleLockEscrow = useCallback((jobId: number, escrowAmount: number) => {
     const job = customJobs.find(j => j.id === jobId);
+    // Re-geofence within the strict 5km radius when a scheduled job goes live.
+    const coords = randomGeofenceCoords(5);
     setCustomJobs(prev => prev.map(j =>
-      j.id === jobId ? { ...j, escrowStatus: "locked" as const, escrowAmount } : j
+      j.id === jobId ? { ...j, escrowStatus: "locked" as const, escrowAmount, ...coords } : j
     ));
     if (job) {
+      // Locking a scheduled job also broadcasts it live to the worker radar.
+      broadcastToServer({ ...job, ...coords, escrowStatus: "locked", escrowAmount, broadcastActive: true });
       setEscrowEvents(prev => [...prev, {
         id: Date.now(), jobId,
         jobTitle: job.posisi,
@@ -579,6 +605,12 @@ export default function Home() {
   const addTag = useCallback((tag: string) => { setActiveTags((p) => p.includes(tag) ? p : [...p, tag]); setSearchQuery(""); }, []);
   const removeTag = useCallback((tag: string) => setActiveTags((p) => p.filter((t) => t !== tag)), []);
 
+  // Purple pins on the radar = jobs that are NOT live broadcasts (broadcasts render as green).
+  const mapPurpleJobs = useMemo(() => {
+    const broadcastIds = new Set(centralGigs.map((g) => g.id));
+    return customJobs.filter((j) => !broadcastIds.has(j.id));
+  }, [customJobs, centralGigs]);
+
   const filteredWorkers = useMemo(() => {
     if (!activeTags.length && !searchQuery.trim()) return workers;
     return workers.filter((w) => {
@@ -613,10 +645,17 @@ export default function Home() {
 
   // ── Job posting ─────────────────────────────────────────────────
   const handleJobPosted = useCallback((data: Omit<CustomJob, "id" | "type" | "lat" | "lng" | "postedAt">) => {
-    const coords = randomJakartaCoords();
+    // Instant broadcasts (Butuh Cepat / escrow locked) are geofenced within 5 km of Jakarta centre.
+    const isBroadcast = data.hiringMode === "cepat" || data.broadcastActive === true || data.escrowStatus === "locked";
+    const coords = isBroadcast ? randomGeofenceCoords(5) : randomJakartaCoords();
     const newId = nextJobId++;
     const now = new Date();
-    setCustomJobs(p => [...p, { id: newId, type: "custom_job", ...data, ...coords, postedAt: now }]);
+    const newJob: CustomJob = { id: newId, type: "custom_job", ...data, ...coords, postedAt: now };
+    setCustomJobs(p => [...p, newJob]);
+    if (isBroadcast) {
+      // Push to the central virtual server → live radar marker + worker toast.
+      broadcastToServer(newJob);
+    }
     if (data.escrowStatus === "locked" && data.escrowAmount) {
       setEscrowEvents(prev => [...prev, {
         id: Date.now(),
@@ -874,6 +913,24 @@ export default function Home() {
           onDecline={() => handleStatusChange(applicantToast.id, "ditolak")}
           onDismiss={() => setApplicantToast(null)}
         />
+      )}
+
+      {/* ── GIG BROADCAST TOAST (central server → worker subsystem) ─ */}
+      {gigToast && (
+        <GigBroadcastToast
+          gig={gigToast}
+          onView={() => {
+            setSelectedJob(gigToast);
+            setWorkerView("map");
+            setGigToast(null);
+          }}
+          onDismiss={() => setGigToast(null)}
+        />
+      )}
+
+      {/* ── LIVE GIG DETAILS (opens from toast while in employer view) ─ */}
+      {mode === "perusahaan" && selectedJob && (
+        <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile} />
       )}
 
       {/* ── GLOBAL MODALS ───────────────────────────────── */}
@@ -1255,18 +1312,24 @@ export default function Home() {
 
             ) : workerView === "map" ? (
               <div className="flex-1 relative">
-                <WorkerMap userLat={userLocation.lat} userLng={userLocation.lng} customJobs={customJobs} selectedJob={selectedJob} onJobClick={(j) => setSelectedJob(j)} />
+                <WorkerMap userLat={userLocation.lat} userLng={userLocation.lng} customJobs={mapPurpleJobs} broadcastGigs={centralGigs} selectedJob={selectedJob} onJobClick={(j) => setSelectedJob(j)} />
                 <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur-sm rounded-xl px-3 py-2 shadow border border-gray-100 space-y-1.5">
                   <div className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full bg-primary border-2 border-white shadow-sm shrink-0" />
                     <span className="text-[10px] font-medium text-gray-600">Lokasi Saya</span>
                   </div>
-                  {customJobs.length > 0 ? (
+                  {centralGigs.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white shadow-sm shrink-0 flex items-center justify-center text-white text-[8px]">⚡</span>
+                      <span className="text-[10px] font-medium text-gray-600">{centralGigs.length} Broadcast Live</span>
+                    </div>
+                  )}
+                  {mapPurpleJobs.length > 0 ? (
                     <div className="flex items-center gap-2">
                       <span className="w-3.5 h-3.5 rounded-[3px] bg-violet-600 border-2 border-white shadow-sm shrink-0 flex items-center justify-center text-white text-[8px] font-black">+</span>
-                      <span className="text-[10px] font-medium text-gray-600">{customJobs.length} Lowongan</span>
+                      <span className="text-[10px] font-medium text-gray-600">{mapPurpleJobs.length} Lowongan</span>
                     </div>
-                  ) : <p className="text-[10px] text-gray-400">Belum ada lowongan</p>}
+                  ) : centralGigs.length === 0 ? <p className="text-[10px] text-gray-400">Belum ada lowongan</p> : null}
                 </div>
                 {selectedJob && (
                   <div className="absolute bottom-4 left-4 right-4 z-10 bg-white rounded-xl shadow-lg border border-gray-100 p-3 flex justify-between items-center">
