@@ -674,7 +674,7 @@ export default function Home() {
     }
   }, [activeJob, workerProfile]);
 
-  const handleCancelJob = useCallback(() => {
+  const handleWorkerCancelJob = useCallback(() => {
     setActiveJob(null); setJobStatus(null); setClockedInAt(null); setClockedOutAt(null);
     setReputationPoints((p) => Math.max(0, p - 20));
   }, []);
@@ -1019,7 +1019,7 @@ export default function Home() {
                             <button onClick={handleWorkerDispute} className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-1.5 rounded-lg">⚠️ Sengketa</button>
                           )}
                           {jobStatus !== "clocked_in" && (
-                            <button data-testid="button-cancel-job" onClick={handleCancelJob} className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-1.5 rounded-lg">Batal</button>
+                            <button data-testid="button-cancel-job" onClick={handleWorkerCancelJob} className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-1.5 rounded-lg">Batal</button>
                           )}
                         </>
                       )}
