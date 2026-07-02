@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Eye, EyeOff, Mail, Lock, User, Phone, ArrowRight, ShieldCheck } from "lucide-react";
 import { AuthUser, UserRole } from "@/types/auth";
 import RoleSelectModal from "@/components/role-select-modal";
+import TermsModal from "@/components/terms-modal";
 
 interface AuthPageProps {
   onComplete: (user: AuthUser) => void;
@@ -24,6 +25,7 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
   // Role selection state
   const [pendingUser, setPendingUser] = useState<Omit<AuthUser, "role"> | null>(null);
   const [showRoleModal, setShowRoleModal] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
 
   const triggerRoleSelect = (partial: Omit<AuthUser, "role">) => {
     setPendingUser(partial);
@@ -197,7 +199,15 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
 
         <p className="text-center text-[10px] text-gray-400 mt-4 leading-relaxed">
           Dengan mendaftar, Anda menyetujui{" "}
-          <span className="text-emerald-600 font-semibold">Syarat & Ketentuan</span> dan{" "}
+          <button
+            type="button"
+            data-testid="link-terms"
+            onClick={() => setShowTerms(true)}
+            className="text-emerald-600 font-semibold hover:underline"
+          >
+            Syarat & Ketentuan
+          </button>{" "}
+          dan{" "}
           <span className="text-emerald-600 font-semibold">Kebijakan Privasi</span> GigFinder.
         </p>
       </div>
@@ -205,6 +215,8 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
       {showRoleModal && (
         <RoleSelectModal onSelect={handleRoleSelected} isGoogle={pendingUser?.linkedWithGoogle ?? false} />
       )}
+
+      {showTerms && <TermsModal onClose={() => setShowTerms(false)} />}
 
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.animate-spin{animation:spin 1s linear infinite}`}</style>
     </div>

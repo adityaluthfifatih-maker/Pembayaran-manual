@@ -1,0 +1,24 @@
+Add an interactive "Syarat & Ketentuan" (Terms & Conditions) modal framework component to the existing Rekhastha (GigFinder) application. This document must legalistically protect the platform while enforcing the platform's anti-fraud, tax-free escrow, and anti-bypass pillars.
+
+Please implement the following updates to the codebase:
+
+1. UI/UX IMPLEMENTATION:
+- At the bottom of the Login Page (matching the footer coordinates in image_04ebc0.jpg), ensure clicking the "Syarat & Ketentuan" text hyperlink triggers an overlay clean minimalist full-screen modal popup.
+- The modal must feature a clean, scrollable layout box, an Emerald Green header accent, and a prominent green "Saya Setuju & Paham" confirmation button at the base to close the modal.
+
+2. SPECIFIC LEGAL & OPERATIONAL SECTIONS TO GENERATE:
+Inside the scrollable legal text box, render two separate marked sections in Indonesian:
+
+A. BAGIAN I: KETENTUAN PENYEDIA PEKERJAAN (EMPLOYER)
+- Profiling Check: Employers guarantee the absolute validity of uploaded data (NPWP for Corporates, KTP for Households, and Regional Codes for Political Entities).
+- Escrow Requirement: Employers must secure 100% of the worker base wage plus platform service fees (7% or 15%) inside the Escrow Ledger before a shift goes live.
+- Late Cancellation Penalty: Confirm that canceling a locked contract within 1 hour of the scheduled start time enforces an automated 20,000 IDR penalty charge directly credited to the assigned worker's wallet balance.
+- Independent Taxation Compliance: Strictly explicitly state that the platform completely waives automated PPh or PPN/VAT processing. All taxation reporting remains the sole individual legal responsibility of the transacting entities according to prevailing Indonesian financial law.
+
+B. BAGIAN II: KETENTUAN MITRA PEKERJA (WORKER)
+- KYC & Identity: Workers must pass the biometric Auto-Vetting KYC matching their registered KTP profile. Relocating or delegating tasks to unverified substitute friends/family members ("Joki Kerja") is strictly prohibited.
+- Geofence & QR Integration: Shfits are only legally initiated upon scanning the physical QR Code at the work location within the specified 5km Geofence perimeter lock. Successful compliance activates the BPJS Ketenagakerjaan and Income Insurance coverage layer.
+- Zero-Tolerance Off-Platform Bypass Sanctions: Exchanging contact cards, phone/WhatsApp numbers, or prompting direct outside banking/cash settlements will trigger immediate automated regular expression text masking, instant forfeiture of Escrow Payout Guarantees, cancellation of insurance, and permanent platform radar ban.
+- Dispute Resolution Agreement: Both parties agree that filing a workplace complaint via the "Ajukan Sengketa" module will freeze the locked escrow ledger pool immediately, granting Rekhastha internal support teams sole binding mediation arbitration authorization.
+
+Ensure all layout parameters integrate cleanly with the active state management systems and match the existing Emerald Green design typography smoothly. Run the full updated code.
