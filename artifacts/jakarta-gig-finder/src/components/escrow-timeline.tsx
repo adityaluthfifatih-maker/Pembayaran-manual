@@ -13,6 +13,7 @@ const STATUS: Record<EscrowStatus, StatusCfg> = {
   pending:  { label: "Pending",        color: "text-gray-500",    bg: "bg-gray-50",      border: "border-gray-200",    dot: "bg-gray-300",     icon: Clock },
   locked:   { label: "Dana Dikunci",   color: "text-blue-700",    bg: "bg-blue-50",      border: "border-blue-200",    dot: "bg-blue-500",     icon: Lock },
   disputed: { label: "Sengketa Aktif", color: "text-red-700",     bg: "bg-red-50",       border: "border-red-200",     dot: "bg-red-500",      icon: AlertTriangle },
+  disputed_active: { label: "Sengketa Aktif", color: "text-red-700", bg: "bg-red-50",    border: "border-red-200",     dot: "bg-red-500",      icon: AlertTriangle },
   released: { label: "Dana Dilepas",   color: "text-emerald-700", bg: "bg-emerald-50",   border: "border-emerald-200", dot: "bg-emerald-500",  icon: CheckCircle },
   refunded: { label: "Refund",         color: "text-gray-700",    bg: "bg-gray-100",     border: "border-gray-200",    dot: "bg-gray-500",     icon: RefreshCcw },
 };

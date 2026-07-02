@@ -1,0 +1,41 @@
+Consolidate the Tilu Company Admin Dashboard, both Borongan workflows (Remote & On-Site), the Full-Screen Worker Radar Alarm, and the high-empathy Automated Emergency SOS Delegation system into one unified ecosystem.
+
+Please refactor the database schemas, frontend templates, WebSocket handlers, and payment ledger controllers under these exact specifications:
+
+1. BORONGAN JARAK JAUH (REMOTE WORKFLOW) SPECIFICATIONS:
+- Implement a milestone-based progress system where the Remote Worker uploads proof of work (e.g., Google Drive link, Figma link, Github URL) to claim payment.
+- If the Employer approves, funds are instantly disbursed from Escrow to the Worker's wallet minus a 15% corporate fee.
+- If the Employer rejects the proof, the project freezes into a 'disputed_active' state and is routed directly to the Admin Dashboard's Resolusi Pusat.
+
+2. BORONGAN DI TEMPAT (ON-SITE PHYSICAL WORKFLOW) SPECIFICATIONS:
+- Implement a linear daily payout infrastructure controlled by a physical QR-code check-out system.
+- Every time an On-Site Worker (e.g., Kuli Bangunan, Renovator) scans the site's physical QR code daily, calculate a precise fractional wage distribution based on contract duration (e.g., Total Contract Value / Duration Days).
+- Automatically release this daily wage fraction from Escrow to the Worker's wallet upon verified scan, logging it seamlessly for corporate auditing.
+
+3. WORKER-SIDE SILENT EMERGENCY SOS (NO AUTOMATIC CALLS)
+- On the Worker's active job view (especially for On-Site/Physical jobs), render a high-visibility, premium crimson button: "🚨 LAPOR DARURAT (SOS)".
+- Upon confirmation, do NOT trigger native mobile phone calls or "tel:" protocols to shield the worker from panic/shock. Instead, log the incident in the database with state 'emergency_active' and instantly broadcast a high-priority WebSocket payload to the Tilu Company Admin Dashboard.
+- Instantly switch the Worker's view to a calming, structured "Rekhastha Emergency Care" overlay:
+  * Title: "🚨 Laporan Darurat Telah Terkirim!"
+  * Subtitle: "Tim Pusat Tilu Company sedang berkoordinasi dengan Ambulans/Pihak Berwajib menuju lokasi Anda. Harap tetap tenang."
+  * Render a clean list of basic offline first-aid tips customized to their structural project safety standard.
+
+4. ADMIN COMMAND CENTER EMERGENCY FULL-SCREEN ALARM & DISPATCH PROTOCOL
+- When the Admin Dashboard receives an 'emergency_active' WebSocket event:
+  * Intercept and force an absolute fixed overlay covering 100% of the admin viewport (`fixed inset-0 w-full h-full z-[99999]`), locking down and blocking all background interface actions.
+  * The screen must violently flash/pulse between deep Crimson Red and Dark Charcoal, reading: "🚨 PERINGATAN DARURAT: PEKERJA DALAM BAHAYA!".
+  * Loop a sharp, loud continuous siren frequency via HTML5 Audio API that can only be silenced when the Admin clicks "🔴 Matikan Alarm & Hubungi Pihak Berwajib".
+  * Display live data: Worker Name, Phone, Job Title, Employer Name, and Project Address.
+  * Provide a prominent "📋 SALIN DETAIL DARURAT UNTUK OPERATOR" button. Clicking this copies a pre-formatted string to the clipboard: `[DARURAT REKHASTHA] Jenis Proyek: On-Site | Alamat Kejadian: [Project Address] | Nama Pekerja: [Worker Name] | Kontak: [Worker Phone]`. This allows the Admin to seamlessly act as the dispatcher and call 112/110/118 efficiently.
+
+5. BULLETPROOF FULL-SCREEN FLASHING RADAR ALARM (FOR WORKERS)
+- Keep the instant job matching notification engine. When an instant job matches the worker's active radar switch, loop a loud synthesized beep and take over 100% of the screen with a pulsing layout (`fixed inset-0 z-[9999]`) shifting between deep Red and Dark Emerald Green. Block background clicks until they click "Terima" or "Lewati".
+
+6. ADMIN DASHBOARD MODULAR MANAGEMENT VIEWS
+- TAB 1: PUSAT RESOLUSI (REMOTE DISPUTES): Pull all 'disputed_active' states where remote employers rejected proof-of-work URLs. Display the Worker ID, Employer ID, the submitted Project Link, and locked Escrow balance. Provide two overriding admin triggers: "⚖️ Putuskan Cairkan ke Pekerja" and "⚖️ Putuskan Refund ke Employer".
+- TAB 2: MONITORING PROYEK FISIK (ON-SITE TRACKER): Display a live tracking grid of active physical borongan jobs showing contract duration progress (e.g., "Hari ke-3 dari 10") and a sub-section logging fractional daily automatic payout QR check-outs minus corporate fees.
+
+7. BRANDING INTEGRATION
+- Encase all operational workflows, notification templates, secure fields, and admin override controls within the premium high-contrast Emerald Green, Deep Charcoal, and Metallic Gold design framework of "Rekhastha by Tilu Company".
+
+Compile this full-stack integration master plan, update relational state models, and deploy the updated application preview.

@@ -9,7 +9,8 @@ import NotificationPanel from "@/components/notification-panel";
 import ClockInModal from "@/components/clock-in-modal";
 import AttendanceQrModal from "@/components/attendance-qr-modal";
 import RatingModal, { RatingPayload } from "@/components/rating-modal";
-import SOSButton from "@/components/sos-button";
+import EmergencySOS from "@/components/emergency-sos";
+import BoronganWorkerPanel from "@/components/borongan-worker-panel";
 import PaySlipModal from "@/components/pay-slip-modal";
 import EarningsDashboard from "@/components/earnings-dashboard";
 import ChatModal from "@/components/chat-modal";
@@ -1102,6 +1103,7 @@ export default function Home() {
   }, [currentUser, pendingRating]);
 
   const verified = workerProfile ? isVerified(workerProfile) : false;
+  const workerPhone = workerProfile?.whatsapp || currentUser?.whatsapp || "";
 
   // ── Auth gate ───────────────────────────────────────────────────
   if (authChecking) {
@@ -1215,9 +1217,6 @@ export default function Home() {
           currentRole={chatContext.currentRole} hiringMode={chatContext.hiringMode}
           onNominalUpdate={handleNominalUpdate}
           onClose={() => setChatContext(null)} />
-      )}
-      {mode === "pekerja" && jobStatus === "clocked_in" && activeJob && (
-        <SOSButton jobTitle={activeJob.posisi} />
       )}
 
       {/* ── CHAT TAB ─────────────────────────────────────── */}
@@ -1573,6 +1572,18 @@ export default function Home() {
                         </>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {activeJob && jobStatus !== "completed" && (
+                  <div className="space-y-2.5 pt-1">
+                    {activeJob.boronganType && (
+                      <BoronganWorkerPanel
+                        activeJob={activeJob}
+                        onJobUpdate={(job) => setActiveJob(job)}
+                      />
+                    )}
+                    <EmergencySOS activeJob={activeJob} workerPhone={workerPhone} />
                   </div>
                 )}
               </div>

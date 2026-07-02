@@ -6,6 +6,9 @@ import attendanceRouter from "./attendance";
 import blacklistRouter from "./blacklist";
 import ratingsRouter from "./ratings";
 import adminRouter from "./admin";
+import adminOpsRouter from "./admin-ops";
+import boronganRouter from "./borongan";
+import emergencyRouter from "./emergency";
 
 const router: IRouter = Router();
 
@@ -16,5 +19,8 @@ router.use(attendanceRouter);
 router.use(blacklistRouter);
 router.use(ratingsRouter);
 router.use(adminRouter);
+router.use(adminOpsRouter);
+router.use(boronganRouter);
+router.use(emergencyRouter);
 
 export default router;

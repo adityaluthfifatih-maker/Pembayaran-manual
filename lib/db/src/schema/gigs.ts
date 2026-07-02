@@ -45,6 +45,15 @@ export const gigsTable = pgTable("gigs", {
   jumlahHari: integer("jumlah_hari"),
   employerId: text("employer_id"),
   employerName: text("employer_name"),
+  // ── Borongan workflows ──────────────────────────────────────────
+  // "remote" = milestone proof-of-work; "onsite" = daily QR fractional payout.
+  boronganType: text("borongan_type"),
+  // Remote milestone: the submitted proof-of-work URL (Drive/Figma/GitHub …).
+  proofUrl: text("proof_url"),
+  // Remote milestone state: "submitted" | "approved" | "rejected".
+  proofStatus: text("proof_status"),
+  // On-site: how many daily wage fractions have already been released.
+  daysPaid: integer("days_paid").notNull().default(0),
   postedAt: timestamp("posted_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

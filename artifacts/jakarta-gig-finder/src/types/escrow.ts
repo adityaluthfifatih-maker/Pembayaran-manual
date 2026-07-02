@@ -1,4 +1,10 @@
-export type EscrowStatus = "pending" | "locked" | "disputed" | "released" | "refunded";
+export type EscrowStatus =
+  | "pending"
+  | "locked"
+  | "disputed"
+  | "disputed_active"
+  | "released"
+  | "refunded";
 
 export interface EscrowEvent {
   id: number;
@@ -77,4 +83,21 @@ export function calcEmployerFee(baseWage: number): number {
 /** Total the employer funds into escrow: base wage + 15% employer-borne fee. */
 export function calcEmployerDeposit(baseWage: number): number {
   return baseWage + calcEmployerFee(baseWage);
+}
+
+/**
+ * On-site borongan daily fractional wage.
+ *
+ * Splits the TOTAL escrow deposit evenly across the contract duration so each
+ * verified daily QR check-out releases exactly one day's share: the worker's net
+ * (`netToWorker`) plus the 15% corporate fee (`platformFee`). `grossFraction` is
+ * the day's gross before the fee (TotalContractValue / DurationDays basis).
+ */
+export function calcDailyFraction(totalDeposit: number, jumlahHari: number) {
+  const days = Math.max(1, jumlahHari);
+  const { workerNet, platformCut } = calcSplit(totalDeposit);
+  const netToWorker = Math.round(workerNet / days);
+  const platformFee = Math.round(platformCut / days);
+  const grossFraction = netToWorker + platformFee;
+  return { grossFraction, platformFee, netToWorker };
 }

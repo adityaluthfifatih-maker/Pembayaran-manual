@@ -2,12 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Shield, LogOut, Wallet, Users, GraduationCap, Zap, RefreshCw,
   Ban, CheckCircle2, Lock, KeyRound, Loader2, AlertTriangle, ClipboardList,
+  Scale, HardHat, ExternalLink, Gavel, Building2,
 } from "lucide-react";
 import {
   adminLogin, adminLogout, adminMe, fetchLedger, forceRelease,
   fetchAdminUsers, toggleSuspend, AdminError,
+  fetchDisputes, refund, fetchOnsite,
   type LedgerRow, type AdminUserRow,
+  type DisputeRow, type OnsiteData,
 } from "@/lib/admin-client";
+import { EmergencyAlarm } from "@/components/emergency-alarm";
 
 const API_BASE = "/api";
 const GOLD = "#D4AF37";
@@ -16,7 +20,7 @@ function formatRp(v: number): string {
   return "Rp " + Math.round(v).toLocaleString("id-ID");
 }
 
-type Tab = "escrow" | "users" | "academy";
+type Tab = "escrow" | "resolution" | "onsite" | "users" | "academy";
 
 // ── Login gateway ─────────────────────────────────────────────────
 function LoginGate({ onSuccess }: { onSuccess: () => void }) {
@@ -408,6 +412,306 @@ function AcademyTab() {
   );
 }
 
+// ── Tab: Pusat Resolusi (remote disputes) ─────────────────────────
+function ResolutionTab() {
+  const [rows, setRows] = useState<DisputeRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setRows(await fetchDisputes());
+    } catch {
+      /* keep last known rows */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${proto}//${window.location.host}${API_BASE}/ws`);
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data) as { type?: string };
+        if (msg.type === "gig_broadcast") void load();
+      } catch {
+        /* ignore malformed frames */
+      }
+    };
+    return () => ws.close();
+  }, [load]);
+
+  const decide = async (jobId: number, action: "release" | "refund") => {
+    setBusyId(jobId);
+    try {
+      if (action === "release") await forceRelease(jobId);
+      else await refund(jobId);
+      await load();
+    } catch {
+      /* the reload will reflect the true state */
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 flex items-start gap-3">
+        <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+          <Gavel className="w-5 h-5 text-amber-700" />
+        </div>
+        <div>
+          <h3 className="font-black text-gray-900">Pusat Resolusi Sengketa Remote</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Proyek remote yang bukti kerjanya ditolak employer &amp; dibekukan (escrow terkunci). Putuskan pemenang sengketa.
+          </p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-emerald-600" /></div>
+      ) : rows.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 text-center text-sm text-gray-400">
+          Tidak ada sengketa aktif. 🎉
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {rows.map((r) => (
+            <div
+              key={r.jobId}
+              data-testid={`dispute-row-${r.jobId}`}
+              className="bg-white rounded-2xl border border-amber-200 shadow-sm p-5"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-black text-gray-900">{r.posisi}</p>
+                  <p className="text-[11px] text-gray-400 font-mono">Job #{r.jobId}</p>
+                </div>
+                <span className="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-700 border border-red-200">
+                  Dibekukan (Sengketa)
+                </span>
+              </div>
+
+              <div className="mt-3 space-y-1.5 text-sm">
+                <div className="flex justify-between gap-4">
+                  <span className="text-gray-500">Employer</span>
+                  <span className="font-semibold text-gray-900 text-right">{r.employerName}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-gray-500">Employer ID</span>
+                  <span className="font-mono text-[11px] text-gray-600 text-right">{r.employerId ?? "—"}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-gray-500">Escrow Terkunci</span>
+                  <span className="font-bold text-emerald-700 text-right">{formatRp(r.escrowAmount)}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-gray-500">Hak Pekerja (net)</span>
+                  <span className="font-semibold text-gray-700 text-right">{formatRp(r.workerNet)}</span>
+                </div>
+              </div>
+
+              <div className="mt-3">
+                {r.proofUrl ? (
+                  <a
+                    data-testid={`dispute-proof-${r.jobId}`}
+                    href={r.proofUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-800 break-all"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 shrink-0" /> Lihat Bukti Kerja (Project Link)
+                  </a>
+                ) : (
+                  <span className="text-xs text-gray-400 italic">Tidak ada link bukti terlampir.</span>
+                )}
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  data-testid={`button-release-worker-${r.jobId}`}
+                  onClick={() => void decide(r.jobId, "release")}
+                  disabled={busyId === r.jobId}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-700 text-white text-xs font-bold px-3 py-2.5 hover:bg-emerald-600 disabled:opacity-50"
+                >
+                  {busyId === r.jobId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Scale className="w-3.5 h-3.5" />}
+                  ⚖️ Putuskan Cairkan ke Pekerja
+                </button>
+                <button
+                  data-testid={`button-refund-employer-${r.jobId}`}
+                  onClick={() => void decide(r.jobId, "refund")}
+                  disabled={busyId === r.jobId}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-600 text-white text-xs font-bold px-3 py-2.5 hover:bg-amber-500 disabled:opacity-50"
+                >
+                  {busyId === r.jobId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Scale className="w-3.5 h-3.5" />}
+                  ⚖️ Putuskan Refund ke Employer
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Tab: Monitoring Proyek Fisik (on-site tracker) ────────────────
+function OnsiteTab() {
+  const [data, setData] = useState<OnsiteData>({ gigs: [], payouts: [] });
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      setData(await fetchOnsite());
+    } catch {
+      /* keep last known data */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${proto}//${window.location.host}${API_BASE}/ws`);
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data) as { type?: string };
+        if (msg.type === "daily_payout" || msg.type === "gig_broadcast") void load();
+      } catch {
+        /* ignore malformed frames */
+      }
+    };
+    return () => ws.close();
+  }, [load]);
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 flex items-start gap-3">
+        <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
+          <HardHat className="w-5 h-5 text-emerald-700" />
+        </div>
+        <div>
+          <h3 className="font-black text-gray-900">Monitoring Proyek Fisik (On-Site)</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Progres durasi borongan fisik &amp; log pencairan upah harian via QR Check-out.
+          </p>
+        </div>
+        <button
+          onClick={() => void load()}
+          className="ml-auto flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-900 shrink-0"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Segarkan
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-emerald-600" /></div>
+      ) : (
+        <>
+          {data.gigs.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 text-center text-sm text-gray-400">
+              Belum ada proyek fisik aktif.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {data.gigs.map((g) => {
+                const total = Math.max(1, g.jumlahHari);
+                const pct = Math.min(100, Math.round((g.daysPaid / total) * 100));
+                return (
+                  <div
+                    key={g.jobId}
+                    data-testid={`onsite-gig-${g.jobId}`}
+                    className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-black text-gray-900">{g.posisi}</p>
+                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                          <Building2 className="w-3 h-3" /> {g.employerName}
+                        </p>
+                      </div>
+                      <span className="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-100 text-blue-700 border border-blue-200">
+                        {g.escrowStatus}
+                      </span>
+                    </div>
+
+                    {g.alamat && (
+                      <p className="text-[11px] text-gray-400 mt-1.5">{g.alamat}</p>
+                    )}
+
+                    <div className="mt-4">
+                      <div className="flex justify-between text-xs font-bold mb-1.5">
+                        <span className="text-gray-700">Hari ke-{g.daysPaid} dari {g.jumlahHari}</span>
+                        <span className="text-emerald-700">{pct}%</span>
+                      </div>
+                      <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 transition-all"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex justify-between text-xs">
+                      <span className="text-gray-500">Total Escrow</span>
+                      <span className="font-bold text-gray-900">{formatRp(g.escrowAmount)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+            <div className="px-5 py-3.5 border-b border-gray-100">
+              <h3 className="font-black text-gray-900 flex items-center gap-2">
+                <Zap className="w-4 h-4 text-emerald-700" /> Log Pencairan Harian (QR)
+              </h3>
+            </div>
+            {data.payouts.length === 0 ? (
+              <div className="py-12 text-center text-sm text-gray-400">Belum ada pencairan harian.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
+                      <th className="px-4 py-2.5 font-bold">Pekerja</th>
+                      <th className="px-4 py-2.5 font-bold">Job ID</th>
+                      <th className="px-4 py-2.5 font-bold">Hari ke-</th>
+                      <th className="px-4 py-2.5 font-bold text-right">Bruto</th>
+                      <th className="px-4 py-2.5 font-bold text-right">Potongan (15%)</th>
+                      <th className="px-4 py-2.5 font-bold text-right">Net Pekerja</th>
+                      <th className="px-4 py-2.5 font-bold">Waktu</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {data.payouts.map((p) => (
+                      <tr key={p.id} data-testid={`payout-row-${p.id}`} className="hover:bg-gray-50/60">
+                        <td className="px-4 py-3 font-semibold text-gray-900">{p.workerName}</td>
+                        <td className="px-4 py-3 font-mono text-[11px] text-gray-500">{p.jobId}</td>
+                        <td className="px-4 py-3 text-gray-700">Hari ke-{p.dayIndex}</td>
+                        <td className="px-4 py-3 text-right text-gray-600">{formatRp(p.grossFraction)}</td>
+                        <td className="px-4 py-3 text-right text-red-600">− {formatRp(p.platformFee)}</td>
+                        <td className="px-4 py-3 text-right font-bold text-emerald-700">{formatRp(p.netToWorker)}</td>
+                        <td className="px-4 py-3 text-[11px] text-gray-400">
+                          {new Date(p.at).toLocaleString("id-ID")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SummaryCard({ label, value, tone }: { label: string; value: string; tone: "amber" | "gold" | "emerald" }) {
   const tones = {
     amber: "from-amber-500 to-amber-600",
@@ -427,6 +731,8 @@ function CommandCenter({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("escrow");
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "escrow", label: "💰 Pengawasan Escrow", icon: <Wallet className="w-4 h-4" /> },
+    { id: "resolution", label: "⚖️ Pusat Resolusi", icon: <Gavel className="w-4 h-4" /> },
+    { id: "onsite", label: "👷 Monitoring Proyek Fisik", icon: <HardHat className="w-4 h-4" /> },
     { id: "users", label: "🚫 Pengguna & Blacklist", icon: <Users className="w-4 h-4" /> },
     { id: "academy", label: "🎓 Kurasi Akademi", icon: <GraduationCap className="w-4 h-4" /> },
   ];
@@ -485,9 +791,14 @@ function CommandCenter({ onLogout }: { onLogout: () => void }) {
           <p className="text-sm text-gray-500">Panel operator platform Rekhastha</p>
         </div>
         {tab === "escrow" && <EscrowTab />}
+        {tab === "resolution" && <ResolutionTab />}
+        {tab === "onsite" && <OnsiteTab />}
         {tab === "users" && <UsersTab />}
         {tab === "academy" && <AcademyTab />}
       </main>
+
+      {/* Full-screen worker SOS alarm — blocks everything when active */}
+      <EmergencyAlarm />
     </div>
   );
 }

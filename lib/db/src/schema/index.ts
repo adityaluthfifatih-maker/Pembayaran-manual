@@ -22,3 +22,5 @@ export * from "./users";
 export * from "./attendance";
 export * from "./blacklist";
 export * from "./ratings";
+export * from "./emergency";
+export * from "./daily-payouts";

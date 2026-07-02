@@ -29,7 +29,7 @@ export default function InstantGigAlarm({ gig, onAccept, onSkip }: InstantGigAla
 
   return (
     <div
-      className="fixed inset-0 z-[300] flex items-center justify-center px-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center px-4"
       style={{ animation: "instant-alarm-flash 0.85s steps(1, end) infinite" }}
     >
       <div className="absolute inset-0 bg-black/40" />
@@ -112,9 +112,9 @@ export default function InstantGigAlarm({ gig, onAccept, onSkip }: InstantGigAla
 
       <style>{`
         @keyframes instant-alarm-flash {
-          0%   { background-color: rgba(220,38,38,0.55); }
-          50%  { background-color: rgba(16,185,129,0.55); }
-          100% { background-color: rgba(220,38,38,0.55); }
+          0%   { background-color: rgba(185,28,28,0.62); }
+          50%  { background-color: rgba(6,95,70,0.62); }
+          100% { background-color: rgba(185,28,28,0.62); }
         }
         @keyframes instant-alarm-shake {
           0%, 100% { transform: translateX(0) scale(1); }

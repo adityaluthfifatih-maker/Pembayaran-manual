@@ -1,0 +1,28 @@
+Consolidate the Tilu Company Admin Dashboard, the dual Borongan workflows (Remote & On-Site), and fix the Instant Worker Alarm system to be a full-screen, loud notification.
+
+Please refactor the frontend templates, WebSocket handlers, and backend controllers with these combined specifications:
+
+1. BULLETPROOF FULLSCREEN FLASHING & AUDIO ALARM (FOR INSTANT JOBS):
+- Modify the WebSocket alert receiver on the Worker client. To bypass browser Autoplay restrictions, initialize or unlock a looping HTML5 Audio or Web Audio API instance as soon as the worker interacts with the app (e.g., toggling the Radar switch ON).
+- When an instant job alert arrives via WebSocket:
+  * Programmatically loop a sharp, loud synthesized beep/alarm frequency so it bypasses asset blocking.
+  * Force the notification alert template (`animate-pulse` flashing between deep Red and Dark Emerald Green) to be an absolute fixed layout covering 100% of the viewport height and width (`fixed inset-0 w-full h-full z-[9999]`). 
+  * Ensure the entire screen blocks any background clicks. No underlying content must be accessible until the Worker explicitly clicks "Terima" or "Lewati".
+
+2. ADMIN DASHBOARD - TAB 1: PUSAT RESOLUSI (REMOTE BORONGAN DISPUTES)
+- Connect all 'disputed_active' states from the Remote Borongan pipeline directly here. Workers upload links to files (Google Drive/Figma) to claim milestones. If the Employer rejects it, it freezes into a dispute.
+- Render the dispute details for the Admin: Worker ID, Employer ID, the submitted Project Work URL, and the frozen Escrow balance amount.
+- Implement two absolute administrative overriding judgment buttons:
+  * "⚖️ Putuskan Cairkan ke Pekerja": Instantly releases the frozen escrow to the worker's digital wallet and marks it completed.
+  * "⚖️ Putuskan Refund ke Employer": Instantly returns the locked milestone funds back to the employer's wallet.
+
+3. ADMIN DASHBOARD - TAB 2: MONITORING PROYEK FISIK (ON-SITE BORONGAN TRACKER)
+- Create a tracking tab in the Tilu Company Admin Dashboard dedicated to "Borongan Di Tempat" (e.g., Kuli Bangunan).
+- Display a live grid of ongoing physical projects: Job Title, Total Project Value, Contract Duration, and progress (e.g., "Hari ke-3 dari 10").
+- Render a live micro-log showing the latest physical QR scans: "Pekerja [ID] sukses Check-Out Hari ke-3 - Rp [Wage Fraction] dicairkan otomatis dari Escrow".
+
+4. BRANDING & SYSTEM INTEGRATION:
+- Ensure the job model consistently handles the 'metode_pelaksanaan' field ('remote' or 'onsite') across all database schema operations.
+- Wrap all forms, frozen dispute counters, full-screen alert states, and admin judgment consoles beautifully within the high-contrast Emerald Green and Gold luxury design framework of "Rekhastha by Tilu Company".
+
+Compile this comprehensive full-stack upgrade, apply database migrations cleanly, and stream the updated application preview.

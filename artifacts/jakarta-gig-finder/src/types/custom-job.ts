@@ -6,6 +6,12 @@ export type TipeAkun = "perusahaan" | "agensi";
 
 export type HiringMode = "cepat" | "lama";
 
+/** Borongan (project contract) execution mode. */
+export type BoronganType = "remote" | "onsite";
+
+/** Remote milestone proof-of-work review state. */
+export type ProofStatus = "submitted" | "approved" | "rejected";
+
 export interface CustomJob {
   id: number;
   type: "custom_job";
@@ -38,6 +44,11 @@ export interface CustomJob {
   // ── Poster identity (for blacklist filtering) ────────
   employerId?: string;     // real account id of the employer who posted
   employerName?: string;   // display name of the poster
+  // ── Borongan (project contract) workflows ────────────
+  boronganType?: BoronganType;   // "remote" (milestone) | "onsite" (daily QR)
+  proofUrl?: string;             // remote milestone proof-of-work URL
+  proofStatus?: ProofStatus;     // remote milestone review state
+  daysPaid?: number;             // on-site daily fractions already released
 }
 
 export const durasiKontrakOptions: { value: DurasiKontrak; label: string; rate: number }[] = [

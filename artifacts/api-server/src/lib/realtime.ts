@@ -77,3 +77,23 @@ export function broadcastGig(gig: unknown): void {
 export function broadcastAttendance(attendance: unknown): void {
   broadcast({ type: "attendance", attendance });
 }
+
+/**
+ * Push a worker SOS incident to every connected device. The Admin Command
+ * Center reacts by raising its full-screen emergency alarm; worker/employer
+ * devices ignore it. Uses the `emergency_active` discriminator the admin listens
+ * for.
+ */
+export function broadcastEmergency(incident: unknown): void {
+  broadcast({ type: "emergency_active", incident });
+}
+
+/** Tell every device an SOS incident was resolved so the alarm can clear. */
+export function broadcastEmergencyResolved(id: number): void {
+  broadcast({ type: "emergency_resolved", id });
+}
+
+/** Push an on-site daily fractional payout to the admin tracker in realtime. */
+export function broadcastDailyPayout(payout: unknown): void {
+  broadcast({ type: "daily_payout", payout });
+}
