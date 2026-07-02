@@ -6,6 +6,8 @@ export interface ApplicationNotification {
   serverId?: number;
   jobId: number;
   jobTitle: string;
+  /** DB user-id of the worker who applied — used to scope the chat conversation. */
+  workerId: string;
   applicantName: string;
   applicantNikMasked: string;
   applicantNpwpMasked: string;

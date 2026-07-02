@@ -1,83 +1,87 @@
-import { Router, type IRouter } from "express";
+import { Router, type Request, type Response } from "express";
 import { eq, asc, and } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, chatMessagesTable, gigsTable, applicationsTable } from "@workspace/db";
+import { db, chatMessagesTable, gigsTable } from "@workspace/db";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
 import { broadcastChatMessage } from "../lib/realtime";
 
-const router: IRouter = Router();
+const router = Router();
 
 /**
- * Verify that a user is a participant in the given gig's conversation.
+ * Verify the caller is a participant in the conversation (jobId, workerId).
  *
- * Returns the gig row if access is granted, null otherwise.
- * - Employers are authorized if `gig.employerId` matches the user's id.
- * - Workers are authorized if they have at least one application row for that
- *   gig (any status — an applicant may legitimately chat before being hired).
+ * Returns `{ user, gig }` on success; sends the HTTP error and returns null
+ * so the route handler can exit immediately.
  *
- * We return null (→ 404) instead of 403 to avoid leaking whether a job exists.
+ * Access rules:
+ *  - Employer: `gig.employerId === user.id`
+ *  - Worker:   `user.role === "pekerja"` AND `user.id === workerId`
+ *
+ * 404 is returned for any failure (not 403) to avoid leaking job existence.
  */
-async function assertChatParticipant(
+async function resolveParticipant(
+  req: Request,
+  res: Response,
   jobId: number,
-  userId: string,
-  userRole: string,
-): Promise<boolean> {
+  workerId: string,
+): Promise<{ user: NonNullable<Awaited<ReturnType<typeof getSessionUser>>>; gig: { employerId: string | null } } | null> {
+  const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
+  if (!user) {
+    res.status(401).json({ error: "Tidak terautentikasi." });
+    return null;
+  }
+
   const [gig] = await db
     .select({ employerId: gigsTable.employerId })
     .from(gigsTable)
     .where(eq(gigsTable.id, jobId))
     .limit(1);
 
-  if (!gig) return false; // job doesn't exist
-
-  // Employer check
-  if (gig.employerId === userId) return true;
-
-  // Worker check — must have applied to this gig
-  if (userRole === "pekerja") {
-    const [app] = await db
-      .select({ id: applicationsTable.id })
-      .from(applicationsTable)
-      .where(
-        and(
-          eq(applicationsTable.jobId, jobId),
-          eq(applicationsTable.workerId, userId),
-        ),
-      )
-      .limit(1);
-    return !!app;
+  if (!gig) {
+    res.status(404).json({ error: "Tidak ditemukan." });
+    return null;
   }
 
-  return false;
+  const isEmployer = gig.employerId !== null && gig.employerId === user.id;
+  const isWorker = user.role === "pekerja" && user.id === workerId;
+
+  if (!isEmployer && !isWorker) {
+    res.status(404).json({ error: "Tidak ditemukan." });
+    return null;
+  }
+
+  return { user, gig };
 }
 
 /**
- * Fetch all chat messages for a gig.
+ * Fetch the chat history for a specific (jobId, workerId) conversation thread.
  *
- * Caller must be the gig's employer OR a worker who has applied to the gig.
+ * Access: employer who owns the gig, or the exact worker identified by workerId.
  * Messages are returned oldest-first for chronological rendering.
  */
-router.get("/chat/:jobId", async (req, res): Promise<void> => {
-  const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
-  if (!user) {
-    res.status(401).json({ error: "Tidak terautentikasi." });
-    return;
-  }
+router.get("/chat/:jobId/:workerId", async (req: Request, res: Response): Promise<void> => {
   const jobId = Number(req.params.jobId);
-  if (!jobId || isNaN(jobId)) {
-    res.status(400).json({ error: "Job ID tidak valid." });
+  const workerId = String(req.params.workerId ?? "");
+
+  if (!jobId || isNaN(jobId) || !workerId) {
+    res.status(400).json({ error: "Parameter tidak valid." });
     return;
   }
-  const authorized = await assertChatParticipant(jobId, user.id, user.role);
-  if (!authorized) {
-    res.status(404).json({ error: "Tidak ditemukan." });
-    return;
-  }
+
+  const ctx = await resolveParticipant(req, res, jobId, workerId);
+  if (!ctx) return;
+
   const rows = await db
     .select()
     .from(chatMessagesTable)
-    .where(eq(chatMessagesTable.jobId, jobId))
+    .where(
+      and(
+        eq(chatMessagesTable.jobId, jobId),
+        eq(chatMessagesTable.workerId, workerId),
+      ),
+    )
     .orderBy(asc(chatMessagesTable.sentAt));
+
   res.json(rows);
 });
 
@@ -86,44 +90,43 @@ const messageBody = z.object({
 });
 
 /**
- * Post a new chat message for a gig.
+ * Post a new message to a specific (jobId, workerId) conversation thread.
  *
- * Caller must be the gig's employer OR a worker who has applied to the gig.
- * The sender's identity is taken from the session cookie — the client does not
- * supply `senderId` or `senderRole`. The saved row is broadcast over the
- * WebSocket hub so the other party sees it instantly without polling.
+ * Access: employer who owns the gig, or the exact worker identified by workerId.
+ * The saved row is broadcast via WebSocket only to the employer and the worker —
+ * no other connected client receives the frame.
  */
-router.post("/chat/:jobId", async (req, res): Promise<void> => {
-  const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
-  if (!user) {
-    res.status(401).json({ error: "Tidak terautentikasi." });
-    return;
-  }
+router.post("/chat/:jobId/:workerId", async (req: Request, res: Response): Promise<void> => {
   const jobId = Number(req.params.jobId);
-  if (!jobId || isNaN(jobId)) {
-    res.status(400).json({ error: "Job ID tidak valid." });
+  const workerId = String(req.params.workerId ?? "");
+
+  if (!jobId || isNaN(jobId) || !workerId) {
+    res.status(400).json({ error: "Parameter tidak valid." });
     return;
   }
-  const authorized = await assertChatParticipant(jobId, user.id, user.role);
-  if (!authorized) {
-    res.status(404).json({ error: "Tidak ditemukan." });
-    return;
-  }
+
+  const ctx = await resolveParticipant(req, res, jobId, workerId);
+  if (!ctx) return;
+
   const parsed = messageBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Pesan tidak valid." });
     return;
   }
+
   const [row] = await db
     .insert(chatMessagesTable)
     .values({
       jobId,
-      senderId: user.id,
-      senderRole: user.role,
+      workerId,
+      senderId: ctx.user.id,
+      senderRole: ctx.user.role,
       text: parsed.data.text,
     })
     .returning();
-  broadcastChatMessage(row);
+
+  broadcastChatMessage(row, ctx.gig.employerId ?? "", workerId);
+
   req.log.info(
     { chatMessageId: row.id, jobId: row.jobId, senderId: row.senderId },
     "Chat message sent",

@@ -2,31 +2,62 @@ import type { Server, IncomingMessage } from "http";
 import type { Duplex } from "stream";
 import { WebSocketServer, WebSocket } from "ws";
 import { logger } from "./logger";
+import { getSessionUser, SESSION_COOKIE } from "./auth";
 
 /**
- * Realtime hub for the live gig feed.
+ * Realtime hub for the live gig feed and scoped chat delivery.
  *
  * A single WebSocket server (noServer mode) is attached to the shared HTTP
  * server and only claims upgrade requests on `/api/ws` (the Replit proxy
- * forwards the full base path un-rewritten). Every POST /api/gigs fan-outs the
- * new gig to all connected clients so Worker devices receive it instantly.
+ * forwards the full base path un-rewritten).
+ *
+ * Two client registries are maintained:
+ *  - `allClients` — every open socket; used for global fan-outs (gigs, attendance, etc.)
+ *  - `userClients` — userId → Set<WebSocket>; used for participant-scoped delivery
+ *    (chat messages).  Populated asynchronously after the session cookie is resolved.
  */
 const wss = new WebSocketServer({ noServer: true });
-const clients = new Set<WebSocket>();
+const allClients = new Set<WebSocket>();
+const userClients = new Map<string, Set<WebSocket>>();
 
 const WS_PATH = "/api/ws";
 
-wss.on("connection", (ws: WebSocket) => {
-  clients.add(ws);
-  logger.info({ clients: clients.size }, "Realtime client connected");
+/** Parse a single named value from a raw Cookie header string. */
+function cookieValue(cookieHeader: string, name: string): string | undefined {
+  for (const pair of cookieHeader.split(";")) {
+    const [k, ...v] = pair.trim().split("=");
+    if (k?.trim() === name) return decodeURIComponent(v.join("="));
+  }
+  return undefined;
+}
+
+wss.on("connection", async (ws: WebSocket, req: IncomingMessage) => {
+  allClients.add(ws);
+  logger.info({ clients: allClients.size }, "Realtime client connected");
+
+  // Resolve the authenticated user so we can scope chat delivery.
+  const sessionId = cookieValue(req.headers.cookie ?? "", SESSION_COOKIE);
+  const user = await getSessionUser(sessionId);
+  const userId = user?.id ?? null;
+
+  if (userId) {
+    if (!userClients.has(userId)) userClients.set(userId, new Set());
+    userClients.get(userId)!.add(ws);
+  }
 
   ws.on("close", () => {
-    clients.delete(ws);
-    logger.info({ clients: clients.size }, "Realtime client disconnected");
+    allClients.delete(ws);
+    if (userId) {
+      userClients.get(userId)?.delete(ws);
+      if (userClients.get(userId)?.size === 0) userClients.delete(userId);
+    }
+    logger.info({ clients: allClients.size }, "Realtime client disconnected");
   });
-  ws.on("error", () => clients.delete(ws));
+  ws.on("error", () => {
+    allClients.delete(ws);
+    if (userId) userClients.get(userId)?.delete(ws);
+  });
 
-  // Greet the client so it can confirm the channel is live.
   try {
     ws.send(JSON.stringify({ type: "connected" }));
   } catch {
@@ -51,14 +82,28 @@ export function attachRealtime(server: Server): void {
   logger.info({ path: WS_PATH }, "Realtime WebSocket attached");
 }
 
+/** Broadcast to every connected socket (gigs, attendance, applications, etc.). */
 function broadcast(payload: unknown): void {
   const data = JSON.stringify(payload);
-  for (const ws of clients) {
+  for (const ws of allClients) {
     if (ws.readyState === WebSocket.OPEN) {
       try {
         ws.send(data);
       } catch {
         /* a broken client must not break the fan-out */
+      }
+    }
+  }
+}
+
+/** Send to all sockets registered under a specific user id. */
+function sendToUser(userId: string, data: string): void {
+  for (const ws of userClients.get(userId) ?? []) {
+    if (ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(data);
+      } catch {
+        /* broken socket */
       }
     }
   }
@@ -120,9 +165,16 @@ export function broadcastApplicationStatus(
 }
 
 /**
- * Push a new chat message to every connected device. The client-side handler
- * filters by `jobId` so only the two parties in that conversation react.
+ * Push a new chat message only to the two conversation participants:
+ * the employer (identified by `employerId`) and the specific worker
+ * (`workerId`).  No other connected client receives the frame.
  */
-export function broadcastChatMessage(message: unknown): void {
-  broadcast({ type: "chat_message", message });
+export function broadcastChatMessage(
+  message: unknown,
+  employerId: string,
+  workerId: string,
+): void {
+  const data = JSON.stringify({ type: "chat_message", message });
+  sendToUser(employerId, data);
+  if (workerId !== employerId) sendToUser(workerId, data);
 }

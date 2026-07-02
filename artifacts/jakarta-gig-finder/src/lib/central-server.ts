@@ -54,10 +54,12 @@ export interface ApplicationEvent {
 }
 export type ApplicationSubscriber = (event: ApplicationEvent) => void;
 
-/** A chat message row as returned by the server (POST /api/chat/:jobId). */
+/** A chat message row as returned by the server (POST /api/chat/:jobId/:workerId). */
 export interface ChatMessageEvent {
   id: number;
   jobId: number;
+  /** The worker side of the conversation thread. */
+  workerId: string;
   senderId: string;
   /** "pekerja" | "perusahaan" — map to "worker" | "company" on the client. */
   senderRole: string;

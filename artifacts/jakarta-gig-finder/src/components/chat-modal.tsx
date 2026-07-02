@@ -34,6 +34,8 @@ export interface ChatModalProps {
   hiringMode?: "cepat" | "lama";
   /** Numeric gig ID. Messages are persisted in Postgres and synced in real-time. */
   jobId: number;
+  /** Worker user-id — scopes the conversation to one (jobId, workerId) thread. */
+  workerId: string;
   onClose: () => void;
   onNominalUpdate?: (newNominal: number) => void;
 }
@@ -97,7 +99,7 @@ function BuyOutModal({ jobTitle, nominal, onClose }: { jobTitle: string; nominal
 // ── Main Component ───────────────────────────────────────────────────
 export default function ChatModal({
   jobTitle, nominal, companyName, workerName,
-  currentRole, hiringMode = "lama", jobId, onClose, onNominalUpdate,
+  currentRole, hiringMode = "lama", jobId, workerId, onClose, onNominalUpdate,
 }: ChatModalProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(!!jobId);
@@ -133,7 +135,7 @@ export default function ChatModal({
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/chat/${jobId}`);
+        const res = await fetch(`/api/chat/${jobId}/${workerId}`);
         if (res.ok && !cancelled) {
           const rows = (await res.json()) as Array<{
             id: number; senderRole: string; text: string; sentAt: string;
@@ -183,17 +185,16 @@ export default function ChatModal({
 
     setSending(true);
     try {
-      const res = await fetch(`/api/chat/${jobId}`, {
+      const res = await fetch(`/api/chat/${jobId}/${workerId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      if (res.ok) {
-        const row = (await res.json()) as { id: number; senderRole: string; text: string; sentAt: string };
-        const msg = rowToMsg(row);
-        seenMsgIds.current.add(msg.id); // mark as seen so WS echo is skipped
-        setMessages(prev => [...prev, msg]);
-      }
+      // Don't append here — the scoped WS broadcast delivers the message
+      // to both participants (including the sender) so we rely on that path.
+      // This prevents a race-condition duplicate when WS arrives before the
+      // HTTP response and seenMsgIds has not yet been updated.
+      // (error handling: WS will not deliver if server rejected — user can retry)
     } catch {
       /* best-effort — message may still arrive via WS */
     } finally {
