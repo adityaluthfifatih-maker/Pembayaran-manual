@@ -33,6 +33,7 @@ import {
   unlockAudio,
 } from "@/lib/central-server";
 import { createBlacklist, fetchEmployerIdsBlockingWorker } from "@/lib/blacklist-client";
+import { submitRating } from "@/lib/rating-client";
 import AuthPage from "@/pages/auth";
 import { fetchMe, logout as logoutRequest } from "@/lib/auth-client";
 import WorkerProfilePage from "@/components/worker-profile-page";
@@ -40,7 +41,7 @@ import CompanyProfilePage from "@/components/company-profile-page";
 import { workers, Worker } from "@/data/workers";
 import { jobs } from "@/data/jobs";
 import { CustomJob, calcTotal, paymentUnits } from "@/types/custom-job";
-import { WalletTransaction, EscrowEvent, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, DURATION_DAYS, LATE_CLOCKIN_PENALTY, CLOCKIN_GRACE_MS, DISPUTE_WINDOW_MS, PLATFORM_FEE_CEPAT } from "@/types/escrow";
+import { WalletTransaction, EscrowEvent, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, calcEmployerDeposit, DURATION_DAYS, LATE_CLOCKIN_PENALTY, CLOCKIN_GRACE_MS, DISPUTE_WINDOW_MS } from "@/types/escrow";
 import { WorkerProfile, isVerified } from "@/types/worker-profile";
 import { AuthUser } from "@/types/auth";
 import {
@@ -116,7 +117,7 @@ function makeDemoJobs(): CustomJob[] {
     const pembayaran: CustomJob["pembayaran"] = i < 2 || i === 4 ? "per_shift" : i === 3 ? "per_projek" : "per_hari";
     const kuota = i === 1 ? 20 : 3;
     const jumlahHari = DURATION_DAYS[durations[i] ?? "harian"] ?? 1;
-    const escrowAmount = calcEscrowAmount(t.nominal, pembayaran, jumlahHari, kuota);
+    const escrowAmount = calcEmployerDeposit(calcEscrowAmount(t.nominal, pembayaran, jumlahHari, kuota));
     return {
       id: nextJobId++, type: "custom_job" as const,
       posisi: t.posisi, deskripsi: `Dibutuhkan segera ${t.posisi} berpengalaman di bidangnya.`,
@@ -475,13 +476,13 @@ export default function Home() {
       id: Date.now(),
       type: "credit" as const,
       amount: workerNet,
-      label: "Gaji bersih — pekerjaan selesai",
+      label: "Upah penuh — pekerjaan selesai",
       jobTitle: notif.jobTitle,
       timestamp: new Date(),
-      note: `Komisi platform 10% Rp ${platformCut.toLocaleString("id-ID")} dipotong. Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.`,
+      note: `Upah Anda dicairkan 100% utuh tanpa potongan. Biaya platform 15% (Rp ${platformCut.toLocaleString("id-ID")}) ditanggung penuh oleh perusahaan. Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.`,
     }]);
     setPlatformBalance(prev => prev + platformCut);
-    setTotalEarned(prev => prev + gross);
+    setTotalEarned(prev => prev + workerNet);
     setNotifications(prev => prev.map(n =>
       n.id === notifId ? { ...n, status: "selesai" as ApplicationStatus } : n
     ));
@@ -494,7 +495,7 @@ export default function Home() {
       actor: "company",
       amount: workerNet,
       timestamp: new Date(),
-      note: `Pekerja: ${notif.applicantName}. Komisi platform 10% dipotong. Dana ditransfer ke e-wallet pekerja.`,
+      note: `Pekerja: ${notif.applicantName}. Upah dicairkan 100% utuh; biaya platform 15% ditanggung perusahaan. Dana ditransfer ke e-wallet pekerja.`,
     }]);
   }, [notifications, customJobs]);
 
@@ -616,7 +617,7 @@ export default function Home() {
         label: "Keputusan Admin — Pekerja Menang",
         jobTitle: job.posisi,
         timestamp: new Date(),
-        note: `Dipotong komisi platform: Rp ${platformCut.toLocaleString("id-ID")}`,
+        note: `Upah dicairkan 100% utuh. Biaya platform 15% (Rp ${platformCut.toLocaleString("id-ID")}) ditanggung perusahaan.`,
       }]);
       setPlatformBalance(prev => prev + platformCut);
     } else {
@@ -670,15 +671,15 @@ export default function Home() {
       // Inject demo wallet data
       const demoTx1: WalletTransaction = {
         id: 1, type: "credit", amount: 2_835_000,
-        label: "Gaji bersih — pekerjaan selesai", jobTitle: "Event Staff Runner",
+        label: "Upah penuh — pekerjaan selesai", jobTitle: "Event Staff Runner",
         timestamp: new Date(Date.now() - 2 * 86_400_000),
-        note: "Komisi platform 10% Rp 315.000 dipotong.",
+        note: "Upah dicairkan 100% utuh tanpa potongan; biaya platform 15% ditanggung perusahaan.",
       };
       const demoTx2: WalletTransaction = {
         id: 2, type: "credit", amount: 936_000,
-        label: "Gaji bersih — pekerjaan selesai", jobTitle: "Barista Part-Time",
+        label: "Upah penuh — pekerjaan selesai", jobTitle: "Barista Part-Time",
         timestamp: new Date(Date.now() - 5 * 86_400_000),
-        note: "Komisi platform 10% Rp 104.000 dipotong.",
+        note: "Upah dicairkan 100% utuh tanpa potongan; biaya platform 15% ditanggung perusahaan.",
       };
       setWalletBalance(3_771_000);
       setWalletTransactions([demoTx2, demoTx1]);
@@ -711,7 +712,7 @@ export default function Home() {
           actor: "company",
           amount: 2_835_000,
           timestamp: new Date(Date.now() - 2 * 86_400_000),
-          note: `Perusahaan menyetujui pembayaran. Komisi platform 10% dipotong.`,
+          note: `Perusahaan menyetujui pembayaran. Upah dicairkan 100% utuh; biaya platform 15% ditanggung perusahaan.`,
         },
         {
           id: Date.now() + 101,
@@ -722,7 +723,7 @@ export default function Home() {
           actor: "company",
           amount: 936_000,
           timestamp: new Date(Date.now() - 5 * 86_400_000),
-          note: `Perusahaan menyetujui pembayaran. Komisi platform 10% dipotong.`,
+          note: `Perusahaan menyetujui pembayaran. Upah dicairkan 100% utuh; biaya platform 15% ditanggung perusahaan.`,
         },
       ]);
       setRatings([
@@ -926,7 +927,7 @@ export default function Home() {
     if (!chatContext?.jobId) return;
     const jid = chatContext.jobId;
     setCustomJobs(prev => prev.map(j => j.id === jid
-      ? { ...j, nominal: newNominal, escrowAmount: Math.round(newNominal * j.kuota * (1 + PLATFORM_FEE_CEPAT)) }
+      ? { ...j, nominal: newNominal, escrowAmount: calcEmployerDeposit(calcEscrowAmount(newNominal, j.pembayaran, j.jumlahHari ?? 1, j.kuota)) }
       : j
     ));
     setChatContext(prev => prev ? { ...prev, nominal: newNominal } : null);
@@ -998,7 +999,7 @@ export default function Home() {
       label: "Escrow Cair Otomatis — Kontrak Ditutup (24 Jam)",
       jobTitle: job.posisi,
       timestamp: new Date(),
-      note: `Jendela sengketa 24 jam berakhir tanpa keberatan. Komisi platform Rp ${platformCut.toLocaleString("id-ID")} dipotong.`,
+      note: `Jendela sengketa 24 jam berakhir tanpa keberatan. Upah dicairkan 100% utuh; biaya platform 15% (Rp ${platformCut.toLocaleString("id-ID")}) ditanggung perusahaan.`,
     }, ...prev]);
     setPlatformBalance(prev => prev + platformCut);
     setCustomJobs(prev => prev.map(j =>
@@ -1080,6 +1081,14 @@ export default function Home() {
 
   const handleRatingSubmit = useCallback((payload: RatingPayload) => {
     setRatings((p) => [...p, payload]);
+    // Persist the rating so the admin control plane's negative-rating counts are real.
+    void submitRating({
+      targetName: payload.targetName,
+      stars: payload.stars,
+      comment: payload.comment,
+      raterType: payload.raterType,
+      jobId: pendingRating?.job.id ?? null,
+    });
     // Employer opted to blacklist the worker from the rating modal → persist it.
     if (payload.blacklist && payload.raterType === "company" && currentUser) {
       void createBlacklist({

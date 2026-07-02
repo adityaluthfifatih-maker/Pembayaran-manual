@@ -22,6 +22,7 @@ export const usersTable = pgTable("users", {
   role: text("role").notNull(),
   whatsapp: text("whatsapp"),
   linkedWithGoogle: boolean("linked_with_google").notNull().default(false),
+  suspended: boolean("suspended").notNull().default(false),
   profile: jsonb("profile").notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

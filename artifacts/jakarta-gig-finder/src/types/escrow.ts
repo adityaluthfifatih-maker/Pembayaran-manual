@@ -54,8 +54,27 @@ export function calcEscrowAmount(
   return perDay * jumlahHari * kuota;
 }
 
-export function calcSplit(grossAmount: number) {
-  const platformCut = Math.round(grossAmount * PLATFORM_RATE);
-  const workerNet = grossAmount - platformCut;
+/**
+ * Split an employer's total escrow deposit into the worker's net wage and the
+ * platform's fee. The 15% platform fee is an EMPLOYER-only mark-up already baked
+ * into the deposit (deposit = wage + 0.15·wage = wage × 1.15), so the worker
+ * always receives 100% of the base wage and the platform keeps the 15%.
+ *
+ * `totalDeposit` is the single source of truth (base wage × 1.15) that every
+ * posting / negotiation / release path now agrees on.
+ */
+export function calcSplit(totalDeposit: number) {
+  const workerNet = Math.round(totalDeposit / (1 + PLATFORM_FEE_CEPAT));
+  const platformCut = totalDeposit - workerNet;
   return { platformCut, workerNet };
+}
+
+/** The 15% platform fee added on top of the base wage, borne by the employer. */
+export function calcEmployerFee(baseWage: number): number {
+  return Math.round(baseWage * PLATFORM_FEE_CEPAT);
+}
+
+/** Total the employer funds into escrow: base wage + 15% employer-borne fee. */
+export function calcEmployerDeposit(baseWage: number): number {
+  return baseWage + calcEmployerFee(baseWage);
 }

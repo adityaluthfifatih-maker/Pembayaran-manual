@@ -45,7 +45,7 @@ export default function WorkerProfilePage({
   const workerRatings = ratings.filter((r) => r.raterType === "company");
   const avgRating = workerRatings.length ? workerRatings.reduce((s, r) => s + r.stars, 0) / workerRatings.length : 0;
   const totalHours = completedJobs.length * 8;
-  const netEarned = totalEarned * 0.85;
+  const netEarned = totalEarned;
 
   const initials = currentUser.name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
 
@@ -167,7 +167,7 @@ export default function WorkerProfilePage({
             {/* Summary cards */}
             <div className="grid grid-cols-2 gap-3">
               <WorkerMetricCard icon={<Clock className="w-4 h-4" />} label="Total Jam Kerja" value={`${totalHours} Jam`} sub={`${completedJobs.length} proyek selesai`} color="emerald" />
-              <WorkerMetricCard icon={<Banknote className="w-4 h-4" />} label="Pendapatan Bersih" value={completedJobs.length ? fmt(netEarned) : "—"} sub="Setelah komisi platform" color="blue" />
+              <WorkerMetricCard icon={<Banknote className="w-4 h-4" />} label="Pendapatan Bersih" value={completedJobs.length ? fmt(netEarned) : "—"} sub="100% utuh tanpa potongan" color="blue" />
               <WorkerMetricCard icon={<Star className="w-4 h-4 fill-amber-400" />} label="Rating Rata-Rata" value={avgRating ? avgRating.toFixed(1) + " ★" : "—"} sub={`${workerRatings.length} ulasan`} color="amber" />
               <WorkerMetricCard icon={<Award className="w-4 h-4" />} label="Skor Reputasi" value={`${reputationPoints}/100`} sub={reputationPoints >= 80 ? "Terpercaya" : reputationPoints >= 50 ? "Perlu Perhatian" : "Ditangguhkan"} color={reputationPoints >= 80 ? "emerald" : reputationPoints >= 50 ? "amber" : "red"} />
             </div>
@@ -226,9 +226,9 @@ export default function WorkerProfilePage({
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-4 space-y-3">
                 <p className="text-sm font-bold text-gray-900">Estimasi E-Wallet</p>
                 <div className="space-y-2 text-sm">
-                  <div className="flex justify-between text-gray-600"><span>Total Gross Pendapatan</span><span className="font-semibold text-gray-900">{fmt(totalEarned)}</span></div>
-                  <div className="flex justify-between text-gray-600"><span>Komisi Platform (15%)</span><span className="font-semibold text-red-500">−{fmt(totalEarned * 0.15)}</span></div>
-                  <div className="flex justify-between text-gray-700 border-t border-gray-100 pt-2"><span className="font-bold">Bersih Diterima</span><span className="font-black text-emerald-600">{fmt(netEarned)}</span></div>
+                  <div className="flex justify-between text-gray-600"><span>Total Upah Pekerjaan Selesai</span><span className="font-semibold text-gray-900">{fmt(totalEarned)}</span></div>
+                  <div className="flex justify-between text-gray-600"><span>Potongan Platform</span><span className="font-semibold text-emerald-600">Rp 0 (0%)</span></div>
+                  <div className="flex justify-between text-gray-700 border-t border-gray-100 pt-2"><span className="font-bold">Bersih Diterima (100%)</span><span className="font-black text-emerald-600">{fmt(netEarned)}</span></div>
                 </div>
                 <p className="text-[10px] text-gray-400 leading-relaxed">Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.</p>
               </div>
@@ -242,6 +242,11 @@ export default function WorkerProfilePage({
         ) : tab === "wallet" ? (
           /* ── E-WALLET ──────────────────────────────────── */
           <>
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <p className="text-sm font-black text-emerald-800 leading-snug">
+                🟢 Jaminan Rekhastha: Upah Anda dicairkan 100% utuh tanpa potongan sepeser pun (Bebas Biaya Admin via 15% Employer Markup)
+              </p>
+            </div>
             <EscrowWalletPanel
               balance={walletBalance}
               transactions={walletTransactions}

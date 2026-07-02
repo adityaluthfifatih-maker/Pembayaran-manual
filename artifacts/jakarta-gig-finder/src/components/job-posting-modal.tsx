@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { X, Plus, AlertTriangle, ShieldCheck, Building2, Users, Lock, ChevronLeft } from "lucide-react";
 import {
-  CustomJob, PaymentType, calcCommission, calcTotal, paymentLabels,
+  CustomJob, PaymentType, calcTotal, paymentLabels,
   DurasiKontrak, TipeAkun, durasiKontrakOptions, detectFraud,
-  effectiveCommissionRate,
 } from "@/types/custom-job";
-import { calcEscrowAmount, DURATION_DAYS, PLATFORM_RATE, calcSplit } from "@/types/escrow";
+import { calcEscrowAmount, DURATION_DAYS, PLATFORM_FEE_CEPAT, calcSplit, calcEmployerDeposit, calcEmployerFee } from "@/types/escrow";
 
 interface JobPostingModalProps {
   onSubmit: (job: Omit<CustomJob, "id" | "type" | "lat" | "lng" | "postedAt">) => void;
@@ -42,14 +41,12 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
   const effectiveKuota = isAgency ? parseInt(kuotaMassal) || 1 : parseInt(kuota) || 1;
   const nominalNum = parseInt(nominal.replace(/\D/g, "")) || 0;
 
-  const rate = effectiveCommissionRate(durasiKontrak, isAgency, effectiveKuota);
   const total = calcTotal(nominalNum, pembayaran);
-  const commission = calcCommission(nominalNum, pembayaran, durasiKontrak, isAgency, effectiveKuota);
-  const isVolumeDiscount = isAgency && effectiveKuota > 15;
 
   // Escrow calculations
   const escrowGross = calcEscrowAmount(nominalNum, pembayaran, jumlahHari, effectiveKuota);
-  const escrowSplit = calcSplit(escrowGross);
+  const escrowDeposit = calcEmployerDeposit(escrowGross);
+  const escrowSplit = calcSplit(escrowDeposit);
 
   const handleNominalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/\D/g, "");
@@ -91,7 +88,7 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
       tipeAkun,
       isAgency,
       escrowStatus: "locked",
-      escrowAmount: escrowGross,
+      escrowAmount: escrowDeposit,
       jumlahHari,
     });
 
@@ -178,22 +175,15 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
                   ))}
                 </div>
 
-                {/* Agency volume info banner */}
+                {/* Agency bulk info banner */}
                 {isAgency && (
-                  <div className={`flex items-start gap-2 rounded-xl px-3 py-2.5 ${isVolumeDiscount ? "bg-emerald-50 border border-emerald-200" : "bg-blue-50 border border-blue-200"}`}>
-                    <Users className={`w-4 h-4 shrink-0 mt-0.5 ${isVolumeDiscount ? "text-emerald-600" : "text-blue-500"}`} />
+                  <div className="flex items-start gap-2 rounded-xl px-3 py-2.5 bg-emerald-50 border border-emerald-200">
+                    <Users className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
                     <div>
-                      {isVolumeDiscount ? (
-                        <>
-                          <p className="text-xs font-bold text-emerald-700">🎉 Diskon Volume Aktif!</p>
-                          <p className="text-[11px] text-emerald-600 mt-0.5">Kuota &gt;15 orang → komisi flat <strong>7%</strong> (hemat vs tarif normal)</p>
-                        </>
-                      ) : (
-                        <>
-                          <p className="text-xs font-semibold text-blue-700">Diskon Volume Agensi</p>
-                          <p className="text-[11px] text-blue-600 mt-0.5">Isi kuota &gt;15 orang untuk mendapat komisi flat 7%</p>
-                        </>
-                      )}
+                      <p className="text-xs font-bold text-emerald-700">Perekrutan Massal Agensi</p>
+                      <p className="text-[11px] text-emerald-600 mt-0.5">
+                        Setiap pekerja menerima <strong>100% upah</strong> — biaya platform {(PLATFORM_FEE_CEPAT * 100).toFixed(0)}% ditanggung penuh oleh perusahaan.
+                      </p>
                     </div>
                   </div>
                 )}
@@ -299,15 +289,14 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
                 >
                   {durasiKontrakOptions.map((opt) => (
                     <option key={opt.value} value={opt.value}>
-                      {opt.label} — Komisi {opt.rate * 100}%
+                      {opt.label}
                     </option>
                   ))}
                 </select>
                 <p className="text-[11px] text-gray-500">
-                  Komisi aktif:{" "}
-                  <span className={`font-bold ${isVolumeDiscount ? "text-emerald-600" : "text-primary"}`}>
-                    {(rate * 100)}%
-                    {isVolumeDiscount ? " (Diskon Volume Agensi)" : ""}
+                  Biaya platform:{" "}
+                  <span className="font-bold text-primary">
+                    {(PLATFORM_FEE_CEPAT * 100).toFixed(0)}% (beban perusahaan, pekerja terima 100%)
                   </span>
                 </p>
               </div>
@@ -341,25 +330,22 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
 
                 {nominalNum > 0 && (
                   <div className="mt-2 rounded-xl border border-primary/15 bg-primary/5 px-4 py-3 space-y-2" data-testid="commission-preview">
-                    <div className="flex justify-between text-xs text-gray-600">
-                      <span>Total pembayaran</span>
-                      <span className="font-medium text-gray-900">{formatRupiah(total)}</span>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-600">Upah ke pekerja (100%)</span>
+                      <span className="font-bold text-primary">{formatRupiah(total)}</span>
                     </div>
                     <div className="flex justify-between text-xs border-t border-primary/10 pt-2">
-                      <span className="text-gray-600 flex items-center gap-1">
-                        Komisi platform ({(rate * 100)}%)
-                        {isVolumeDiscount && <span className="text-emerald-600 font-bold">(Vol. Disc.)</span>}
-                      </span>
-                      <span className="font-bold text-primary">{formatRupiah(commission)}</span>
+                      <span className="text-gray-600">Biaya platform ({(PLATFORM_FEE_CEPAT * 100).toFixed(0)}%, beban perusahaan)</span>
+                      <span className="font-semibold text-gray-700">{formatRupiah(calcEmployerFee(total))}</span>
                     </div>
                     <div className="flex justify-between text-xs border-t border-primary/10 pt-2">
-                      <span className="font-semibold text-gray-800">Anda bayar ke pekerja</span>
-                      <span className="font-bold text-gray-900">{formatRupiah(total - commission)}</span>
+                      <span className="font-semibold text-gray-800">Total Anda setor ke escrow</span>
+                      <span className="font-bold text-gray-900">{formatRupiah(calcEmployerDeposit(total))}</span>
                     </div>
                     {isAgency && effectiveKuota > 1 && (
                       <div className="flex justify-between text-xs border-t border-primary/10 pt-2">
                         <span className="font-semibold text-gray-800">Total ({effectiveKuota} orang)</span>
-                        <span className="font-bold text-violet-700">{formatRupiah((total - commission) * effectiveKuota)}</span>
+                        <span className="font-bold text-violet-700">{formatRupiah(calcEmployerDeposit(total) * effectiveKuota)}</span>
                       </div>
                     )}
                   </div>
@@ -469,9 +455,17 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
                         <span className="text-gray-600">Jumlah pekerja</span>
                         <span className="font-semibold text-gray-900">{effectiveKuota} orang</span>
                       </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Subtotal upah pekerja</span>
+                        <span className="font-semibold text-gray-900">Rp {escrowGross.toLocaleString("id-ID")}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Biaya platform ({(PLATFORM_FEE_CEPAT * 100).toFixed(0)}%, beban perusahaan)</span>
+                        <span className="font-semibold text-gray-700">Rp {escrowSplit.platformCut.toLocaleString("id-ID")}</span>
+                      </div>
                       <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2.5">
                         <span className="text-gray-900">Total Dana Dikunci ke Escrow</span>
-                        <span className="text-blue-700">Rp {escrowGross.toLocaleString("id-ID")}</span>
+                        <span className="text-blue-700">Rp {escrowDeposit.toLocaleString("id-ID")}</span>
                       </div>
                     </div>
                   </div>
@@ -483,13 +477,16 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
                     </div>
                     <div className="px-4 py-3 space-y-2.5">
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Komisi Platform Rekhastha ({(PLATFORM_RATE * 100).toFixed(0)}%)</span>
-                        <span className="font-semibold text-red-500">−Rp {escrowSplit.platformCut.toLocaleString("id-ID")}</span>
+                        <span className="text-gray-600">Biaya Platform Rekhastha ({(PLATFORM_FEE_CEPAT * 100).toFixed(0)}% Beban Perusahaan)</span>
+                        <span className="font-semibold text-gray-700">Rp {escrowSplit.platformCut.toLocaleString("id-ID")}</span>
                       </div>
                       <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2.5">
-                        <span className="text-primary">Bersih ke Pekerja</span>
+                        <span className="text-primary">Upah Bersih ke Pekerja (100%)</span>
                         <span className="text-primary">Rp {escrowSplit.workerNet.toLocaleString("id-ID")}</span>
                       </div>
+                      <p className="text-[10px] text-emerald-700/80 leading-relaxed">
+                        🟢 Pekerja menerima 100% upah utuh — biaya platform ditanggung penuh oleh perusahaan.
+                      </p>
                       <p className="text-[10px] text-gray-400 leading-relaxed border-t border-gray-200 pt-2.5">
                         Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.
                       </p>

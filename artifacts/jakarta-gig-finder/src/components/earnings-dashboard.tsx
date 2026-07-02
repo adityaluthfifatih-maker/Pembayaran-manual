@@ -18,7 +18,7 @@ export default function EarningsDashboard({
 }: EarningsDashboardProps) {
   const totalGross = totalEarned;
   const totalCommission = Math.round(totalGross * 0.15);
-  const totalNet = totalGross - totalCommission;
+  const totalNet = totalGross;
   const verified = isVerified(workerProfile);
 
   const repColor = reputationPoints >= 80 ? "text-primary" : reputationPoints >= 50 ? "text-amber-600" : "text-red-600";
@@ -99,12 +99,16 @@ export default function EarningsDashboard({
               </div>
               <div className="border-t border-white/20 pt-3 space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="opacity-70">Total Kotor</span>
+                  <span className="opacity-70">Total Upah</span>
                   <span className="font-semibold">{formatRp(totalGross)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="opacity-70">Komisi Platform (15%)</span>
-                  <span className="font-semibold">- {formatRp(totalCommission)}</span>
+                  <span className="opacity-70">Potongan Pekerja</span>
+                  <span className="font-semibold">- {formatRp(0)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="opacity-70">Biaya Platform 15% (Beban Perusahaan)</span>
+                  <span className="font-semibold">{formatRp(totalCommission)}</span>
                 </div>
               </div>
               <p className="text-[10px] opacity-70 leading-relaxed border-t border-white/20 pt-2.5">

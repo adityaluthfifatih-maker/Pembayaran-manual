@@ -118,6 +118,13 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
+  if (user.suspended) {
+    res.status(403).json({
+      error: "Akun Anda telah ditangguhkan oleh Admin Rekhastha. Hubungi dukungan.",
+    });
+    return;
+  }
+
   const token = await createSession(user.id);
   res.cookie(SESSION_COOKIE, token, sessionCookieOptions());
   res.json(toAuthUser(user));
@@ -136,6 +143,12 @@ router.post("/auth/google", async (req, res): Promise<void> => {
     .where(eq(usersTable.email, DEMO_GOOGLE_EMAIL));
 
   if (existing) {
+    if (existing.suspended) {
+      res.status(403).json({
+        error: "Akun Anda telah ditangguhkan oleh Admin Rekhastha. Hubungi dukungan.",
+      });
+      return;
+    }
     const token = await createSession(existing.id);
     res.cookie(SESSION_COOKIE, token, sessionCookieOptions());
     res.json(toAuthUser(existing));
@@ -181,6 +194,14 @@ router.get("/auth/me", async (req, res): Promise<void> => {
   const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
   if (!user) {
     res.status(401).json({ error: "Not authenticated" });
+    return;
+  }
+  if (user.suspended) {
+    await deleteSession(req.cookies?.[SESSION_COOKIE]);
+    res.clearCookie(SESSION_COOKIE, { path: "/" });
+    res.status(403).json({
+      error: "Akun Anda telah ditangguhkan oleh Admin Rekhastha. Hubungi dukungan.",
+    });
     return;
   }
   res.json(toAuthUser(user));

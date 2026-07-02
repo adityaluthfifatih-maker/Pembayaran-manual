@@ -4,16 +4,16 @@ description: Rekhastha escrow/e-wallet system — rates, status lifecycle, split
 ---
 
 ## Rates (src/types/escrow.ts)
-- Platform commission: 10% of gross
-- PPh 21 with NPWP: 2.5% of (gross − platform cut)
-- PPh 21 without NPWP: 3.0% of (gross − platform cut)
-- Admin fee if company wins dispute: 5% of gross
+- Platform fee: FLAT 15% (`PLATFORM_FEE_CEPAT`), charged ONLY to the employer as a mark-up on top of the base wage. Worker always receives 100% of the base wage.
+- Tax-free: no PPh/PPN deductions anywhere.
+- Admin fee if company wins dispute: 5% of gross (`ADMIN_DISPUTE_FEE`)
+- Legacy constants `PLATFORM_RATE=0.10` and `PLATFORM_FEE_LAMA=0.07` still exist in escrow.ts but are DEAD — do not use for billing/split.
 
 ## EscrowStatus lifecycle
 `pending` → `locked` (on job post) → `released` (Selesai & Bayar) | `disputed` → `released` (worker wins) | `refunded` (company wins)
 
-## calcSplit(gross, hasNpwp) returns
-`{ platformCut, pphCut, workerNet, pphRate }`
+## calcSplit(totalDeposit) returns
+`{ platformCut, workerNet }` where `workerNet = round(totalDeposit / 1.15)` and `platformCut = totalDeposit − workerNet`. Input is the TOTAL employer deposit (base × 1.15), the single source of truth. Helpers: `calcEmployerFee(baseWage)=round(baseWage×0.15)`, `calcEmployerDeposit(baseWage)=baseWage+fee`.
 
 ## calcEscrowAmount(nominal, pembayaran, jumlahHari, kuota)
 - per_projek: nominal × kuota
@@ -55,5 +55,11 @@ The employer panel is split into two tabs — "⚡ Broadcast Instan" (cepat, ins
 **Why:** user unified billing to a single 15% mark-up across both engines.
 **How to apply:** the 15% multiplier is duplicated across paths that write `escrowAmount` — `hiring-mode-panel.tsx` (handleConfirmEscrow + inline invoice preview) and `home.tsx handleNominalUpdate` (chat negotiation). If the rate changes, update ALL of them via the `PLATFORM_FEE_CEPAT` constant (no hardcoded `1.07`/`1.15`). Watch for stale copy: event-note strings and calc badges also state the percentage literally.
 
-## KNOWN pre-existing escrow fee inconsistency (still not fully unified)
-`PLATFORM_RATE=0.10` (used by `calcSplit` at release) still differs from the 15% mark-up locked at posting, and `effectiveCommissionRate` (custom-job.ts, job-posting-modal) is a third system. `escrowAmount` is also stored inconsistently: hiring-mode-panel/negotiation store base×(1+fee) (total), but job-posting-modal & the ping path store base-only. So release payout (flat 10%) still does not match the locked mode fee. **Why noted:** architect flagged it; full unification is a large refactor across all job-creation paths + invoices + payout, deferred as out-of-scope. Fix requires one source of truth for what `escrowAmount` represents before touching `calcSplit`.
+## Escrow fee model is now UNIFIED (single source of truth)
+`escrowAmount` on a gig ALWAYS means the TOTAL employer deposit = base wage × 1.15. Every write path derives it via `calcEmployerDeposit(calcEscrowAmount(...))` — job-posting-modal, hiring-mode-panel, ping/demo seeding in home.tsx, AND `handleNominalUpdate` (chat negotiation must pass the job's `pembayaran`/`jumlahHari`/`kuota`, not a bare `nominal×kuota×1.15`). Release-time `calcSplit(escrowAmount)` then recovers worker 100% + 15% platform cut.
+**Why:** unified the old triple system (PLATFORM_RATE 10% release vs 15% locked vs `effectiveCommissionRate` variable tiers). The variable-commission UI (duration "Komisi X%" labels, agency 7% "volume discount") was removed from job-posting-modal — all copy now states flat 15% employer-borne, worker 100%.
+**How to apply:** never hardcode `1.15`/`1.07`/`1.10`; use `PLATFORM_FEE_CEPAT`/`calcEmployerFee`/`calcEmployerDeposit`. `effectiveCommissionRate`/`calcCommission` in custom-job.ts are now unused legacy — don't reintroduce them into escrow-facing UI.
+
+## Admin control plane + suspension enforcement
+Gated admin portal at `/admin` (client `pages/admin.tsx`, `lib/admin-client.ts`) over a SEPARATE httpOnly admin session cookie (server `lib/admin.ts`: in-mem sessions, 8h TTL, per-IP throttle 5/5min, env `ADMIN_ID`/`ADMIN_TOKEN`, defaults `tilu_admin`/`rekhastha2026`). Endpoints in `routes/admin.ts` (ledger/force-release/users/suspend/academy). Ratings persist via `routes/ratings.ts` (stars→score, comment→note).
+**Suspension gotcha:** the `suspended` flag must be checked on ALL THREE auth entry points — `/auth/login`, `/auth/google`, AND `/auth/me` (403 + clears session). Adding a new auth path? Add the suspension guard too, or you create a bypass.

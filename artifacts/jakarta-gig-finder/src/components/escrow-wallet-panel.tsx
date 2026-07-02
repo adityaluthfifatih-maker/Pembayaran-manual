@@ -231,7 +231,7 @@ export default function EscrowWalletPanel({
       <div className="flex items-start gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
         <AlertTriangle className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
         <p className="text-[11px] text-gray-600 leading-relaxed">
-          Saat dana escrow dilepas, hanya komisi platform yang dipotong. Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.
+          Saat dana escrow dilepas, upah pekerja dicairkan 100% utuh tanpa potongan — biaya platform 15% sepenuhnya ditanggung perusahaan. Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.
         </p>
       </div>
     </div>

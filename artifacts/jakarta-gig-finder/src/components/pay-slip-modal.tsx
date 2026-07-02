@@ -21,7 +21,7 @@ function formatDate(d: Date) {
 export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedOutAt, onClose }: PaySlipModalProps) {
   const gross = calcTotal(job.nominal, job.pembayaran);
   const commission = calcCommission(job.nominal, job.pembayaran);
-  const net = gross - commission;
+  const net = gross;
 
   const durationHours = clockedInAt && clockedOutAt
     ? ((clockedOutAt.getTime() - clockedInAt.getTime()) / 3600000).toFixed(1)
@@ -125,7 +125,8 @@ export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedO
             {/* Deductions */}
             <div className="py-3 border-b border-dashed border-gray-300 space-y-1">
               <p className="font-bold text-[10px] text-gray-700 mb-1.5">POTONGAN</p>
-              <Row label="Komisi Platform (15%)" value={`- ${formatRp(commission)}`} />
+              <Row label="Potongan Pekerja" value={`- ${formatRp(0)}`} />
+              <Row label="Biaya Platform 15% (Beban Perusahaan)" value={`${formatRp(commission)}`} />
             </div>
 
             {/* Net */}

@@ -587,19 +587,22 @@ export default function HiringModePanel({
                   </div>
                   <div className="space-y-1.5 text-xs">
                     <div className="flex justify-between text-gray-700">
-                      <span>Upah Pokok Pekerja ({kuotaNum} orang)</span>
-                      <span className="font-semibold">{formatRp(upahPokok)}</span>
+                      <span>Upah Bersih Pekerja ({kuotaNum} orang)</span>
+                      <span className="font-semibold text-emerald-700">{formatRp(upahPokok)}</span>
                     </div>
                     <div className="flex justify-between text-gray-600">
-                      <span>Biaya Sistem Platform ({Math.round(feeRate * 100)}%)</span>
+                      <span>Biaya Platform Rekhastha ({Math.round(feeRate * 100)}% Beban Perusahaan)</span>
                       <span className="font-semibold">{formatRp(biayaSistem)}</span>
                     </div>
                     <div className={`flex justify-between font-bold border-t pt-1.5 text-sm ${
                       hiringMode === "cepat" ? "border-orange-200 text-orange-900" : "border-blue-200 text-blue-900"
                     }`}>
-                      <span>Total Dana Dikunci di Escrow</span>
+                      <span>Total Dana yang Dititipkan ke Escrow</span>
                       <span>{formatRp(totalEscrow)}</span>
                     </div>
+                    <p className="text-[10px] text-emerald-700/80 leading-relaxed pt-0.5">
+                      🟢 Pekerja menerima 100% upah utuh — biaya platform 15% sepenuhnya ditanggung perusahaan.
+                    </p>
                   </div>
                   {/* Status badge */}
                   <div className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 mt-1 ${
