@@ -2,6 +2,8 @@ export type ApplicationStatus = "baru" | "ditinjau" | "diterima" | "ditolak" | "
 
 export interface ApplicationNotification {
   id: number;
+  /** Server-assigned DB row id — present after a successful POST /api/applications. */
+  serverId?: number;
   jobId: number;
   jobTitle: string;
   applicantName: string;

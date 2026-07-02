@@ -24,6 +24,8 @@ export const applicationsTable = pgTable("applications", {
   jobId: bigint("job_id", { mode: "number" }).notNull(),
   jobTitle: text("job_title").notNull().default(""),
   workerId: text("worker_id").notNull(),
+  /** employer_id from the gigsTable row — used for owner-scoped GET and PATCH authorization. */
+  employerId: text("employer_id").notNull().default(""),
   workerName: text("worker_name").notNull().default(""),
   workerNikMasked: text("worker_nik_masked").notNull().default(""),
   workerNpwpMasked: text("worker_npwp_masked").notNull().default(""),

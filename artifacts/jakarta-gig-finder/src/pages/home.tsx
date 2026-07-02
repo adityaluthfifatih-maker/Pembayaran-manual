@@ -335,6 +335,7 @@ export default function Home() {
     processedApplicationRef.current.add(e.id);
     const notif: ApplicationNotification = {
       id: nextNotifId++,
+      serverId: e.id,  // DB row id for server-side status persistence
       jobId: e.jobId,
       jobTitle: e.jobTitle || gig.posisi,
       applicantName: e.workerName,
@@ -352,6 +353,45 @@ export default function Home() {
   useEffect(() => {
     return subscribeApplication((e) => applicationHandlerRef.current(e));
   }, []);
+
+  // ── Employer: hydrate existing applications on login/refresh ─────
+  // Fetches all applications from the server for the logged-in employer so the
+  // notification panel is populated even after a page reload (not just via WS).
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "perusahaan") return;
+    let cancelled = false;
+    fetch("/api/applications")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: ApplicationEvent[]) => {
+        if (cancelled || !rows.length) return;
+        // Mark all hydrated IDs as seen so duplicate WS frames are dropped.
+        rows.forEach((e) => processedApplicationRef.current.add(e.id));
+        setNotifications((prev) => {
+          const seenServerIds = new Set(
+            prev.map((x) => x.serverId).filter((x): x is number => x !== undefined),
+          );
+          const toAdd: ApplicationNotification[] = rows
+            .filter((e) => !seenServerIds.has(e.id))
+            .map((e) => ({
+              id: nextNotifId++,
+              serverId: e.id,
+              jobId: e.jobId,
+              jobTitle: e.jobTitle,
+              applicantName: e.workerName,
+              applicantNikMasked: e.workerNikMasked,
+              applicantNpwpMasked: e.workerNpwpMasked,
+              hasNpwp: e.hasNpwp,
+              bank: e.bank,
+              rekening: e.rekening,
+              timestamp: new Date(e.createdAt),
+              status: e.status as ApplicationStatus,
+            }));
+          return toAdd.length ? [...prev, ...toAdd] : prev;
+        });
+      })
+      .catch(() => {/* offline / not yet ready */});
+    return () => { cancelled = true; };
+  }, [currentUser]);
 
   // ── Worker: fetch which employers have blacklisted me ────────────
   useEffect(() => {
@@ -938,8 +978,10 @@ export default function Home() {
       timestamp: new Date(), status: "baru",
     };
     setNotifications((p) => [notif, ...p]);
-    // Persist to server so the employer receives this application via WebSocket.
-    void postApplication({
+    // Persist to server — employer receives it via WebSocket; on success, back-fill
+    // the server-assigned `serverId` so handleStatusChange can call PATCH.
+    const localId = notif.id;
+    postApplication({
       jobId: job.id,
       jobTitle: job.posisi,
       workerName,
@@ -948,7 +990,13 @@ export default function Home() {
       hasNpwp,
       bank,
       rekening,
-    });
+    }).then((result) => {
+      if (result) {
+        setNotifications((prev) =>
+          prev.map((n) => n.id === localId ? { ...n, serverId: result.id } : n),
+        );
+      }
+    }).catch(() => {/* best effort */});
     setActiveJob(job);
     setJobStatus("accepted");
     setContractClosed(false);
@@ -960,9 +1008,17 @@ export default function Home() {
   }, []);
 
   const handleStatusChange = useCallback((id: number, status: ApplicationStatus) => {
-    setNotifications((p) => p.map((n) => n.id === id ? { ...n, status } : n));
+    const n = notifications.find((x) => x.id === id);
+    // Persist status to server when the notification has a server-assigned id.
+    if (n?.serverId) {
+      void fetch(`/api/applications/${n.serverId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+    }
+    setNotifications((p) => p.map((x) => x.id === id ? { ...x, status } : x));
     if (status === "diterima") {
-      const n = notifications.find((x) => x.id === id);
       if (n) {
         const job = customJobs.find((j) => j.id === n.jobId);
         if (job) setPendingRating({ raterType: "company", targetName: n.applicantName, job });
