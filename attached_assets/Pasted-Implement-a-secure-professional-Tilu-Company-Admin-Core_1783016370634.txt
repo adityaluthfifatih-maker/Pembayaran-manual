@@ -1,0 +1,20 @@
+Implement a secure, professional "Tilu Company Admin Core Gateway & Dashboard" component to create a centralized structural control plane.
+
+Please perform these layout modifications and synchronized back-end architecture additions:
+
+1. ADMIN GATEWAY LOGIN SCREEN:
+- Build a dedicated secure route or clean view access switcher labeled "🔐 Admin Portal (Tilu Company)".
+- Design a high-security premium credential login card container featuring fields for: "Admin Identity ID *", "Passkey / Token Code *", and an anti-brute-force login button.
+- Default Mock Hardcoded Credentials for testing: Admin ID: `tilu_admin`, Token: `rekhastha2026`.
+
+2. CENTRAL CENTRALIZED ADMIN LEDGER DASHBOARD (POSTGRES / WEBSOCKET FEED):
+Upon successful authentication, route the user to a master dashboard overview with a sidebar containing 3 main analytics tabs styled with Tailwind CSS:
+- Tab 1: "💰 Pengawasan Escrow & Transaksi" -> Renders a dynamic live tabular ledger displaying: Job ID, Employer Identity, Worker Identity, Total Job Wage (automatically Rupee-formatted, e.g., "Rp 300.000"), 15% Platform Profit Cut, and Status Badges ("Didepositokan", "Sedang Bekerja", "Selesai Cair"). Add an emergency override button: "⚡ Paksa Pencairan Manual" to resolve scan failures.
+- Tab 2: "🚫 Manajemen Pengguna & Blacklist" -> Renders a structured database list showing all Employers and Workers profiles. Provide a toggle button next to each profile to globally suspend an account or view cumulative negative ratings.
+- Tab 3 (ONLY FOR PREMIUM VERSION / LEAVE CONTENT AREA READY FOR UPSKILLING): "🎓 Kurasi Akademi & Soal Asesmen" -> Renders a data layout manager to view workers who have completed quizzes and an editor view to manage training question parameters.
+
+3. LUXURY ACCENTS & IDENTITY SYNERGY:
+- Style the entire Admin dashboard using a command-center layout wrapped elegantly in the premium corporate Emerald Green theme with high-contrast Gold outlines and headers.
+- Display the central "Tilu Company Corporate Overlord" logo text alongside the signature Shield "R" graphic emblem on the persistent navigation header.
+
+Execute this cross-client structural admin core integration and refresh the active server preview.

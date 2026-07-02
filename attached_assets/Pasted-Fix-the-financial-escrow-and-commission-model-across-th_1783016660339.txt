@@ -1,0 +1,29 @@
+Fix the financial escrow and commission model across the entire platform. Currently, the code erroneously charges a 10% cut from both parties. We must strictly enforce the Rekhastha by Tilu Company business rule: 0% cut for Workers, and a 15% structural markup solely charged to the Employer.
+
+Please execute these specific algorithmic and text layout refactors:
+
+1. REVISE EMPLOYER PAYMENT & ESCROW CALCULATION:
+- When an Employer creates a job (Instant or Regular) with a base wage of W (e.g., Rp 100.000):
+  * The Worker's payout must be exactly 100% of the wage: W (Rp 100.000).
+  * Calculate the Platform Fee as exactly 15% of the wage: 0.15 * W (Rp 15.000).
+  * The Total Invoice Amount billed to the Employer's escrow deposit must be: W + (0.15 * W) (Rp 115.000).
+- Update the Employer's job creation preview screen to display this transparent breakdown text:
+  * "Upah Bersih Pekerja: Rp [W]"
+  * "Biaya Platform Rekhastha (15% Beban Perusahaan): Rp [0.15 * W]"
+  * "Total Dana yang Dititipkan ke Escrow: Rp [W + 0.15 * W]"
+
+2. REVISE WORKER PAYOUT & WALLET BALANCE LOGIC:
+- Remove any code blocks or equations that deduct 10% from the worker's earnings upon job completion.
+- When the Worker scans the Check-Out QR code, transfer exactly 100% of the base wage (W) into the "Dompet Rekhastha" worker balance table.
+- Display a reassuring dynamic text banner inside the Worker's Dompet view: "🟢 Jaminan Rekhastha: Upah Anda dicairkan 100% utuh tanpa potongan sepeser pun (Bebas Biaya Admin via 15% Employer Markup)".
+
+3. REVISE ADMIN LEDGER TRACKING:
+- Inside the Tilu Company Admin Dashboard (Tab 1: Pengawasan Escrow & Transaksi), update the data rows and columns to reflect:
+  * Column 'Total Upah': Displays the 100% net worker wage amount.
+  * Column 'Komisi Platform (15%)': Displays the exact 15% revenue collected from the employer markup.
+  * Column 'Total Setoran': Displays the sum of both.
+
+4. PRESERVE ALL FORMATTING:
+- Ensure all updated math equations still wrap their visual values cleanly inside the automatic Indonesian Rupiah currency formatting masks ("Rp . [Amount]").
+
+Proceed directly to plan and build this critical monetization fix.
