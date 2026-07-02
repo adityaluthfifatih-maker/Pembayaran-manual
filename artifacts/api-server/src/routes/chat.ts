@@ -1,19 +1,61 @@
 import { Router, type IRouter } from "express";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, and } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, chatMessagesTable } from "@workspace/db";
+import { db, chatMessagesTable, gigsTable, applicationsTable } from "@workspace/db";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
 import { broadcastChatMessage } from "../lib/realtime";
 
 const router: IRouter = Router();
 
 /**
+ * Verify that a user is a participant in the given gig's conversation.
+ *
+ * Returns the gig row if access is granted, null otherwise.
+ * - Employers are authorized if `gig.employerId` matches the user's id.
+ * - Workers are authorized if they have at least one application row for that
+ *   gig (any status — an applicant may legitimately chat before being hired).
+ *
+ * We return null (→ 404) instead of 403 to avoid leaking whether a job exists.
+ */
+async function assertChatParticipant(
+  jobId: number,
+  userId: string,
+  userRole: string,
+): Promise<boolean> {
+  const [gig] = await db
+    .select({ employerId: gigsTable.employerId })
+    .from(gigsTable)
+    .where(eq(gigsTable.id, jobId))
+    .limit(1);
+
+  if (!gig) return false; // job doesn't exist
+
+  // Employer check
+  if (gig.employerId === userId) return true;
+
+  // Worker check — must have applied to this gig
+  if (userRole === "pekerja") {
+    const [app] = await db
+      .select({ id: applicationsTable.id })
+      .from(applicationsTable)
+      .where(
+        and(
+          eq(applicationsTable.jobId, jobId),
+          eq(applicationsTable.workerId, userId),
+        ),
+      )
+      .limit(1);
+    return !!app;
+  }
+
+  return false;
+}
+
+/**
  * Fetch all chat messages for a gig.
  *
- * Requires an active session (any role). Messages are returned oldest-first so
- * the chat modal can render them in chronological order. Access is intentionally
- * open to both the worker and the employer for that job — row-level ownership
- * is not enforced here because the jobId is the natural compartment.
+ * Caller must be the gig's employer OR a worker who has applied to the gig.
+ * Messages are returned oldest-first for chronological rendering.
  */
 router.get("/chat/:jobId", async (req, res): Promise<void> => {
   const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
@@ -24,6 +66,11 @@ router.get("/chat/:jobId", async (req, res): Promise<void> => {
   const jobId = Number(req.params.jobId);
   if (!jobId || isNaN(jobId)) {
     res.status(400).json({ error: "Job ID tidak valid." });
+    return;
+  }
+  const authorized = await assertChatParticipant(jobId, user.id, user.role);
+  if (!authorized) {
+    res.status(404).json({ error: "Tidak ditemukan." });
     return;
   }
   const rows = await db
@@ -41,10 +88,10 @@ const messageBody = z.object({
 /**
  * Post a new chat message for a gig.
  *
- * Requires an active session (worker or employer). The sender's identity is
- * taken from the session — the client does not supply `senderId` or `senderRole`.
- * The saved row is broadcast over the WebSocket hub so the other party sees it
- * instantly without polling.
+ * Caller must be the gig's employer OR a worker who has applied to the gig.
+ * The sender's identity is taken from the session cookie — the client does not
+ * supply `senderId` or `senderRole`. The saved row is broadcast over the
+ * WebSocket hub so the other party sees it instantly without polling.
  */
 router.post("/chat/:jobId", async (req, res): Promise<void> => {
   const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
@@ -55,6 +102,11 @@ router.post("/chat/:jobId", async (req, res): Promise<void> => {
   const jobId = Number(req.params.jobId);
   if (!jobId || isNaN(jobId)) {
     res.status(400).json({ error: "Job ID tidak valid." });
+    return;
+  }
+  const authorized = await assertChatParticipant(jobId, user.id, user.role);
+  if (!authorized) {
+    res.status(404).json({ error: "Tidak ditemukan." });
     return;
   }
   const parsed = messageBody.safeParse(req.body);

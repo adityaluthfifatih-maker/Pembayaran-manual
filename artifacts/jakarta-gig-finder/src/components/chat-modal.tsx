@@ -32,13 +32,13 @@ export interface ChatModalProps {
   workerName: string;
   currentRole: "company" | "worker";
   hiringMode?: "cepat" | "lama";
-  /** Numeric gig ID. When provided, messages are persisted and synced in real-time. */
-  jobId?: number;
+  /** Numeric gig ID. Messages are persisted in Postgres and synced in real-time. */
+  jobId: number;
   onClose: () => void;
   onNominalUpdate?: (newNominal: number) => void;
 }
 
-// Local-only message counter (for offer / counter messages that aren't persisted)
+// Local-only ID counter for offer/counter messages that aren't persisted to the backend.
 let localMsgId = -1;
 
 /** Convert a server chat row into the local ChatMessage shape. */
@@ -130,10 +130,6 @@ export default function ChatModal({
 
   // ── Fetch message history on mount ───────────────────────────────
   useEffect(() => {
-    if (!jobId) {
-      setLoading(false);
-      return;
-    }
     let cancelled = false;
     (async () => {
       try {
@@ -157,7 +153,6 @@ export default function ChatModal({
 
   // ── Subscribe to incoming WS chat messages ────────────────────────
   useEffect(() => {
-    if (!jobId) return;
     return subscribeChatMessage((ev) => {
       if (ev.jobId !== jobId) return;
       if (seenMsgIds.current.has(ev.id)) return; // our own POST echo
@@ -186,36 +181,25 @@ export default function ChatModal({
     }
     setInput("");
 
-    if (jobId) {
-      // ── Backed mode: persist to DB + fan-out via WS ────────────
-      setSending(true);
-      try {
-        const res = await fetch(`/api/chat/${jobId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
-        });
-        if (res.ok) {
-          const row = (await res.json()) as { id: number; senderRole: string; text: string; sentAt: string };
-          const msg = rowToMsg(row);
-          seenMsgIds.current.add(msg.id); // mark as seen so WS echo is skipped
-          setMessages(prev => [...prev, msg]);
-        }
-      } catch {
-        /* best-effort — message may still arrive via WS */
-      } finally {
-        setSending(false);
+    setSending(true);
+    try {
+      const res = await fetch(`/api/chat/${jobId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (res.ok) {
+        const row = (await res.json()) as { id: number; senderRole: string; text: string; sentAt: string };
+        const msg = rowToMsg(row);
+        seenMsgIds.current.add(msg.id); // mark as seen so WS echo is skipped
+        setMessages(prev => [...prev, msg]);
       }
-    } else {
-      // ── Demo/local fallback (no jobId) ─────────────────────────
-      setMessages(prev => [...prev, {
-        id: --localMsgId,
-        sender: currentRole,
-        text,
-        time: new Date(),
-      }]);
+    } catch {
+      /* best-effort — message may still arrive via WS */
+    } finally {
+      setSending(false);
     }
-  }, [input, currentRole, jobId, sending, blacklisted]);
+  }, [input, jobId, sending, blacklisted]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); }

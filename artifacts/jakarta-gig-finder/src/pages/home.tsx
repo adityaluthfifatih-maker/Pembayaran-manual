@@ -230,7 +230,7 @@ export default function Home() {
   const [chatContext, setChatContext] = useState<{
     jobTitle: string; nominal: number; companyName: string;
     workerName: string; currentRole: "company" | "worker";
-    hiringMode?: "cepat" | "lama"; jobId?: number;
+    hiringMode?: "cepat" | "lama"; jobId: number;
   } | null>(null);
 
   // ── Notifications ───────────────────────────────────────────────
@@ -1048,7 +1048,8 @@ export default function Home() {
 
   const handleOpenChatFromNotif = useCallback((notif: ApplicationNotification) => {
     const job = customJobs.find((j) => j.id === notif.jobId);
-    setChatContext({ jobTitle: notif.jobTitle, nominal: job?.nominal ?? 0, companyName: job?.namaPerusahaan || "Perusahaan Anda", workerName: notif.applicantName, currentRole: "company", hiringMode: job?.hiringMode, jobId: job?.id });
+    if (!job) return;
+    setChatContext({ jobTitle: notif.jobTitle, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan Anda", workerName: notif.applicantName, currentRole: "company", hiringMode: job.hiringMode, jobId: job.id });
   }, [customJobs]);
 
   const handleNominalUpdate = useCallback((newNominal: number) => {
@@ -1443,11 +1444,13 @@ export default function Home() {
                               <QrCode className="w-3.5 h-3.5" /> Presensi QR
                             </button>
                           )}
-                          <button
-                            onClick={() => setChatContext({ jobTitle: n.jobTitle, nominal: job?.nominal ?? 0, companyName: job?.namaPerusahaan || "Perusahaan Anda", workerName: n.applicantName, currentRole: "company", hiringMode: job?.hiringMode, jobId: job?.id })}
-                            className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-primary/90 transition-colors">
-                            <MessageSquare className="w-3.5 h-3.5" /> Chat
-                          </button>
+                          {job && (
+                            <button
+                              onClick={() => setChatContext({ jobTitle: n.jobTitle, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan Anda", workerName: n.applicantName, currentRole: "company", hiringMode: job.hiringMode, jobId: job.id })}
+                              className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-primary/90 transition-colors">
+                              <MessageSquare className="w-3.5 h-3.5" /> Chat
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
