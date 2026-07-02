@@ -26,3 +26,4 @@ export * from "./emergency";
 export * from "./daily-payouts";
 export * from "./admin";
 export * from "./academy";
+export * from "./applications";

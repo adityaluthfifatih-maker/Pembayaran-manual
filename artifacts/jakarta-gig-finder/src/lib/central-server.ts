@@ -33,11 +33,33 @@ export interface AttendanceEvent {
 }
 export type AttendanceSubscriber = (event: AttendanceEvent) => void;
 
+/**
+ * A job application row as returned by the server (masked identity fields).
+ * Emitted on `application_new` (full row) and `application_status` (partial:
+ * only `id`, `status`, `jobId` are guaranteed).
+ */
+export interface ApplicationEvent {
+  id: number;
+  jobId: number;
+  jobTitle: string;
+  workerId: string;
+  workerName: string;
+  workerNikMasked: string;
+  workerNpwpMasked: string;
+  hasNpwp: boolean;
+  bank: string;
+  rekening: string;
+  status: string;
+  createdAt: string;
+}
+export type ApplicationSubscriber = (event: ApplicationEvent) => void;
+
 const API_BASE = "/api";
 
 let activeGigs: Gig[] = [];
 let subscribers: ServerSubscriber[] = [];
 let attendanceSubscribers: AttendanceSubscriber[] = [];
+let applicationSubscribers: ApplicationSubscriber[] = [];
 
 function notify(gig: Gig | null): void {
   for (const cb of [...subscribers]) {
@@ -126,6 +148,10 @@ function connectWs(): void {
           type: string;
           gig?: Record<string, unknown>;
           attendance?: Record<string, unknown>;
+          application?: Record<string, unknown>;
+          id?: number;
+          status?: string;
+          jobId?: number;
         };
         if (msg.type === "gig_broadcast" && msg.gig) {
           const gig = reviveGig(msg.gig);
@@ -138,6 +164,32 @@ function connectWs(): void {
               cb(event);
             } catch {
               /* a broken subscriber must not break the fan-out */
+            }
+          }
+        } else if (msg.type === "application_new" && msg.application) {
+          const event = msg.application as unknown as ApplicationEvent;
+          for (const cb of [...applicationSubscribers]) {
+            try {
+              cb(event);
+            } catch {
+              /* a broken subscriber must not break the fan-out */
+            }
+          }
+        } else if (
+          msg.type === "application_status" &&
+          msg.id != null
+        ) {
+          // Partial event: only id / status / jobId are guaranteed.
+          const event = {
+            id: msg.id,
+            status: msg.status ?? "",
+            jobId: msg.jobId ?? 0,
+          } as ApplicationEvent;
+          for (const cb of [...applicationSubscribers]) {
+            try {
+              cb(event);
+            } catch {
+              /* best effort */
             }
           }
         }
@@ -179,6 +231,38 @@ async function postGig(gig: Gig): Promise<void> {
     });
   } catch {
     /* the optimistic local copy already showed; retry happens on next post */
+  }
+}
+
+/**
+ * Persist a job application to the server. The server stores the row and
+ * fans it out over the WebSocket hub so the employer's device receives it
+ * instantly without polling.
+ *
+ * Returns the persisted row on success, or null if the request fails (the
+ * optimistic local notification in the worker UI already showed, so failure
+ * is silent from the worker's perspective).
+ */
+export async function postApplication(data: {
+  jobId: number;
+  jobTitle: string;
+  workerName: string;
+  workerNikMasked: string;
+  workerNpwpMasked: string;
+  hasNpwp: boolean;
+  bank: string;
+  rekening: string;
+}): Promise<ApplicationEvent | null> {
+  try {
+    const res = await fetch(`${API_BASE}/applications`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as ApplicationEvent;
+  } catch {
+    return null;
   }
 }
 
@@ -227,6 +311,20 @@ export function subscribeAttendance(cb: AttendanceSubscriber): () => void {
   ensureStarted();
   return () => {
     attendanceSubscribers = attendanceSubscribers.filter((s) => s !== cb);
+  };
+}
+
+/**
+ * Subscribe to job application events:
+ *   • `application_new`    — full ApplicationEvent row (employer side: show in panel)
+ *   • `application_status` — partial row with id/status/jobId (worker side: update badge)
+ * Ensures the WebSocket is started. Returns an unsubscribe function.
+ */
+export function subscribeApplication(cb: ApplicationSubscriber): () => void {
+  applicationSubscribers.push(cb);
+  ensureStarted();
+  return () => {
+    applicationSubscribers = applicationSubscribers.filter((s) => s !== cb);
   };
 }
 

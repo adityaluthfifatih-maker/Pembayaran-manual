@@ -97,3 +97,24 @@ export function broadcastEmergencyResolved(id: number): void {
 export function broadcastDailyPayout(payout: unknown): void {
   broadcast({ type: "daily_payout", payout });
 }
+
+/**
+ * Push a new worker application to every connected device. The employer device
+ * that owns the job reacts by adding the applicant to its notification panel;
+ * other devices ignore it.
+ */
+export function broadcastApplication(application: unknown): void {
+  broadcast({ type: "application_new", application });
+}
+
+/**
+ * Push an application status change (employer reviewed/accepted/rejected) so
+ * the worker device can update its own notification panel in real time.
+ */
+export function broadcastApplicationStatus(
+  id: number,
+  status: string,
+  jobId: number,
+): void {
+  broadcast({ type: "application_status", id, status, jobId });
+}

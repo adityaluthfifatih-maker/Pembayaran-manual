@@ -5,3 +5,4 @@
 - [Realtime gig sync](realtime-gig-sync.md) — Postgres + WS live feed: client-provided PK, employer-silent/worker-alert gating, reconnect re-hydrate, drizzle-zod (not OpenAPI).
 - [Real accounts & sessions](auth-accounts.md) — custom bcrypt email/password auth (not Clerk), httpOnly cookie, profile jsonb, never purge sessions on login (multi-device).
 - [Admin control-plane persistence](admin-control-plane.md) — admin sessions + login throttle live in Postgres (survive restart); all admin auth helpers async, `requireAdmin` must be awaited.
+- [Applications sync pattern](applications-sync.md) — applications table workerId is text (users.id is text PK); WS fan-out via broadcastApplication; employer handler uses allJobs + employerId guard + dedup Set.

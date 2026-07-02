@@ -24,7 +24,10 @@ import { RekhasthaLogo } from "@/components/rekhastha-logo";
 import {
   subscribeToServer,
   subscribeAttendance,
+  subscribeApplication,
+  postApplication,
   type AttendanceEvent,
+  type ApplicationEvent,
   getActiveGigs,
   resetServer,
   randomGeofenceCoords,
@@ -313,6 +316,41 @@ export default function Home() {
   };
   useEffect(() => {
     return subscribeAttendance((e) => attendanceHandlerRef.current(e));
+  }, []);
+
+  // ── Real-time applications — EMPLOYER side ───────────────────────
+  // The server broadcasts `application_new` the instant a worker taps "Lamar".
+  // This subscriber fires ONLY on the employer device that owns the gig.
+  // Worker devices ignore full application events; they only react to the
+  // `application_status` partial update (handled below in handleStatusChange).
+  const applicationHandlerRef = useRef<(e: ApplicationEvent) => void>(() => {});
+  const processedApplicationRef = useRef<Set<number>>(new Set());
+  applicationHandlerRef.current = (e: ApplicationEvent) => {
+    if (!currentUser || currentUser.role !== "perusahaan") return;
+    // Ignore `application_status` partial events (workerName is absent)
+    if (!e.workerName) return;
+    const gig = allJobs.find((j) => j.id === e.jobId);
+    if (!gig || gig.employerId !== currentUser.id) return; // only my own jobs
+    if (processedApplicationRef.current.has(e.id)) return; // duplicate WS frame
+    processedApplicationRef.current.add(e.id);
+    const notif: ApplicationNotification = {
+      id: nextNotifId++,
+      jobId: e.jobId,
+      jobTitle: e.jobTitle || gig.posisi,
+      applicantName: e.workerName,
+      applicantNikMasked: e.workerNikMasked,
+      applicantNpwpMasked: e.workerNpwpMasked,
+      hasNpwp: e.hasNpwp,
+      bank: e.bank,
+      rekening: e.rekening,
+      timestamp: new Date(e.createdAt),
+      status: e.status as ApplicationStatus,
+    };
+    setNotifications((p) => [notif, ...p]);
+    setApplicantToast(notif);
+  };
+  useEffect(() => {
+    return subscribeApplication((e) => applicationHandlerRef.current(e));
   }, []);
 
   // ── Worker: fetch which employers have blacklisted me ────────────
@@ -882,17 +920,35 @@ export default function Home() {
 
   // ── Apply ───────────────────────────────────────────────────────
   const handleApply = useCallback((job: CustomJob, profile: WorkerProfile) => {
+    const workerName   = maskName(profile.namaLengkap);
+    const workerNik    = maskNik(profile.nik);
+    const workerNpwp   = profile.belumPunyaNpwp ? "Belum ada NPWP" : maskNpwp(profile.npwp);
+    const hasNpwp      = !profile.belumPunyaNpwp;
+    const bank         = profile.namaBank || "—";
+    const rekening     = maskRekening(profile.nomorRekening);
+
     const notif: ApplicationNotification = {
       id: nextNotifId++, jobId: job.id, jobTitle: job.posisi,
-      applicantName: maskName(profile.namaLengkap),
-      applicantNikMasked: maskNik(profile.nik),
-      applicantNpwpMasked: profile.belumPunyaNpwp ? "Belum ada NPWP" : maskNpwp(profile.npwp),
-      hasNpwp: !profile.belumPunyaNpwp,
-      bank: profile.namaBank || "—",
-      rekening: maskRekening(profile.nomorRekening),
+      applicantName: workerName,
+      applicantNikMasked: workerNik,
+      applicantNpwpMasked: workerNpwp,
+      hasNpwp,
+      bank,
+      rekening: rekening,
       timestamp: new Date(), status: "baru",
     };
     setNotifications((p) => [notif, ...p]);
+    // Persist to server so the employer receives this application via WebSocket.
+    void postApplication({
+      jobId: job.id,
+      jobTitle: job.posisi,
+      workerName,
+      workerNikMasked: workerNik,
+      workerNpwpMasked: workerNpwp,
+      hasNpwp,
+      bank,
+      rekening,
+    });
     setActiveJob(job);
     setJobStatus("accepted");
     setContractClosed(false);
