@@ -24,6 +24,10 @@ args = "check:escrow"
 task = "workflow.run"
 args = "fee-consistency"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "admin-auth-tests"
+
 [[workflows.workflow]]
 name = "check:escrow"
 author = "agent"
@@ -42,6 +46,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/scripts run check-fee-consistency"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "admin-auth-tests"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/api-server run test"
 
 [workflows.workflow.metadata]
 isValidation = true
