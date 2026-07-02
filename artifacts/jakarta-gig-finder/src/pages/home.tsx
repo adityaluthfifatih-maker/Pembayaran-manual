@@ -1491,6 +1491,9 @@ export default function Home() {
               onDemoInject={handleDemoInject}
               onDispute={handleJobDispute}
               onAdminResolve={handleAdminResolve}
+              onJobUpdate={(updated) =>
+                setCustomJobs((prev) => prev.map((j) => (j.id === updated.id ? updated : j)))
+              }
             />
           )}
         </div>
