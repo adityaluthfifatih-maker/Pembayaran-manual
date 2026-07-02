@@ -15,7 +15,7 @@ export class AdminError extends Error {
 
 async function request<T>(
   path: string,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PUT" | "DELETE",
   body?: unknown,
 ): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -62,11 +62,24 @@ export interface AdminUserRow {
   createdAt: string;
 }
 
+/** Quiz-taking view: no correct answer or explanation. */
 export interface AcademyQuestion {
   id: string;
   category: string;
   prompt: string;
   options: string[];
+}
+
+/** Admin editor view: includes correct answer and explanation. */
+export interface AdminAcademyQuestion {
+  id: number;
+  slug: string;
+  category: string;
+  prompt: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+  sortOrder: number;
 }
 
 export interface AcademyCompletion {
@@ -102,6 +115,19 @@ export interface AcademyResult {
   score: number;
   passed: boolean;
   answers: AcademyAnswerResult[];
+}
+
+export interface AcademySettings {
+  passingScore: number;
+}
+
+export interface QuestionInput {
+  category: string;
+  prompt: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+  sortOrder: number;
 }
 
 export function adminLogin(adminId: string, token: string): Promise<{ ok: true }> {
@@ -143,6 +169,35 @@ export function submitAcademy(
   answers: { questionId: string; selectedIndex: number }[],
 ): Promise<AcademyResult> {
   return request("/admin/academy/submit", "POST", { answers });
+}
+
+// ── Academy question editor ───────────────────────────────────────────────
+
+export function fetchAcademyQuestions(): Promise<AdminAcademyQuestion[]> {
+  return request("/admin/academy/questions", "GET");
+}
+
+export function createAcademyQuestion(data: QuestionInput): Promise<AdminAcademyQuestion> {
+  return request("/admin/academy/questions", "POST", data);
+}
+
+export function updateAcademyQuestion(
+  id: number,
+  data: QuestionInput,
+): Promise<AdminAcademyQuestion> {
+  return request(`/admin/academy/questions/${id}`, "PUT", data);
+}
+
+export function deleteAcademyQuestion(id: number): Promise<{ ok: true }> {
+  return request(`/admin/academy/questions/${id}`, "DELETE");
+}
+
+export function fetchAcademySettings(): Promise<AcademySettings> {
+  return request("/admin/academy/settings", "GET");
+}
+
+export function updateAcademySettings(passingScore: number): Promise<AcademySettings> {
+  return request("/admin/academy/settings", "PUT", { passingScore });
 }
 
 // ── Pusat Resolusi: remote proof-of-work disputes ────────────────────

@@ -8,6 +8,7 @@ import {
   attendanceTable,
   ratingsTable,
   academyCompletionsTable,
+  academyQuestionsTable,
 } from "@workspace/db";
 import {
   ADMIN_COOKIE,
@@ -23,8 +24,10 @@ import {
   verifyAdminCredentials,
 } from "../lib/admin";
 import {
-  PASSING_SCORE,
+  getAllQuestionsForAdmin,
+  getPassingScore,
   scoreQuiz,
+  setPassingScore,
   toClientQuestions,
 } from "../lib/academy";
 import { broadcastGig } from "../lib/realtime";
@@ -132,7 +135,6 @@ router.get("/admin/ledger", async (req, res): Promise<void> => {
         .where(inArray(attendanceTable.jobId, gigIds))
     : [];
 
-  // Latest attendance kind + worker name per job.
   const workerByJob = new Map<number, { name: string; working: boolean; done: boolean }>();
   for (const a of attendance) {
     const cur = workerByJob.get(a.jobId) ?? { name: a.workerName, working: false, done: false };
@@ -226,7 +228,6 @@ router.post("/admin/force-release", async (req, res): Promise<void> => {
     return;
   }
 
-  // Keep every connected device's ledger/radar in sync.
   broadcastGig(gig);
   req.log.info({ jobId: gig.id }, "Admin force-released escrow");
   res.json({ ok: true });
@@ -245,7 +246,6 @@ router.get("/admin/users", async (req, res): Promise<void> => {
     .from(ratingsTable)
     .where(lte(ratingsTable.score, 2));
 
-  // Aggregate negative-rating counts by the rated party's display name.
   const negByName = new Map<string, number>();
   for (const r of negativeRatings) {
     negByName.set(r.targetName, (negByName.get(r.targetName) ?? 0) + 1);
@@ -317,15 +317,19 @@ router.get("/admin/academy", async (req, res): Promise<void> => {
     return;
   }
 
-  const completions = await db
-    .select()
-    .from(academyCompletionsTable)
-    .where(eq(academyCompletionsTable.adminId, adminId))
-    .orderBy(desc(academyCompletionsTable.completedAt));
+  const [questions, passingScore, completions] = await Promise.all([
+    toClientQuestions(),
+    getPassingScore(),
+    db
+      .select()
+      .from(academyCompletionsTable)
+      .where(eq(academyCompletionsTable.adminId, adminId))
+      .orderBy(desc(academyCompletionsTable.completedAt)),
+  ]);
 
   res.json({
-    passingScore: PASSING_SCORE,
-    questions: toClientQuestions(),
+    passingScore,
+    questions,
     completions: completions.map((c) => ({
       id: c.id,
       adminId: c.adminId,
@@ -362,7 +366,7 @@ router.post("/admin/academy/submit", async (req, res): Promise<void> => {
     return;
   }
 
-  const result = scoreQuiz(parsed.data.answers);
+  const result = await scoreQuiz(parsed.data.answers);
 
   const [saved] = await db
     .insert(academyCompletionsTable)
@@ -381,16 +385,202 @@ router.post("/admin/academy/submit", async (req, res): Promise<void> => {
     "Admin completed academy assessment",
   );
 
+  const passingScore = await getPassingScore();
+
   res.json({
     id: saved.id,
     completedAt: saved.completedAt,
-    passingScore: PASSING_SCORE,
+    passingScore,
     correct: result.correct,
     total: result.total,
     score: result.score,
     passed: result.passed,
     answers: result.answers,
   });
+});
+
+// ── Academy question editor (admin CRUD) ──────────────────────────
+
+router.get("/admin/academy/questions", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req))) {
+    res.status(401).json({ error: "Sesi admin tidak valid." });
+    return;
+  }
+  const rows = await getAllQuestionsForAdmin();
+  res.json(
+    rows.map((r) => ({
+      id: r.id,
+      slug: r.slug,
+      category: r.category,
+      prompt: r.prompt,
+      options: r.options as string[],
+      correctIndex: r.correctIndex,
+      explanation: r.explanation,
+      sortOrder: r.sortOrder,
+    })),
+  );
+});
+
+const questionBody = z.object({
+  category: z.string().min(1),
+  prompt: z.string().min(1),
+  options: z.array(z.string().min(1)).min(2).max(8),
+  correctIndex: z.number().int().min(0),
+  explanation: z.string().default(""),
+  sortOrder: z.number().int().default(0),
+});
+
+router.post("/admin/academy/questions", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req))) {
+    res.status(401).json({ error: "Sesi admin tidak valid." });
+    return;
+  }
+  const parsed = questionBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Data soal tidak valid.", detail: parsed.error.issues });
+    return;
+  }
+  if (parsed.data.correctIndex >= parsed.data.options.length) {
+    res.status(400).json({ error: "correctIndex melebihi jumlah opsi." });
+    return;
+  }
+
+  const slug = `q-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  const [row] = await db
+    .insert(academyQuestionsTable)
+    .values({
+      slug,
+      category: parsed.data.category,
+      prompt: parsed.data.prompt,
+      options: parsed.data.options,
+      correctIndex: parsed.data.correctIndex,
+      explanation: parsed.data.explanation,
+      sortOrder: parsed.data.sortOrder,
+    })
+    .returning();
+
+  req.log.info({ id: row.id }, "Admin created academy question");
+  res.status(201).json({
+    id: row.id,
+    slug: row.slug,
+    category: row.category,
+    prompt: row.prompt,
+    options: row.options as string[],
+    correctIndex: row.correctIndex,
+    explanation: row.explanation,
+    sortOrder: row.sortOrder,
+  });
+});
+
+const questionUpdateBody = questionBody.extend({
+  slug: z.string().optional(),
+});
+
+router.put("/admin/academy/questions/:id", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req))) {
+    res.status(401).json({ error: "Sesi admin tidak valid." });
+    return;
+  }
+  const id = Number(req.params["id"]);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "ID tidak valid." });
+    return;
+  }
+  const parsed = questionUpdateBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Data soal tidak valid.", detail: parsed.error.issues });
+    return;
+  }
+  if (parsed.data.correctIndex >= parsed.data.options.length) {
+    res.status(400).json({ error: "correctIndex melebihi jumlah opsi." });
+    return;
+  }
+
+  const [row] = await db
+    .update(academyQuestionsTable)
+    .set({
+      category: parsed.data.category,
+      prompt: parsed.data.prompt,
+      options: parsed.data.options,
+      correctIndex: parsed.data.correctIndex,
+      explanation: parsed.data.explanation,
+      sortOrder: parsed.data.sortOrder,
+    })
+    .where(eq(academyQuestionsTable.id, id))
+    .returning();
+
+  if (!row) {
+    res.status(404).json({ error: "Soal tidak ditemukan." });
+    return;
+  }
+
+  req.log.info({ id: row.id }, "Admin updated academy question");
+  res.json({
+    id: row.id,
+    slug: row.slug,
+    category: row.category,
+    prompt: row.prompt,
+    options: row.options as string[],
+    correctIndex: row.correctIndex,
+    explanation: row.explanation,
+    sortOrder: row.sortOrder,
+  });
+});
+
+router.delete("/admin/academy/questions/:id", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req))) {
+    res.status(401).json({ error: "Sesi admin tidak valid." });
+    return;
+  }
+  const id = Number(req.params["id"]);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "ID tidak valid." });
+    return;
+  }
+
+  const [deleted] = await db
+    .delete(academyQuestionsTable)
+    .where(eq(academyQuestionsTable.id, id))
+    .returning({ id: academyQuestionsTable.id });
+
+  if (!deleted) {
+    res.status(404).json({ error: "Soal tidak ditemukan." });
+    return;
+  }
+
+  req.log.info({ id }, "Admin deleted academy question");
+  res.json({ ok: true });
+});
+
+// ── Academy settings (passing score) ─────────────────────────────
+
+router.get("/admin/academy/settings", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req))) {
+    res.status(401).json({ error: "Sesi admin tidak valid." });
+    return;
+  }
+  const passingScore = await getPassingScore();
+  res.json({ passingScore });
+});
+
+const settingsBody = z.object({
+  passingScore: z.number().int().min(1).max(100),
+});
+
+router.put("/admin/academy/settings", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req))) {
+    res.status(401).json({ error: "Sesi admin tidak valid." });
+    return;
+  }
+  const parsed = settingsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Nilai tidak valid. Nilai lulus harus antara 1–100." });
+    return;
+  }
+  await setPassingScore(parsed.data.passingScore);
+  req.log.info({ passingScore: parsed.data.passingScore }, "Admin updated passing score");
+  res.json({ passingScore: parsed.data.passingScore });
 });
 
 export default router;

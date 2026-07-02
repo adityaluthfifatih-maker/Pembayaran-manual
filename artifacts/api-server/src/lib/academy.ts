@@ -1,23 +1,23 @@
 /**
- * Rekhastha operator-onboarding academy. The question bank is a server-side
- * seed so the correct answers never leave the backend: the client receives
- * questions with their options only, submits its picks, and the server scores
- * them. Completions are persisted per admin id (see `academyCompletionsTable`).
+ * Rekhastha operator-onboarding academy. Questions are stored in the database
+ * so admins can edit them without a redeploy. The correct answers never leave
+ * the backend: the client receives questions + options only, submits picks, and
+ * the server scores them. On first boot the DB is seeded from the built-in set.
  */
-export interface AcademyQuestion {
+import { asc, eq } from "drizzle-orm";
+import { db, academyQuestionsTable, academySettingsTable } from "@workspace/db";
+
+// ── Seed bank (server-only; never exported) ───────────────────────────────
+interface SeedQuestion {
   id: string;
   category: string;
   prompt: string;
   options: string[];
-  /** Index into `options` of the correct answer. Never sent to the client. */
   correctIndex: number;
   explanation: string;
 }
 
-/** Percentage of correct answers required to pass the assessment. */
-export const PASSING_SCORE = 80;
-
-export const ACADEMY_QUESTIONS: AcademyQuestion[] = [
+const SEED_QUESTIONS: SeedQuestion[] = [
   {
     id: "escrow-split",
     category: "Escrow",
@@ -125,6 +125,57 @@ export const ACADEMY_QUESTIONS: AcademyQuestion[] = [
   },
 ];
 
+// ── Lazy DB seeding ───────────────────────────────────────────────────────
+let _seeded = false;
+
+async function ensureSeeded(): Promise<void> {
+  if (_seeded) return;
+  const existing = await db
+    .select({ id: academyQuestionsTable.id })
+    .from(academyQuestionsTable)
+    .limit(1);
+  if (existing.length === 0) {
+    await db.insert(academyQuestionsTable).values(
+      SEED_QUESTIONS.map((q, i) => ({
+        slug: q.id,
+        category: q.category,
+        prompt: q.prompt,
+        options: q.options,
+        correctIndex: q.correctIndex,
+        explanation: q.explanation,
+        sortOrder: i,
+      })),
+    );
+  }
+  _seeded = true;
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────
+
+export const DEFAULT_PASSING_SCORE = 80;
+
+/** Read passing score from DB settings row (upserts default on first call). */
+export async function getPassingScore(): Promise<number> {
+  const [row] = await db
+    .select()
+    .from(academySettingsTable)
+    .where(eq(academySettingsTable.id, 1));
+  return row?.passingScore ?? DEFAULT_PASSING_SCORE;
+}
+
+/** Persist a new passing score (must be 1–100). */
+export async function setPassingScore(score: number): Promise<void> {
+  await db
+    .insert(academySettingsTable)
+    .values({ id: 1, passingScore: score })
+    .onConflictDoUpdate({
+      target: academySettingsTable.id,
+      set: { passingScore: score },
+    });
+}
+
+// ── Client-safe questions ─────────────────────────────────────────────────
+
 export interface ClientAcademyQuestion {
   id: string;
   category: string;
@@ -132,15 +183,37 @@ export interface ClientAcademyQuestion {
   options: string[];
 }
 
-/** Strip correct answers/explanations before sending questions to the client. */
-export function toClientQuestions(): ClientAcademyQuestion[] {
-  return ACADEMY_QUESTIONS.map(({ id, category, prompt, options }) => ({
-    id,
-    category,
-    prompt,
-    options,
+/** Questions without correct answers — safe to send to the browser. */
+export async function toClientQuestions(): Promise<ClientAcademyQuestion[]> {
+  await ensureSeeded();
+  const rows = await db
+    .select()
+    .from(academyQuestionsTable)
+    .orderBy(
+      asc(academyQuestionsTable.sortOrder),
+      asc(academyQuestionsTable.id),
+    );
+  return rows.map((r) => ({
+    id: r.slug,
+    category: r.category,
+    prompt: r.prompt,
+    options: r.options as string[],
   }));
 }
+
+/** Full question rows including correct answers — for the admin editor only. */
+export async function getAllQuestionsForAdmin() {
+  await ensureSeeded();
+  return db
+    .select()
+    .from(academyQuestionsTable)
+    .orderBy(
+      asc(academyQuestionsTable.sortOrder),
+      asc(academyQuestionsTable.id),
+    );
+}
+
+// ── Scoring ───────────────────────────────────────────────────────────────
 
 export interface ScoredAnswer {
   questionId: string;
@@ -153,20 +226,32 @@ export interface ScoredAnswer {
 export interface ScoreResult {
   correct: number;
   total: number;
-  score: number; // percentage, rounded
+  score: number;
   passed: boolean;
   answers: ScoredAnswer[];
 }
 
-/** Score a set of submitted answers against the seed bank. */
-export function scoreQuiz(
+/** Score a submitted answer set against the DB-backed question bank. */
+export async function scoreQuiz(
   submitted: { questionId: string; selectedIndex: number }[],
-): ScoreResult {
+): Promise<ScoreResult> {
+  await ensureSeeded();
+  const [questions, threshold] = await Promise.all([
+    db
+      .select()
+      .from(academyQuestionsTable)
+      .orderBy(
+        asc(academyQuestionsTable.sortOrder),
+        asc(academyQuestionsTable.id),
+      ),
+    getPassingScore(),
+  ]);
+
   const picks = new Map(submitted.map((a) => [a.questionId, a.selectedIndex]));
-  const answers: ScoredAnswer[] = ACADEMY_QUESTIONS.map((q) => {
-    const selectedIndex = picks.get(q.id) ?? -1;
+  const answers: ScoredAnswer[] = questions.map((q) => {
+    const selectedIndex = picks.get(q.slug) ?? -1;
     return {
-      questionId: q.id,
+      questionId: q.slug,
       selectedIndex,
       correctIndex: q.correctIndex,
       correct: selectedIndex === q.correctIndex,
@@ -174,7 +259,7 @@ export function scoreQuiz(
     };
   });
   const correct = answers.filter((a) => a.correct).length;
-  const total = ACADEMY_QUESTIONS.length;
+  const total = questions.length;
   const score = total > 0 ? Math.round((correct / total) * 100) : 0;
-  return { correct, total, score, passed: score >= PASSING_SCORE, answers };
+  return { correct, total, score, passed: score >= threshold, answers };
 }

@@ -4,15 +4,19 @@ import {
   Ban, CheckCircle2, Lock, KeyRound, Loader2, AlertTriangle, ClipboardList,
   Scale, HardHat, ExternalLink, Gavel, Building2,
   XCircle, Award, RotateCcw, Trophy,
+  Plus, Pencil, Trash2, Save, Settings2,
 } from "lucide-react";
 import {
   adminLogin, adminLogout, adminMe, fetchLedger, forceRelease,
   fetchAdminUsers, toggleSuspend, AdminError,
   fetchDisputes, refund, fetchOnsite,
   fetchAcademy, submitAcademy,
+  fetchAcademyQuestions, createAcademyQuestion, updateAcademyQuestion,
+  deleteAcademyQuestion, updateAcademySettings,
   type LedgerRow, type AdminUserRow,
   type DisputeRow, type OnsiteData,
   type AcademyQuestion, type AcademyCompletion, type AcademyResult,
+  type AdminAcademyQuestion, type QuestionInput,
 } from "@/lib/admin-client";
 import { EmergencyAlarm } from "@/components/emergency-alarm";
 
@@ -414,6 +418,391 @@ function formatDateTime(iso: string): string {
   });
 }
 
+// ── Question editor form ───────────────────────────────────────────
+const EMPTY_FORM: QuestionInput = {
+  category: "",
+  prompt: "",
+  options: ["", ""],
+  correctIndex: 0,
+  explanation: "",
+  sortOrder: 0,
+};
+
+function QuestionForm({
+  initial,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  initial: QuestionInput;
+  onSave: (data: QuestionInput) => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  const [form, setForm] = useState<QuestionInput>({ ...initial });
+
+  const setOption = (i: number, val: string) =>
+    setForm((f) => {
+      const opts = [...f.options];
+      opts[i] = val;
+      return { ...f, options: opts };
+    });
+
+  const addOption = () =>
+    setForm((f) => ({ ...f, options: [...f.options, ""] }));
+
+  const removeOption = (i: number) =>
+    setForm((f) => {
+      const opts = f.options.filter((_, idx) => idx !== i);
+      return {
+        ...f,
+        options: opts,
+        correctIndex: Math.min(f.correctIndex, opts.length - 1),
+      };
+    });
+
+  const valid =
+    form.category.trim() &&
+    form.prompt.trim() &&
+    form.options.length >= 2 &&
+    form.options.every((o) => o.trim()) &&
+    form.correctIndex < form.options.length;
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500 block mb-1">Kategori</label>
+          <input
+            type="text"
+            value={form.category}
+            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+            placeholder="mis. Escrow, Broadcast, Upah…"
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+        <div>
+          <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500 block mb-1">Urutan</label>
+          <input
+            type="number"
+            value={form.sortOrder}
+            onChange={(e) => setForm((f) => ({ ...f, sortOrder: Number(e.target.value) }))}
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500 block mb-1">Pertanyaan</label>
+        <textarea
+          value={form.prompt}
+          onChange={(e) => setForm((f) => ({ ...f, prompt: e.target.value }))}
+          rows={2}
+          placeholder="Tulis pertanyaan di sini…"
+          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+        />
+      </div>
+
+      <div>
+        <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500 block mb-1">
+          Pilihan Jawaban <span className="text-gray-400 font-normal">(tandai jawaban benar dengan radio)</span>
+        </label>
+        <div className="space-y-2">
+          {form.options.map((opt, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="correctIndex"
+                checked={form.correctIndex === i}
+                onChange={() => setForm((f) => ({ ...f, correctIndex: i }))}
+                className="accent-emerald-600 w-4 h-4 flex-shrink-0"
+              />
+              <input
+                type="text"
+                value={opt}
+                onChange={(e) => setOption(i, e.target.value)}
+                placeholder={`Opsi ${i + 1}`}
+                className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              {form.options.length > 2 && (
+                <button
+                  type="button"
+                  onClick={() => removeOption(i)}
+                  className="p-1.5 rounded-lg text-red-400 hover:bg-red-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        {form.options.length < 8 && (
+          <button
+            type="button"
+            onClick={addOption}
+            className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:text-emerald-600"
+          >
+            <Plus className="w-3.5 h-3.5" /> Tambah Opsi
+          </button>
+        )}
+      </div>
+
+      <div>
+        <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500 block mb-1">
+          Penjelasan <span className="text-gray-400 font-normal">(tampil setelah kuis selesai)</span>
+        </label>
+        <textarea
+          value={form.explanation}
+          onChange={(e) => setForm((f) => ({ ...f, explanation: e.target.value }))}
+          rows={2}
+          placeholder="Jelaskan mengapa jawaban tersebut benar…"
+          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+        />
+      </div>
+
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          type="button"
+          onClick={() => onSave(form)}
+          disabled={!valid || saving}
+          className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 text-white text-sm font-bold px-4 py-2.5 hover:bg-emerald-600 disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          Simpan
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-sm font-bold text-gray-500 hover:text-gray-700"
+        >
+          Batal
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Question editor panel ─────────────────────────────────────────
+function QuestionEditor({
+  passingScore,
+  onPassingScoreChange,
+}: {
+  passingScore: number;
+  onPassingScoreChange: (score: number) => void;
+}) {
+  const [questions, setQuestions] = useState<AdminAcademyQuestion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<number | "new" | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [scoreInput, setScoreInput] = useState(String(passingScore));
+  const [savingScore, setSavingScore] = useState(false);
+  const [scoreError, setScoreError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setQuestions(await fetchAcademyQuestions());
+    } catch {
+      /* keep last state */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    setScoreInput(String(passingScore));
+  }, [passingScore]);
+
+  const handleSaveQuestion = async (id: number | "new", data: QuestionInput) => {
+    setSaving(true);
+    try {
+      if (id === "new") {
+        const created = await createAcademyQuestion(data);
+        setQuestions((qs) => [...qs, created]);
+      } else {
+        const updated = await updateAcademyQuestion(id, data);
+        setQuestions((qs) => qs.map((q) => (q.id === id ? updated : q)));
+      }
+      setEditingId(null);
+    } catch {
+      /* keep form open */
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("Hapus soal ini? Tindakan tidak bisa dibatalkan.")) return;
+    setDeletingId(id);
+    try {
+      await deleteAcademyQuestion(id);
+      setQuestions((qs) => qs.filter((q) => q.id !== id));
+    } catch {
+      /* ignore */
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleSaveScore = async () => {
+    const val = Number(scoreInput);
+    if (!Number.isFinite(val) || val < 1 || val > 100) {
+      setScoreError("Masukkan angka antara 1–100.");
+      return;
+    }
+    setScoreError(null);
+    setSavingScore(true);
+    try {
+      const res = await updateAcademySettings(val);
+      onPassingScoreChange(res.passingScore);
+    } catch {
+      setScoreError("Gagal menyimpan. Coba lagi.");
+    } finally {
+      setSavingScore(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="py-12 flex justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Passing score */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+        <h3 className="font-black text-gray-900 flex items-center gap-2 mb-1">
+          <Settings2 className="w-4 h-4 text-emerald-700" /> Pengaturan Nilai Lulus
+        </h3>
+        <p className="text-xs text-gray-500 mb-3">Persentase minimum jawaban benar yang diperlukan untuk lulus asesmen.</p>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={scoreInput}
+              onChange={(e) => { setScoreInput(e.target.value); setScoreError(null); }}
+              className="w-24 rounded-xl border border-gray-200 px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 pr-7"
+            />
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">%</span>
+          </div>
+          <button
+            onClick={() => void handleSaveScore()}
+            disabled={savingScore}
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 text-white text-sm font-bold px-4 py-2.5 hover:bg-emerald-600 disabled:opacity-50"
+          >
+            {savingScore ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Simpan
+          </button>
+        </div>
+        {scoreError && <p className="text-xs text-red-600 mt-2">{scoreError}</p>}
+      </div>
+
+      {/* Question list */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-black text-gray-900 flex items-center gap-2">
+            <ClipboardList className="w-4 h-4 text-emerald-700" /> Bank Soal ({questions.length} soal)
+          </h3>
+          {editingId !== "new" && (
+            <button
+              onClick={() => setEditingId("new")}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 text-white text-xs font-bold px-3 py-2 hover:bg-emerald-600"
+            >
+              <Plus className="w-3.5 h-3.5" /> Tambah Soal
+            </button>
+          )}
+        </div>
+
+        {editingId === "new" && (
+          <QuestionForm
+            initial={{ ...EMPTY_FORM, sortOrder: questions.length }}
+            onSave={(data) => void handleSaveQuestion("new", data)}
+            onCancel={() => setEditingId(null)}
+            saving={saving}
+          />
+        )}
+
+        {questions.length === 0 && editingId !== "new" ? (
+          <div className="rounded-xl border-2 border-dashed border-gray-200 py-10 text-center">
+            <GraduationCap className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-400">Belum ada soal — klik "Tambah Soal" untuk mulai.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {questions.map((q, qi) => (
+              <div key={q.id}>
+                {editingId === q.id ? (
+                  <QuestionForm
+                    initial={{
+                      category: q.category,
+                      prompt: q.prompt,
+                      options: q.options,
+                      correctIndex: q.correctIndex,
+                      explanation: q.explanation,
+                      sortOrder: q.sortOrder,
+                    }}
+                    onSave={(data) => void handleSaveQuestion(q.id, data)}
+                    onCancel={() => setEditingId(null)}
+                    saving={saving}
+                  />
+                ) : (
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700 mb-0.5">{q.category}</p>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {qi + 1}. {q.prompt}
+                        </p>
+                        <div className="mt-1.5 space-y-0.5">
+                          {q.options.map((opt, oi) => (
+                            <p key={oi} className={`text-xs ${oi === q.correctIndex ? "text-emerald-700 font-bold" : "text-gray-500"}`}>
+                              {oi === q.correctIndex ? "✓ " : "· "}{opt}
+                            </p>
+                          ))}
+                        </div>
+                        {q.explanation && (
+                          <p className="text-[11px] text-gray-400 mt-1 italic">{q.explanation}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => setEditingId(q.id)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-700 hover:bg-emerald-50"
+                          title="Edit soal"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => void handleDelete(q.id)}
+                          disabled={deletingId === q.id}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          title="Hapus soal"
+                        >
+                          {deletingId === q.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main AcademyTab ───────────────────────────────────────────────
 function AcademyTab({ onTrainingPassed }: { onTrainingPassed?: () => void }) {
   const [questions, setQuestions] = useState<AcademyQuestion[]>([]);
   const [completions, setCompletions] = useState<AcademyCompletion[]>([]);
@@ -423,6 +812,7 @@ function AcademyTab({ onTrainingPassed }: { onTrainingPassed?: () => void }) {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<AcademyResult | null>(null);
   const [taking, setTaking] = useState(false);
+  const [editorMode, setEditorMode] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -485,200 +875,236 @@ function AcademyTab({ onTrainingPassed }: { onTrainingPassed?: () => void }) {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <SummaryCard label="Nilai Lulus Minimum" value={`${passingScore}%`} tone="amber" />
-        <SummaryCard label="Skor Terbaik Anda" value={completions.length ? `${bestScore}%` : "—"} tone="gold" />
-        <SummaryCard label="Total Percobaan" value={String(completions.length)} tone="emerald" />
+      {/* Mode toggle */}
+      <div className="flex items-center justify-between">
+        <div className="flex rounded-xl overflow-hidden border border-gray-200">
+          <button
+            onClick={() => { setEditorMode(false); setTaking(false); }}
+            className={`px-4 py-2 text-sm font-bold transition-colors ${!editorMode ? "bg-emerald-700 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+          >
+            <span className="inline-flex items-center gap-1.5"><GraduationCap className="w-3.5 h-3.5" /> Asesmen</span>
+          </button>
+          <button
+            onClick={() => { setEditorMode(true); setTaking(false); }}
+            className={`px-4 py-2 text-sm font-bold transition-colors border-l border-gray-200 ${editorMode ? "bg-emerald-700 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+          >
+            <span className="inline-flex items-center gap-1.5"><Settings2 className="w-3.5 h-3.5" /> Editor Soal</span>
+          </button>
+        </div>
+        {!editorMode && !taking && (
+          <button
+            onClick={() => void load()}
+            className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
-      {/* Result banner */}
-      {result && (
-        <div
-          data-testid="academy-result"
-          className={`rounded-2xl border p-5 shadow-sm ${
-            result.passed ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            {result.passed ? (
-              <Award className="w-8 h-8 text-emerald-600" />
-            ) : (
-              <AlertTriangle className="w-8 h-8 text-amber-500" />
-            )}
-            <div>
-              <p className="font-black text-gray-900">
-                {result.passed ? "Selamat, Anda Lulus! 🎉" : "Belum Lulus"}
-              </p>
-              <p className="text-sm text-gray-600">
-                Skor {result.score}% · {result.correct}/{result.total} benar
-                {" · "}Batas lulus {result.passingScore}%
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Quiz taking view */}
-      {taking ? (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-5">
-          <div className="flex items-center justify-between">
-            <h3 className="font-black text-gray-900 flex items-center gap-2">
-              <GraduationCap className="w-4 h-4 text-emerald-700" /> Asesmen Operator
-            </h3>
-            <span className="text-xs font-bold text-gray-500">
-              {answeredCount}/{questions.length} terjawab
-            </span>
-          </div>
-
-          {questions.map((q, qi) => (
-            <div key={q.id} data-testid={`question-${q.id}`} className="border-t border-gray-100 pt-4 first:border-t-0 first:pt-0">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">{q.category}</p>
-              <p className="font-semibold text-gray-900 mt-0.5">
-                {qi + 1}. {q.prompt}
-              </p>
-              <div className="mt-3 space-y-2">
-                {q.options.map((opt, oi) => {
-                  const selected = answers[q.id] === oi;
-                  return (
-                    <button
-                      key={oi}
-                      data-testid={`option-${q.id}-${oi}`}
-                      onClick={() => setAnswers((a) => ({ ...a, [q.id]: oi }))}
-                      className={`w-full text-left rounded-xl border px-3.5 py-2.5 text-sm transition-colors ${
-                        selected
-                          ? "border-emerald-600 bg-emerald-50 font-semibold text-emerald-900"
-                          : "border-gray-200 hover:bg-gray-50 text-gray-700"
-                      }`}
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <span
-                          className={`w-4 h-4 rounded-full border flex-shrink-0 ${
-                            selected ? "border-emerald-600 bg-emerald-600" : "border-gray-300"
-                          }`}
-                        />
-                        {opt}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              data-testid="button-submit-quiz"
-              onClick={() => void handleSubmit()}
-              disabled={!allAnswered || submitting}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 text-white text-sm font-bold px-4 py-2.5 hover:bg-emerald-600 disabled:opacity-50"
-            >
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              Kirim Jawaban
-            </button>
-            <button
-              onClick={() => setTaking(false)}
-              className="text-sm font-bold text-gray-500 hover:text-gray-700"
-            >
-              Batal
-            </button>
-          </div>
-        </div>
+      {/* ── Editor mode ── */}
+      {editorMode ? (
+        <QuestionEditor
+          passingScore={passingScore}
+          onPassingScoreChange={(s) => { setPassingScore(s); void load(); }}
+        />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Start / review card */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-            <h3 className="font-black text-gray-900 flex items-center gap-2 mb-1">
-              <GraduationCap className="w-4 h-4 text-emerald-700" /> Asesmen Onboarding Operator
-            </h3>
-            <p className="text-xs text-gray-500 mb-4">
-              {questions.length} soal seputar escrow, broadcast, presensi, dan moderasi. Nilai lulus {passingScore}%.
-            </p>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <SummaryCard label="Nilai Lulus Minimum" value={`${passingScore}%`} tone="amber" />
+            <SummaryCard label="Skor Terbaik Anda" value={completions.length ? `${bestScore}%` : "—"} tone="gold" />
+            <SummaryCard label="Total Percobaan" value={String(completions.length)} tone="emerald" />
+          </div>
 
-            {hasPassed && !result && (
-              <div className="mb-4 flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2.5">
-                <Trophy className="w-4 h-4 text-emerald-600" />
-                <p className="text-sm font-semibold text-emerald-800">Anda sudah lulus asesmen ini.</p>
-              </div>
-            )}
-
-            <button
-              data-testid="button-start-quiz"
-              onClick={startQuiz}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 text-white text-sm font-bold px-4 py-2.5 hover:bg-emerald-600"
+          {/* Result banner */}
+          {result && (
+            <div
+              data-testid="academy-result"
+              className={`rounded-2xl border p-5 shadow-sm ${
+                result.passed ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"
+              }`}
             >
-              {completions.length ? <RotateCcw className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
-              {completions.length ? "Ulangi Asesmen" : "Mulai Asesmen"}
-            </button>
-
-            {result && (
-              <div className="mt-5 space-y-2.5 border-t border-gray-100 pt-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Pembahasan</p>
-                {result.answers.map((a, i) => {
-                  const q = questions.find((qq) => qq.id === a.questionId);
-                  return (
-                    <div key={a.questionId} className="flex items-start gap-2 text-sm">
-                      {a.correct ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
-                      ) : (
-                        <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                      )}
-                      <div>
-                        <p className="font-semibold text-gray-800">
-                          {i + 1}. {q?.prompt ?? a.questionId}
-                        </p>
-                        {!a.correct && (
-                          <p className="text-[13px] text-emerald-800">
-                            Jawaban benar: {q?.options[a.correctIndex] ?? "—"}
-                          </p>
-                        )}
-                        <p className="text-[12px] text-gray-500">{a.explanation}</p>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="flex items-center gap-3">
+                {result.passed ? (
+                  <Award className="w-8 h-8 text-emerald-600" />
+                ) : (
+                  <AlertTriangle className="w-8 h-8 text-amber-500" />
+                )}
+                <div>
+                  <p className="font-black text-gray-900">
+                    {result.passed ? "Selamat, Anda Lulus! 🎉" : "Belum Lulus"}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Skor {result.score}% · {result.correct}/{result.total} benar
+                    {" · "}Batas lulus {result.passingScore}%
+                  </p>
+                </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Completion history */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-            <h3 className="font-black text-gray-900 flex items-center gap-2 mb-1">
-              <ClipboardList className="w-4 h-4 text-emerald-700" /> Riwayat Penyelesaian
-            </h3>
-            <p className="text-xs text-gray-500 mb-4">Rekam jejak asesmen yang telah Anda selesaikan.</p>
-
-            {completions.length === 0 ? (
-              <div className="rounded-xl border-2 border-dashed border-gray-200 py-12 text-center">
-                <GraduationCap className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">Belum ada percobaan — mulai asesmen pertama Anda.</p>
+          {/* Quiz taking view */}
+          {taking ? (
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-5">
+              <div className="flex items-center justify-between">
+                <h3 className="font-black text-gray-900 flex items-center gap-2">
+                  <GraduationCap className="w-4 h-4 text-emerald-700" /> Asesmen Operator
+                </h3>
+                <span className="text-xs font-bold text-gray-500">
+                  {answeredCount}/{questions.length} terjawab
+                </span>
               </div>
-            ) : (
-              <div className="space-y-2">
-                {completions.map((c) => (
-                  <div
-                    key={c.id}
-                    data-testid={`completion-${c.id}`}
-                    className="flex items-center justify-between rounded-xl border border-gray-100 px-3.5 py-2.5"
-                  >
-                    <div>
-                      <p className="font-bold text-gray-900 text-sm">{c.score}% <span className="font-normal text-gray-400">({c.correct}/{c.total})</span></p>
-                      <p className="text-[11px] text-gray-400">{formatDateTime(c.completedAt)}</p>
-                    </div>
-                    {c.passed ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-bold px-2.5 py-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Lulus
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 text-red-600 text-[11px] font-bold px-2.5 py-1">
-                        <XCircle className="w-3.5 h-3.5" /> Belum Lulus
-                      </span>
-                    )}
+
+              {questions.map((q, qi) => (
+                <div key={q.id} data-testid={`question-${q.id}`} className="border-t border-gray-100 pt-4 first:border-t-0 first:pt-0">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">{q.category}</p>
+                  <p className="font-semibold text-gray-900 mt-0.5">
+                    {qi + 1}. {q.prompt}
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {q.options.map((opt, oi) => {
+                      const selected = answers[q.id] === oi;
+                      return (
+                        <button
+                          key={oi}
+                          data-testid={`option-${q.id}-${oi}`}
+                          onClick={() => setAnswers((a) => ({ ...a, [q.id]: oi }))}
+                          className={`w-full text-left rounded-xl border px-3.5 py-2.5 text-sm transition-colors ${
+                            selected
+                              ? "border-emerald-600 bg-emerald-50 font-semibold text-emerald-900"
+                              : "border-gray-200 hover:bg-gray-50 text-gray-700"
+                          }`}
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <span
+                              className={`w-4 h-4 rounded-full border flex-shrink-0 ${
+                                selected ? "border-emerald-600 bg-emerald-600" : "border-gray-300"
+                              }`}
+                            />
+                            {opt}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                ))}
+                </div>
+              ))}
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  data-testid="button-submit-quiz"
+                  onClick={() => void handleSubmit()}
+                  disabled={!allAnswered || submitting}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 text-white text-sm font-bold px-4 py-2.5 hover:bg-emerald-600 disabled:opacity-50"
+                >
+                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  Kirim Jawaban
+                </button>
+                <button
+                  onClick={() => setTaking(false)}
+                  className="text-sm font-bold text-gray-500 hover:text-gray-700"
+                >
+                  Batal
+                </button>
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Start / review card */}
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+                <h3 className="font-black text-gray-900 flex items-center gap-2 mb-1">
+                  <GraduationCap className="w-4 h-4 text-emerald-700" /> Asesmen Onboarding Operator
+                </h3>
+                <p className="text-xs text-gray-500 mb-4">
+                  {questions.length} soal seputar escrow, broadcast, presensi, dan moderasi. Nilai lulus {passingScore}%.
+                </p>
+
+                {hasPassed && !result && (
+                  <div className="mb-4 flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2.5">
+                    <Trophy className="w-4 h-4 text-emerald-600" />
+                    <p className="text-sm font-semibold text-emerald-800">Anda sudah lulus asesmen ini.</p>
+                  </div>
+                )}
+
+                <button
+                  data-testid="button-start-quiz"
+                  onClick={startQuiz}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 text-white text-sm font-bold px-4 py-2.5 hover:bg-emerald-600"
+                >
+                  {completions.length ? <RotateCcw className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+                  {completions.length ? "Ulangi Asesmen" : "Mulai Asesmen"}
+                </button>
+
+                {result && (
+                  <div className="mt-5 space-y-2.5 border-t border-gray-100 pt-4">
+                    <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Pembahasan</p>
+                    {result.answers.map((a, i) => {
+                      const q = questions.find((qq) => qq.id === a.questionId);
+                      return (
+                        <div key={a.questionId} className="flex items-start gap-2 text-sm">
+                          {a.correct ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                          ) : (
+                            <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                          )}
+                          <div>
+                            <p className="font-semibold text-gray-800">
+                              {i + 1}. {q?.prompt ?? a.questionId}
+                            </p>
+                            {!a.correct && (
+                              <p className="text-[13px] text-emerald-800">
+                                Jawaban benar: {q?.options[a.correctIndex] ?? "—"}
+                              </p>
+                            )}
+                            <p className="text-[12px] text-gray-500">{a.explanation}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Completion history */}
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+                <h3 className="font-black text-gray-900 flex items-center gap-2 mb-1">
+                  <ClipboardList className="w-4 h-4 text-emerald-700" /> Riwayat Penyelesaian
+                </h3>
+                <p className="text-xs text-gray-500 mb-4">Rekam jejak asesmen yang telah Anda selesaikan.</p>
+
+                {completions.length === 0 ? (
+                  <div className="rounded-xl border-2 border-dashed border-gray-200 py-12 text-center">
+                    <GraduationCap className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">Belum ada percobaan — mulai asesmen pertama Anda.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {completions.map((c) => (
+                      <div
+                        key={c.id}
+                        data-testid={`completion-${c.id}`}
+                        className="flex items-center justify-between rounded-xl border border-gray-100 px-3.5 py-2.5"
+                      >
+                        <div>
+                          <p className="font-bold text-gray-900 text-sm">{c.score}% <span className="font-normal text-gray-400">({c.correct}/{c.total})</span></p>
+                          <p className="text-[11px] text-gray-400">{formatDateTime(c.completedAt)}</p>
+                        </div>
+                        {c.passed ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-bold px-2.5 py-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Lulus
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-red-50 text-red-600 text-[11px] font-bold px-2.5 py-1">
+                            <XCircle className="w-3.5 h-3.5" /> Belum Lulus
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -11,11 +11,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 /**
- * Operator-academy quiz completions, one row per submitted attempt. The quiz
- * question bank itself lives as a server-side seed (so correct answers never
- * reach the browser); this table only records who took the assessment and how
- * they scored. Keyed by the admin id from the admin session (a single operator
- * today, but per-admin so multiple operators can be tracked independently).
+ * Operator-academy quiz completions, one row per submitted attempt.
  */
 export const academyCompletionsTable = pgTable("academy_completions", {
   id: serial("id").primaryKey(),
@@ -37,3 +33,37 @@ export type InsertAcademyCompletion = z.infer<
   typeof insertAcademyCompletionSchema
 >;
 export type AcademyCompletion = typeof academyCompletionsTable.$inferSelect;
+
+/**
+ * DB-backed question bank. Correct answers and explanations are server-side
+ * only — client endpoints strip them before responding. The `slug` column is
+ * used as the `questionId` in quiz submissions so existing completions remain
+ * interpretable. New questions auto-generate a slug.
+ */
+export const academyQuestionsTable = pgTable("academy_questions", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  category: text("category").notNull(),
+  prompt: text("prompt").notNull(),
+  options: jsonb("options").notNull().$type<string[]>(),
+  correctIndex: integer("correct_index").notNull(),
+  explanation: text("explanation").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export const insertAcademyQuestionSchema = createInsertSchema(
+  academyQuestionsTable,
+).omit({ id: true });
+export type InsertAcademyQuestion = z.infer<typeof insertAcademyQuestionSchema>;
+export type AcademyDbQuestion = typeof academyQuestionsTable.$inferSelect;
+
+/**
+ * Singleton settings row (always id=1). Holds the minimum passing score
+ * so operators can adjust it without a redeploy.
+ */
+export const academySettingsTable = pgTable("academy_settings", {
+  id: integer("id").primaryKey().default(1),
+  passingScore: integer("passing_score").notNull().default(80),
+});
+
+export type AcademySettings = typeof academySettingsTable.$inferSelect;
