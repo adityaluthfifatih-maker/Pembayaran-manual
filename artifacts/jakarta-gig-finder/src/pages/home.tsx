@@ -19,11 +19,15 @@ import ApplicantToast from "@/components/applicant-toast";
 import GigBroadcastToast from "@/components/gig-broadcast-toast";
 import { RekhasthaLogo } from "@/components/rekhastha-logo";
 import {
-  broadcastToServer,
   subscribeToServer,
   getActiveGigs,
   resetServer,
   randomGeofenceCoords,
+  triggerGlobalEscrowBroadcast,
+  requestNotifPermission,
+  playAlertChime,
+  fireNativeNotification,
+  unlockAudio,
 } from "@/lib/central-server";
 import AuthPage from "@/pages/auth";
 import WorkerProfilePage from "@/components/worker-profile-page";
@@ -241,14 +245,34 @@ export default function Home() {
     return unsubscribe;
   }, []);
 
+  // App init: request OS notification permission, and unlock the shared audio
+  // context on the first user gesture so later chimes (incl. the role-switch
+  // replay) are never blocked by the browser's autoplay policy.
+  useEffect(() => {
+    requestNotifPermission();
+    const unlock = () => unlockAudio();
+    const opts: AddEventListenerOptions = { once: true, passive: true };
+    window.addEventListener("pointerdown", unlock, opts);
+    window.addEventListener("keydown", unlock, opts);
+    window.addEventListener("touchstart", unlock, opts);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+      window.removeEventListener("touchstart", unlock);
+    };
+  }, []);
+
   // Keep modeRef current AND replay any pending broadcast when entering worker view.
   // Runs for every role transition (login-as-worker or a future in-app toggle),
-  // so the pending toast + pulsing radar pins always surface from one place.
+  // so the pending toast + pulsing radar pins surface AND the sound/native alert
+  // fire again the microsecond the viewport becomes "pekerja".
   useEffect(() => {
     modeRef.current = mode;
     if (mode === "pekerja" && pendingBroadcastRef.current) {
       setGigToast(pendingBroadcastRef.current);
       pendingBroadcastRef.current = null;
+      playAlertChime();
+      fireNativeNotification();
     }
   }, [mode]);
   const [activePing, setActivePing] = useState<CustomJob | null>(null);
@@ -404,7 +428,7 @@ export default function Home() {
     ));
     if (job) {
       // Locking a scheduled job also broadcasts it live to the worker radar.
-      broadcastToServer({ ...job, ...coords, escrowStatus: "locked", escrowAmount, broadcastActive: true });
+      triggerGlobalEscrowBroadcast({ ...job, ...coords, escrowStatus: "locked", escrowAmount, broadcastActive: true });
       setEscrowEvents(prev => [...prev, {
         id: Date.now(), jobId,
         jobTitle: job.posisi,
@@ -676,8 +700,8 @@ export default function Home() {
     const newJob: CustomJob = { id: newId, type: "custom_job", ...data, ...coords, postedAt: now };
     setCustomJobs(p => [...p, newJob]);
     if (isBroadcast) {
-      // Push to the central virtual server → live radar marker + worker toast.
-      broadcastToServer(newJob);
+      // Push to the central virtual server → live radar marker + worker toast + alert pipeline.
+      triggerGlobalEscrowBroadcast(newJob);
     }
     if (data.escrowStatus === "locked" && data.escrowAmount) {
       setEscrowEvents(prev => [...prev, {

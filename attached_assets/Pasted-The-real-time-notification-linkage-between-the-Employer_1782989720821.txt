@@ -1,0 +1,24 @@
+The real-time notification linkage between the Employer and the Worker is still broken. Fix the JavaScript event dispatching engine inside the codebase so that the moment the Employer clicks the "🔒 Kunci Alokasi Dana Kerja" (Lock Escrow) button, a notification INSTANTLY fires, makes an audible device sound, triggers the native system notification, and updates the Worker's viewport.
+
+Please completely refactor the event logic with these absolute algorithmic rules:
+
+1. DEVICE SOUND & NATIVE DEVICE NOTIFICATION (AUDIO + OS LEVEL):
+- Integrate a JavaScript audio engine using the Web Audio API (or a reliable base64 short synth beep/chime sound) that physically plays a clear, professional application alert sound ("Ding-Dong" or "Chime") through the user's phone speaker or PC speakers the exact millisecond the broadcast lands.
+- Implement the standard Web Notifications API (`Notification.requestPermission()`). When the application initializes, request permission. If granted, when the Employer locks the escrow, trigger a native OS-level push notification on the Worker's device/PC that reads: "Rekhastha: Lowongan Kerja Baru Terjamin Escrow Tersedia Dekat Anda!".
+
+2. FORCE GLOBAL EVENT BROADCASTING:
+- Create a global JavaScript function named `window.triggerGlobalEscrowBroadcast(gigData)`.
+- Inside this function, do not just push to an array. You must explicitly target the Worker's notification DOM container and the Worker's Radar Map container.
+- If the current UI role view is 'employer', the system must silently append the new marker data to the active radar array matrix in the background while playing the alert system.
+- If the current UI role view is 'worker', the system must instantly inject a highly visible, floating toast alert container at the top of the viewport: "🔔 NOTIFIKASI AKTIF: Rekhastha (by Tilu Company) mendeteksi lowongan baru terdekat dengan jaminan Escrow Aman!".
+
+3. IMMEDIATE RADAR PIN INJECTION:
+- The `window.triggerGlobalEscrowBroadcast` function must immediately invoke the custom map rendering function to prepend a NEW pulsing, clickable green marker onto the Worker's interactive Geofence radar screen layout without requiring any page refresh or screen toggle.
+
+4. PERSISTENT STATE SYNCHRONIZATION:
+- Ensure that if the user is currently on the Employer screen when locking the escrow, the notification state is flagged as `unread = true` inside the session store. The exact microsecond the user clicks "Masuk Sebagai Pekerja", a responsive JavaScript listener must catch this flag and automatically fire the top toast notification banner, trigger the sound/alert system again, and drop the new job pin on the radar map.
+
+5. PRESERVE THE NEW REKHASTHA BRANDING:
+- Keep all updated branding identities intact: The name remains "Rekhastha by Tilu Company" and the logo must consistently render as the premium emerald-gold shield with the letter "R".
+
+Rewrite the unified clean single-file codebase with these explicit, reactive sound and system notification JavaScript handlers and run the updated application preview.

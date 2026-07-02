@@ -11,34 +11,10 @@ interface GigBroadcastToastProps {
 
 const AUTO_SEC = 9;
 
-/** Short two-tone "new job" chime via WebAudio (no asset needed). */
-function playChime() {
-  try {
-    const AudioCtx =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext })
-        .webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const now = ctx.currentTime;
-    [880, 1320].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      const t = now + i * 0.14;
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(0.18, t + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.24);
-    });
-    setTimeout(() => ctx.close().catch(() => {}), 700);
-  } catch {
-    /* audio is best-effort */
-  }
-}
+// NOTE: the audible chime + native OS notification are fired centrally by
+// `triggerGlobalEscrowBroadcast` the instant the broadcast lands (so they play
+// even when the employer viewport never mounts this toast). This component is
+// purely the visual worker-side banner.
 
 export default function GigBroadcastToast({
   gig,
@@ -46,10 +22,6 @@ export default function GigBroadcastToast({
   onDismiss,
 }: GigBroadcastToastProps) {
   const [secs, setSecs] = useState(AUTO_SEC);
-
-  useEffect(() => {
-    playChime();
-  }, []);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -82,7 +54,7 @@ export default function GigBroadcastToast({
                 <Radio className="relative w-4 h-4" />
               </span>
               <p className="text-sm font-black leading-tight">
-                🔔 NOTIFIKASI BARU
+                🔔 NOTIFIKASI AKTIF
               </p>
             </div>
             <button
@@ -93,6 +65,11 @@ export default function GigBroadcastToast({
               <X className="w-4 h-4" />
             </button>
           </div>
+
+          <p className="text-xs font-medium leading-snug text-emerald-50">
+            Rekhastha <span className="opacity-80">(by Tilu Company)</span> mendeteksi
+            lowongan baru terdekat dengan jaminan Escrow Aman!
+          </p>
 
           <p className="text-sm font-semibold leading-snug">
             Lowongan Kerja{" "}

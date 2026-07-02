@@ -68,6 +68,111 @@ export function broadcastToServer(gig: Gig): Gig {
   return gig;
 }
 
+// ── Alert engine: audible chime + native OS notification ──────────────
+
+/**
+ * A single shared AudioContext, kept alive for the whole session. Reusing one
+ * context (rather than creating a fresh one per chime) is what defeats browser
+ * autoplay policies: once it has been resumed inside a trusted user gesture, it
+ * stays "running" and later chimes — even ones fired from a React effect on role
+ * switch — play reliably (incl. mobile Safari).
+ */
+let sharedAudioCtx: AudioContext | null = null;
+
+function getAudioCtx(): AudioContext | null {
+  try {
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext })
+        .webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!sharedAudioCtx) sharedAudioCtx = new AudioCtx();
+    if (sharedAudioCtx.state === "suspended") sharedAudioCtx.resume().catch(() => {});
+    return sharedAudioCtx;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prime/resume the shared AudioContext. Call this from a trusted user gesture
+ * (first click/keypress/touch) so subsequent chimes are never blocked by the
+ * browser's autoplay policy.
+ */
+export function unlockAudio(): void {
+  getAudioCtx();
+}
+
+/**
+ * Professional two-tone "ding-dong" alert chime via the Web Audio API — no
+ * asset file required. Plays through the shared (pre-unlocked) context so it
+ * lands reliably whether fired on broadcast or on role switch.
+ */
+export function playAlertChime(): void {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    // "Ding" (higher) then "dong" (lower) — a clear, professional alert.
+    [{ f: 1318, t: 0 }, { f: 880, t: 0.16 }].forEach(({ f, t }) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = f;
+      const start = now + t;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.22, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.32);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.34);
+    });
+  } catch {
+    /* audio is best-effort */
+  }
+}
+
+const NATIVE_NOTIF_TITLE = "Rekhastha by Tilu Company";
+const NATIVE_NOTIF_BODY =
+  "Rekhastha: Lowongan Kerja Baru Terjamin Escrow Tersedia Dekat Anda!";
+
+/** Ask for OS notification permission once, on app init. Best-effort. */
+export function requestNotifPermission(): void {
+  try {
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  } catch {
+    /* best effort */
+  }
+}
+
+/** Raise a native OS-level notification (only if the user granted permission). */
+export function fireNativeNotification(body: string = NATIVE_NOTIF_BODY): void {
+  try {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    new Notification(NATIVE_NOTIF_TITLE, { body, tag: "rekhastha-gig" });
+  } catch {
+    /* best effort */
+  }
+}
+
+/**
+ * Global escrow-broadcast dispatcher. Fires the FULL alert pipeline the instant
+ * an employer locks escrow, regardless of the current viewport role:
+ *   1. pushes the gig to the reactive server → radar pins + role-gated toast
+ *      (handled by subscribers),
+ *   2. plays the audible device chime,
+ *   3. raises a native OS-level notification.
+ */
+export function triggerGlobalEscrowBroadcast(gig: Gig): Gig {
+  broadcastToServer(gig);
+  playAlertChime();
+  fireNativeNotification();
+  return gig;
+}
+
 /** Subscribe to real-time broadcasts. Returns an unsubscribe function. */
 export function subscribeToServer(cb: ServerSubscriber): () => void {
   server.subscribers.push(cb);
@@ -87,9 +192,15 @@ export function resetServer(): void {
   notify(null); // push empty state to all live subscribers
 }
 
-// Mirror the store onto `window` so it is the literal, inspectable source of truth.
+// Mirror the store + dispatchers onto `window` so they are the literal,
+// inspectable, scriptable source of truth.
 if (typeof window !== "undefined") {
-  (window as unknown as { centralServer: CentralServer }).centralServer = server;
-  (window as unknown as { broadcastToServer: typeof broadcastToServer }).broadcastToServer =
-    broadcastToServer;
+  const w = window as unknown as {
+    centralServer: CentralServer;
+    broadcastToServer: typeof broadcastToServer;
+    triggerGlobalEscrowBroadcast: typeof triggerGlobalEscrowBroadcast;
+  };
+  w.centralServer = server;
+  w.broadcastToServer = broadcastToServer;
+  w.triggerGlobalEscrowBroadcast = triggerGlobalEscrowBroadcast;
 }
