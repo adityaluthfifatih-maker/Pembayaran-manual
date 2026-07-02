@@ -9,8 +9,10 @@ import { db, adminSessionsTable, adminLoginAttemptsTable } from "@workspace/db";
  * store, and per-IP brute-force throttling. Both the session store and the
  * throttle counters live in the database so they survive an API server restart
  * (a restart used to log every admin out and reset the brute-force throttle).
- * Credentials come from env secrets and fall back to the documented test
- * values so the portal works out of the box in dev.
+ * Credentials come from env secrets (ADMIN_ID / ADMIN_TOKEN). In development
+ * the documented demo values are used as a fallback so the portal works out of
+ * the box; in production the demo fallback is disabled and the server refuses
+ * to start unless real secrets are configured.
  */
 export const ADMIN_COOKIE = "rekhastha_admin";
 const ADMIN_TTL_MS = 1000 * 60 * 60 * 8; // 8 hours
@@ -18,15 +20,30 @@ const ADMIN_TTL_MS = 1000 * 60 * 60 * 8; // 8 hours
 const DEFAULT_ADMIN_ID = "tilu_admin";
 const DEFAULT_ADMIN_TOKEN = "rekhastha2026";
 
-export function adminCredentials(): { id: string; token: string } {
-  return {
-    id: process.env["ADMIN_ID"]?.trim() || DEFAULT_ADMIN_ID,
-    token: process.env["ADMIN_TOKEN"]?.trim() || DEFAULT_ADMIN_TOKEN,
-  };
+const IS_PROD = process.env["NODE_ENV"] === "production";
+
+/**
+ * Returns the active admin credentials, or null when running in production
+ * without real secrets configured (demo fallback is disabled in production).
+ */
+export function adminCredentials(): { id: string; token: string } | null {
+  const id = process.env["ADMIN_ID"]?.trim();
+  const token = process.env["ADMIN_TOKEN"]?.trim();
+
+  if (id && token) {
+    return { id, token };
+  }
+
+  if (IS_PROD) {
+    return null;
+  }
+
+  return { id: DEFAULT_ADMIN_ID, token: DEFAULT_ADMIN_TOKEN };
 }
 
 export function verifyAdminCredentials(id: string, token: string): boolean {
   const expected = adminCredentials();
+  if (!expected) return false;
   return id === expected.id && token === expected.token;
 }
 

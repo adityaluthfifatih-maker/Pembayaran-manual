@@ -2,6 +2,18 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { attachRealtime } from "./lib/realtime";
 
+if (process.env["NODE_ENV"] === "production") {
+  const hasAdminId = !!process.env["ADMIN_ID"]?.trim();
+  const hasAdminToken = !!process.env["ADMIN_TOKEN"]?.trim();
+  if (!hasAdminId || !hasAdminToken) {
+    throw new Error(
+      "Production startup blocked: ADMIN_ID and ADMIN_TOKEN must be configured as secrets. " +
+        "The demo admin credentials (tilu_admin / rekhastha2026) are disabled in production. " +
+        "Set both secrets before deploying.",
+    );
+  }
+}
+
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {
