@@ -4,3 +4,4 @@
 - [Payment type & wage model](payment-model.md) — 4 categories (no per_jam), legacy `per_projek` key kept, flat wage math, clean-integer WS payload, withdrawal callback shape.
 - [Realtime gig sync](realtime-gig-sync.md) — Postgres + WS live feed: client-provided PK, employer-silent/worker-alert gating, reconnect re-hydrate, drizzle-zod (not OpenAPI).
 - [Real accounts & sessions](auth-accounts.md) — custom bcrypt email/password auth (not Clerk), httpOnly cookie, profile jsonb, never purge sessions on login (multi-device).
+- [Admin control-plane persistence](admin-control-plane.md) — admin sessions + login throttle live in Postgres (survive restart); all admin auth helpers async, `requireAdmin` must be awaited.

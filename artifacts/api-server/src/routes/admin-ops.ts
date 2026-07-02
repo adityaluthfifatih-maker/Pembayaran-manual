@@ -7,7 +7,7 @@ import { broadcastGig } from "../lib/realtime";
 
 const router: IRouter = Router();
 
-function requireAdmin(req: Request): boolean {
+function requireAdmin(req: Request): Promise<boolean> {
   return isAdminSession(req.cookies?.[ADMIN_COOKIE]);
 }
 
@@ -20,7 +20,7 @@ function workerNetOf(deposit: number): number {
 
 /** List every project frozen in `disputed_active` (rejected remote proofs). */
 router.get("/admin/disputes", async (req, res): Promise<void> => {
-  if (!requireAdmin(req)) {
+  if (!(await requireAdmin(req))) {
     res.status(401).json({ error: "Sesi admin tidak valid." });
     return;
   }
@@ -48,7 +48,7 @@ const refundBody = z.object({ jobId: z.coerce.number() });
 
 /** Admin rules a dispute in the EMPLOYER's favour → refund the escrow. */
 router.post("/admin/refund", async (req, res): Promise<void> => {
-  if (!requireAdmin(req)) {
+  if (!(await requireAdmin(req))) {
     res.status(401).json({ error: "Sesi admin tidak valid." });
     return;
   }
@@ -77,7 +77,7 @@ router.post("/admin/refund", async (req, res): Promise<void> => {
 // ── Monitoring Proyek Fisik: on-site tracker + daily payout log ──────
 
 router.get("/admin/onsite", async (req, res): Promise<void> => {
-  if (!requireAdmin(req)) {
+  if (!(await requireAdmin(req))) {
     res.status(401).json({ error: "Sesi admin tidak valid." });
     return;
   }

@@ -1,12 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { CookieOptions } from "express";
+import { and, eq, lte } from "drizzle-orm";
+import { db, adminSessionsTable, adminLoginAttemptsTable } from "@workspace/db";
 
 /**
  * Admin ("Tilu Company") control-plane auth. Deliberately separate from the
- * user session system: a distinct httpOnly cookie, an in-memory session store
- * (there is a single operator, no need to persist), and per-IP brute-force
- * throttling. Credentials come from env secrets and fall back to the documented
- * test values so the portal works out of the box in dev.
+ * user session system: a distinct httpOnly cookie, a Postgres-backed session
+ * store, and per-IP brute-force throttling. Both the session store and the
+ * throttle counters live in the database so they survive an API server restart
+ * (a restart used to log every admin out and reset the brute-force throttle).
+ * Credentials come from env secrets and fall back to the documented test
+ * values so the portal works out of the box in dev.
  */
 export const ADMIN_COOKIE = "rekhastha_admin";
 const ADMIN_TTL_MS = 1000 * 60 * 60 * 8; // 8 hours
@@ -36,53 +40,107 @@ export function adminCookieOptions(): CookieOptions {
   };
 }
 
-// ── In-memory admin session store ────────────────────────────────
-const adminSessions = new Map<string, number>(); // token -> expiresAt (ms)
-
-export function createAdminSession(): string {
+// ── Postgres-backed admin session store ──────────────────────────
+export async function createAdminSession(): Promise<string> {
   const token = randomUUID();
-  adminSessions.set(token, Date.now() + ADMIN_TTL_MS);
+  await db.insert(adminSessionsTable).values({
+    token,
+    expiresAt: new Date(Date.now() + ADMIN_TTL_MS),
+  });
   return token;
 }
 
-export function isAdminSession(token: string | undefined): boolean {
+export async function isAdminSession(token: string | undefined): Promise<boolean> {
   if (!token) return false;
-  const expiresAt = adminSessions.get(token);
-  if (!expiresAt) return false;
-  if (expiresAt <= Date.now()) {
-    adminSessions.delete(token);
+  const [session] = await db
+    .select()
+    .from(adminSessionsTable)
+    .where(eq(adminSessionsTable.token, token))
+    .limit(1);
+  if (!session) return false;
+  if (session.expiresAt.getTime() <= Date.now()) {
+    await db.delete(adminSessionsTable).where(eq(adminSessionsTable.token, token));
     return false;
   }
   return true;
 }
 
-export function deleteAdminSession(token: string | undefined): void {
-  if (token) adminSessions.delete(token);
+export async function deleteAdminSession(token: string | undefined): Promise<void> {
+  if (token) {
+    await db.delete(adminSessionsTable).where(eq(adminSessionsTable.token, token));
+  }
 }
 
-// ── Per-IP brute-force throttle ──────────────────────────────────
+// ── Postgres-backed per-IP brute-force throttle ──────────────────
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 1000 * 60 * 5; // 5 minutes
-const attempts = new Map<string, { count: number; lockedUntil: number }>();
 
 /** Returns the remaining lockout in ms, or 0 if the caller may attempt. */
-export function lockoutRemaining(ip: string): number {
-  const rec = attempts.get(ip);
-  if (!rec) return 0;
-  if (rec.lockedUntil > Date.now()) return rec.lockedUntil - Date.now();
-  return 0;
+export async function lockoutRemaining(ip: string): Promise<number> {
+  const [rec] = await db
+    .select()
+    .from(adminLoginAttemptsTable)
+    .where(eq(adminLoginAttemptsTable.ip, ip))
+    .limit(1);
+  if (!rec || !rec.lockedUntil) return 0;
+  const remaining = rec.lockedUntil.getTime() - Date.now();
+  return remaining > 0 ? remaining : 0;
 }
 
-export function recordFailedAttempt(ip: string): void {
-  const rec = attempts.get(ip) ?? { count: 0, lockedUntil: 0 };
-  rec.count += 1;
-  if (rec.count >= MAX_ATTEMPTS) {
-    rec.lockedUntil = Date.now() + LOCKOUT_MS;
-    rec.count = 0;
+export async function recordFailedAttempt(ip: string): Promise<void> {
+  const [rec] = await db
+    .select()
+    .from(adminLoginAttemptsTable)
+    .where(eq(adminLoginAttemptsTable.ip, ip))
+    .limit(1);
+
+  const count = (rec?.count ?? 0) + 1;
+  const now = new Date();
+
+  if (count >= MAX_ATTEMPTS) {
+    const values = {
+      ip,
+      count: 0,
+      lockedUntil: new Date(Date.now() + LOCKOUT_MS),
+      updatedAt: now,
+    };
+    await db
+      .insert(adminLoginAttemptsTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: adminLoginAttemptsTable.ip,
+        set: { count: values.count, lockedUntil: values.lockedUntil, updatedAt: now },
+      });
+    return;
   }
-  attempts.set(ip, rec);
+
+  await db
+    .insert(adminLoginAttemptsTable)
+    .values({ ip, count, lockedUntil: null, updatedAt: now })
+    .onConflictDoUpdate({
+      target: adminLoginAttemptsTable.ip,
+      set: { count, lockedUntil: null, updatedAt: now },
+    });
 }
 
-export function resetAttempts(ip: string): void {
-  attempts.delete(ip);
+export async function resetAttempts(ip: string): Promise<void> {
+  await db.delete(adminLoginAttemptsTable).where(eq(adminLoginAttemptsTable.ip, ip));
+}
+
+/**
+ * Best-effort cleanup of expired sessions and stale, expired lockout rows.
+ * Called opportunistically from the login path; not on the hot read path.
+ */
+export async function pruneAdminState(): Promise<void> {
+  const now = new Date();
+  await db.delete(adminSessionsTable).where(lte(adminSessionsTable.expiresAt, now));
+  await db
+    .delete(adminLoginAttemptsTable)
+    .where(
+      and(
+        lte(adminLoginAttemptsTable.lockedUntil, now),
+        // only prune rows that are no longer locked
+        eq(adminLoginAttemptsTable.count, 0),
+      ),
+    );
 }

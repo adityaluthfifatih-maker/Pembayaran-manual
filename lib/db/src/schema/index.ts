@@ -24,3 +24,4 @@ export * from "./blacklist";
 export * from "./ratings";
 export * from "./emergency";
 export * from "./daily-payouts";
+export * from "./admin";

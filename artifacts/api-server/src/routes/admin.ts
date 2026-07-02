@@ -15,6 +15,7 @@ import {
   deleteAdminSession,
   isAdminSession,
   lockoutRemaining,
+  pruneAdminState,
   recordFailedAttempt,
   resetAttempts,
   verifyAdminCredentials,
@@ -40,7 +41,7 @@ function clientIp(req: Request): string {
   return req.ip ?? "unknown";
 }
 
-function requireAdmin(req: Request): boolean {
+function requireAdmin(req: Request): Promise<boolean> {
   return isAdminSession(req.cookies?.[ADMIN_COOKIE]);
 }
 
@@ -50,9 +51,10 @@ const loginBody = z.object({
   token: z.string().min(1),
 });
 
-router.post("/admin/login", (req, res): void => {
+router.post("/admin/login", async (req, res): Promise<void> => {
   const ip = clientIp(req);
-  const remaining = lockoutRemaining(ip);
+  await pruneAdminState();
+  const remaining = await lockoutRemaining(ip);
   if (remaining > 0) {
     res.status(429).json({
       error: `Terlalu banyak percobaan. Coba lagi dalam ${Math.ceil(remaining / 1000)} detik.`,
@@ -67,26 +69,26 @@ router.post("/admin/login", (req, res): void => {
   }
 
   if (!verifyAdminCredentials(parsed.data.adminId.trim(), parsed.data.token)) {
-    recordFailedAttempt(ip);
+    await recordFailedAttempt(ip);
     req.log.warn({ ip }, "Failed admin login attempt");
     res.status(401).json({ error: "Identitas Admin atau Kode Token salah." });
     return;
   }
 
-  resetAttempts(ip);
-  const session = createAdminSession();
+  await resetAttempts(ip);
+  const session = await createAdminSession();
   res.cookie(ADMIN_COOKIE, session, adminCookieOptions());
   res.json({ ok: true });
 });
 
-router.post("/admin/logout", (req, res): void => {
-  deleteAdminSession(req.cookies?.[ADMIN_COOKIE]);
+router.post("/admin/logout", async (req, res): Promise<void> => {
+  await deleteAdminSession(req.cookies?.[ADMIN_COOKIE]);
   res.clearCookie(ADMIN_COOKIE, { path: "/" });
   res.status(204).end();
 });
 
-router.get("/admin/me", (req, res): void => {
-  if (!requireAdmin(req)) {
+router.get("/admin/me", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req))) {
     res.status(401).json({ error: "Sesi admin tidak valid." });
     return;
   }
@@ -95,7 +97,7 @@ router.get("/admin/me", (req, res): void => {
 
 // ── Escrow ledger ────────────────────────────────────────────────
 router.get("/admin/ledger", async (req, res): Promise<void> => {
-  if (!requireAdmin(req)) {
+  if (!(await requireAdmin(req))) {
     res.status(401).json({ error: "Sesi admin tidak valid." });
     return;
   }
@@ -152,7 +154,7 @@ const forceReleaseBody = z.object({
 });
 
 router.post("/admin/force-release", async (req, res): Promise<void> => {
-  if (!requireAdmin(req)) {
+  if (!(await requireAdmin(req))) {
     res.status(401).json({ error: "Sesi admin tidak valid." });
     return;
   }
@@ -181,7 +183,7 @@ router.post("/admin/force-release", async (req, res): Promise<void> => {
 
 // ── User management ──────────────────────────────────────────────
 router.get("/admin/users", async (req, res): Promise<void> => {
-  if (!requireAdmin(req)) {
+  if (!(await requireAdmin(req))) {
     res.status(401).json({ error: "Sesi admin tidak valid." });
     return;
   }
@@ -228,7 +230,7 @@ const suspendBody = z.object({
 });
 
 router.post("/admin/users/suspend", async (req, res): Promise<void> => {
-  if (!requireAdmin(req)) {
+  if (!(await requireAdmin(req))) {
     res.status(401).json({ error: "Sesi admin tidak valid." });
     return;
   }
@@ -257,8 +259,8 @@ router.post("/admin/users/suspend", async (req, res): Promise<void> => {
 });
 
 // ── Academy (scaffold stub) ──────────────────────────────────────
-router.get("/admin/academy", (req, res): void => {
-  if (!requireAdmin(req)) {
+router.get("/admin/academy", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req))) {
     res.status(401).json({ error: "Sesi admin tidak valid." });
     return;
   }
