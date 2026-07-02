@@ -1,0 +1,84 @@
+Build a comprehensive, full-stack, enterprise-grade web application named "Rekhastha". This platform serves as an On-Demand Blue-Collar Management System utilizing an automated escrow system and geofencing to safely connect informal sector workers with corporate, small business, and organizational employers.
+
+Generate the entire system fully functional from scratch, including database schema wiring, responsive layout design, and frontend interactive states. Do not truncate code, and do not use placeholders like "// code here".
+
+Please build the application based on this complete system specification:
+
+=======================================================
+1. DATABASE STRUCTURE & ROLE-BASED AUTHENTICATION
+=======================================================
+- Create a secure multi-role system supporting both 'Worker' and 'Employer'.
+- The Login/Register screen must feature an interactive Role Switcher Tab.
+- For Workers, capture: Name, Phone Number, and Verification Status.
+- For Employers, dynamically change input fields based on 3 Radio Button sub-categories:
+  * Corporate: Captures "Nama PT / CV" and "Nomor NPWP Perusahaan".
+  * Household/Individual: Captures "Nama Lengkap Sesuai KTP" and Address.
+  * Political Organization: Captures "Nama Organisasi / Sayap Partai" and "Kode Wilayah/Dapil".
+- Clicking the "Masuk Aplikasi" button must check the active state and seamlessly route the session to the correct Dashboard interface.
+- Worker Registration Flow: Include a secure "KYC Step" placeholder for ID Card (KTP) Number upload and a Live Facial Recognition check simulation. Once successfully completed, append a green "Verified Mitra" badge next to the worker's name across the entire platform.
+
+=======================================================
+2. EMPLOYER DASHBOARD: THE 2 RECRUITMENT MODES
+=======================================================
+Implement an advanced hiring interface equipped with an interactive Mode Selector (Toggle Tabs) that drives the platform's core operational behavior:
+
+A. Mode "⚡ Butuh Cepat" (Instant On-Demand Broadcast):
+   - For emergency deployments (e.g., immediate warehouse loading or sudden retail cover).
+   - UI Display: Renders a futuristic circular Radar Map component pulsing with 3 real-time worker pins nearby within a 5km radius: "Ahmad", "Rian", and "Siti".
+   - Interaction: Clicking a pin slides up a premium Rich Bottom Sheet showing worker photo placeholder, rating (e.g., "4.9 ⭐ Premium"), specialty, and a "Pilih Pekerja" action button.
+   - Financial Rule: Locked to a 15% Platform Fee. Full escrow funds (Base Wage + 15%) must be deposited upfront before the system initiates the broadcast.
+   - Negotiation Restriction: Disable any wage modification or price negotiation. The "Ambil Kerja" action must strictly accept the flat rate set by the Employer upfront.
+   - Dynamic Standby List (Backup Worker): If the hired worker fails to "Clock-In" within 15 minutes of the shift start time, automatically re-route the job token to the next nearest available standby worker in the radius.
+
+B. Mode "🔍 Bisa Lama" (Filtered & Scheduled Contracts):
+   - For planned events, seasonal coverage, or upcoming shifts.
+   - UI Display: Dynamically swaps the Radar Map out for an Applicant List Grid containing cards of workers that can be filtered and sorted by rating, history, and proximity.
+   - Interaction: Employers can review profile cards and approve candidates for future dates.
+   - Financial Rule: Reduced to a 7% System Fee. Escrow funding becomes a mandatory "Commitment Deposit" only after the employer officially approves a candidate from the list.
+
+=======================================================
+3. INTERACTIVE CHAT & TWO-WAY NEGOTIATION LOOP
+=======================================================
+Provide a full interactive chat interface inside the job console between the Worker and the Employer. For Mode "Bisa Lama", introduce a Continuous Two-Way Counter-Offer Negotiation Loop inside the chat room:
+- Two-Way State Logic: Allow both the Worker and the Employer to submit a counter-wage offer at any time during the active negotiation state using an "Ubah Nominal Upah" component.
+- Interactivity & Responses: When Party A inputs an adjusted amount (e.g., 150,000 IDR), Party B must see a dynamic chat badge showing the new offer with two options: "Setujui Upah" or "Tawar Balik".
+- Counter-Offer Chain: If Party B selects "Tawar Balik", they can input a new number (e.g., 135,000 IDR), which reverses the options back to Party A. This loop can continue until a mutually agreed price is reached.
+- Concluding the Deal: As soon as either party clicks "Setujui Upah", immediately freeze the input fields, finalize the contract wage, and fire a reactive event to the Financial Escrow Calculator to recalculate based on this final agreed amount.
+
+=======================================================
+4. AUTOMATED FINANCIAL ESCROW CALCULATOR (TAX-FREE)
+=======================================================
+- Integrate a real-time Escrow Ledger directly linked to the Recruitment Modes and final negotiation selections.
+- Features an input for "Nominal Upah Pokok Pekerja (IDR)".
+- Automated calculating logic (oninput/reactive trigger):
+  * If Mode is "Butuh Cepat", automatically apply a 15% fee block.
+  * If Mode is "Bisa Lama", automatically apply a 7% fee block based on the finalized/negotiated amount.
+- The invoice breakdown must completely exclude any tax calculations (No PPh or VAT logic). The invoice card must strictly display: "Upah Pokok Pekerja", "Biaya Sistem Platform", and the exact "Total Dana yang Harus Dikunci di Escrow".
+- Include a secure action button titled "Kunci Alokasi Dana Kerja". Clicking this locks the transaction state, changes a badge status to "Escrow Secured 🔒", and automatically generates a simplified digital partnership agreement (visual contract badge or downloadable summary).
+- At the bottom of the invoice card, add a small, professional text footnote in Indonesian: "*Catatan: Segala kewajiban perpajakan atas transaksi ini menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku."
+
+=======================================================
+5. WORKER DASHBOARD: ANTI-JOKI CLOCK-IN & SAFETY
+=======================================================
+- Attendance Control (Clock-In): Replace the basic geolocation Clock-In with a two-factor verification. The Worker must scan a dynamic QR Code generated on the Employer's dashboard screen using their in-app camera to successfully validate that they are physically standing at the site.
+- Upon interaction: Validates the scan and mock GPS against the geofenced boundary, changes visual status state to a glowing green "SHIFT AKTIF", and instantly pops a persistent top-screen banner stating: "🛡️ PROTEKSI AKTIF: BPJS Ketenagakerjaan & Rekhastha Income Insurance are now securing your current active shift."
+- Automated Cancellation Fee: If the Employer cancels a secured job contract within 1 hour of the scheduled start time, program the Escrow system to automatically deduct a flat 20,000 IDR compensation fee from the locked escrow funds and credit it instantly to the Worker's wallet.
+- SOS Panic Button: Place an accessible "SOS Darurat" button on the Worker's active shift dashboard. Clicking it triggers a simulated alert sending emergency GPS coordinates to the platform security system.
+- Two-Way Rating System: Allow workers to rate and ulasan employers, and vice versa, after job completion to build transparent reputation scores. Requires workers to upload 1 live-camera photo proof of completed work before they can initiate the "Clock-Out" sequence.
+
+=======================================================
+6. AI CHAT GUARD & BYPASS MITIGATION
+=======================================================
+- Build a real-time text parsing filter on the chat message input text area using regular expressions (RegEx).
+- Security Guard Rules: If either user types an external payment bypass keyword, telephone/WhatsApp digits, or external banking information (e.g., "0812...", "WhatsApp", "WA", "nomor telp", "transfer langsung", "rekening", "luar aplikasi", "bypass"), the system must instantly intercept the input and convert the prohibited text block into "[*** SENSOR KEAMANAN REKHASTHA ***]".
+- Trigger a prominent split-warning modal popup layout:
+  * Warning for Worker: Mentions losing their Insurance and Escrow payout protection.
+  * Warning for Employer: Mentions losing their background-check/theft warranty.
+- Log this event in the backend as a "Suspicious Bypass Flag". If a user accumulates 3 flags, automatically append a status modification to their profile restricting their visibility on the live Radar map.
+
+=======================================================
+7. ARCHITECTURE & IMPLEMENTATION QUALITY
+=======================================================
+- Use a fully responsive modern CSS layout (Tailwind aesthetic preference) with a premium corporate blue color palette.
+- Wire up mock state handlers or working local APIs between elements so the entire loop can be fully demonstrated live to clients and investors (Login -> Toggle Recruitment Mode -> Live Counter-Offer Negotiation -> Calculate Escrow without tax -> Lock Escrow -> Worker QR Clock-in -> Intercept Chat Bypass -> Trigger SOS).
+- Deploy the build completely, providing the working preview application URL. No omissions.
