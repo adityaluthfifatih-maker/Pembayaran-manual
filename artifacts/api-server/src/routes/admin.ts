@@ -7,10 +7,12 @@ import {
   usersTable,
   attendanceTable,
   ratingsTable,
+  academyCompletionsTable,
 } from "@workspace/db";
 import {
   ADMIN_COOKIE,
   adminCookieOptions,
+  adminSessionId,
   createAdminSession,
   deleteAdminSession,
   isAdminSession,
@@ -20,6 +22,11 @@ import {
   resetAttempts,
   verifyAdminCredentials,
 } from "../lib/admin";
+import {
+  PASSING_SCORE,
+  scoreQuiz,
+  toClientQuestions,
+} from "../lib/academy";
 import { broadcastGig } from "../lib/realtime";
 
 const router: IRouter = Router();
@@ -76,7 +83,7 @@ router.post("/admin/login", async (req, res): Promise<void> => {
   }
 
   await resetAttempts(ip);
-  const session = await createAdminSession();
+  const session = await createAdminSession(parsed.data.adminId.trim());
   res.cookie(ADMIN_COOKIE, session, adminCookieOptions());
   res.json({ ok: true });
 });
@@ -258,13 +265,88 @@ router.post("/admin/users/suspend", async (req, res): Promise<void> => {
   res.json({ id: user.id, suspended: user.suspended });
 });
 
-// ── Academy (scaffold stub) ──────────────────────────────────────
+// ── Academy (operator onboarding quiz) ───────────────────────────
 router.get("/admin/academy", async (req, res): Promise<void> => {
-  if (!(await requireAdmin(req))) {
+  const adminId = await adminSessionId(req.cookies?.[ADMIN_COOKIE]);
+  if (!adminId) {
     res.status(401).json({ error: "Sesi admin tidak valid." });
     return;
   }
-  res.json({ completedQuizzes: [], questions: [] });
+
+  const completions = await db
+    .select()
+    .from(academyCompletionsTable)
+    .where(eq(academyCompletionsTable.adminId, adminId))
+    .orderBy(desc(academyCompletionsTable.completedAt));
+
+  res.json({
+    passingScore: PASSING_SCORE,
+    questions: toClientQuestions(),
+    completions: completions.map((c) => ({
+      id: c.id,
+      adminId: c.adminId,
+      correct: c.correct,
+      total: c.total,
+      score: c.score,
+      passed: c.passed,
+      completedAt: c.completedAt,
+    })),
+  });
+});
+
+const academySubmitBody = z.object({
+  answers: z
+    .array(
+      z.object({
+        questionId: z.string().min(1),
+        selectedIndex: z.number().int().min(0),
+      }),
+    )
+    .min(1),
+});
+
+router.post("/admin/academy/submit", async (req, res): Promise<void> => {
+  const adminId = await adminSessionId(req.cookies?.[ADMIN_COOKIE]);
+  if (!adminId) {
+    res.status(401).json({ error: "Sesi admin tidak valid." });
+    return;
+  }
+
+  const parsed = academySubmitBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Jawaban kuis tidak valid." });
+    return;
+  }
+
+  const result = scoreQuiz(parsed.data.answers);
+
+  const [saved] = await db
+    .insert(academyCompletionsTable)
+    .values({
+      adminId,
+      correct: result.correct,
+      total: result.total,
+      score: result.score,
+      passed: result.passed,
+      answers: result.answers,
+    })
+    .returning();
+
+  req.log.info(
+    { adminId, score: result.score, passed: result.passed },
+    "Admin completed academy assessment",
+  );
+
+  res.json({
+    id: saved.id,
+    completedAt: saved.completedAt,
+    passingScore: PASSING_SCORE,
+    correct: result.correct,
+    total: result.total,
+    score: result.score,
+    passed: result.passed,
+    answers: result.answers,
+  });
 });
 
 export default router;

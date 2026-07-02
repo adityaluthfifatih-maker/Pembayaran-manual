@@ -41,28 +41,36 @@ export function adminCookieOptions(): CookieOptions {
 }
 
 // ── Postgres-backed admin session store ──────────────────────────
-export async function createAdminSession(): Promise<string> {
+export async function createAdminSession(adminId: string): Promise<string> {
   const token = randomUUID();
   await db.insert(adminSessionsTable).values({
     token,
+    adminId,
     expiresAt: new Date(Date.now() + ADMIN_TTL_MS),
   });
   return token;
 }
 
 export async function isAdminSession(token: string | undefined): Promise<boolean> {
-  if (!token) return false;
+  return (await adminSessionId(token)) !== null;
+}
+
+/** Returns the admin id bound to a live session, or null if invalid/expired. */
+export async function adminSessionId(
+  token: string | undefined,
+): Promise<string | null> {
+  if (!token) return null;
   const [session] = await db
     .select()
     .from(adminSessionsTable)
     .where(eq(adminSessionsTable.token, token))
     .limit(1);
-  if (!session) return false;
+  if (!session) return null;
   if (session.expiresAt.getTime() <= Date.now()) {
     await db.delete(adminSessionsTable).where(eq(adminSessionsTable.token, token));
-    return false;
+    return null;
   }
-  return true;
+  return session.adminId;
 }
 
 export async function deleteAdminSession(token: string | undefined): Promise<void> {

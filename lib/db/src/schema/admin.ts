@@ -15,6 +15,7 @@ import {
 /** Opaque admin session tokens referenced by the `rekhastha_admin` cookie. */
 export const adminSessionsTable = pgTable("admin_sessions", {
   token: text("token").primaryKey(),
+  adminId: text("admin_id").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

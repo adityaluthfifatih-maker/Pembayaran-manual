@@ -62,9 +62,46 @@ export interface AdminUserRow {
   createdAt: string;
 }
 
+export interface AcademyQuestion {
+  id: string;
+  category: string;
+  prompt: string;
+  options: string[];
+}
+
+export interface AcademyCompletion {
+  id: number;
+  adminId: string;
+  correct: number;
+  total: number;
+  score: number;
+  passed: boolean;
+  completedAt: string;
+}
+
 export interface AcademyData {
-  completedQuizzes: unknown[];
-  questions: unknown[];
+  passingScore: number;
+  questions: AcademyQuestion[];
+  completions: AcademyCompletion[];
+}
+
+export interface AcademyAnswerResult {
+  questionId: string;
+  selectedIndex: number;
+  correctIndex: number;
+  correct: boolean;
+  explanation: string;
+}
+
+export interface AcademyResult {
+  id: number;
+  completedAt: string;
+  passingScore: number;
+  correct: number;
+  total: number;
+  score: number;
+  passed: boolean;
+  answers: AcademyAnswerResult[];
 }
 
 export function adminLogin(adminId: string, token: string): Promise<{ ok: true }> {
@@ -100,6 +137,12 @@ export function toggleSuspend(
 
 export function fetchAcademy(): Promise<AcademyData> {
   return request("/admin/academy", "GET");
+}
+
+export function submitAcademy(
+  answers: { questionId: string; selectedIndex: number }[],
+): Promise<AcademyResult> {
+  return request("/admin/academy/submit", "POST", { answers });
 }
 
 // ── Pusat Resolusi: remote proof-of-work disputes ────────────────────

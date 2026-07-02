@@ -3,13 +3,16 @@ import {
   Shield, LogOut, Wallet, Users, GraduationCap, Zap, RefreshCw,
   Ban, CheckCircle2, Lock, KeyRound, Loader2, AlertTriangle, ClipboardList,
   Scale, HardHat, ExternalLink, Gavel, Building2,
+  XCircle, Award, RotateCcw, Trophy,
 } from "lucide-react";
 import {
   adminLogin, adminLogout, adminMe, fetchLedger, forceRelease,
   fetchAdminUsers, toggleSuspend, AdminError,
   fetchDisputes, refund, fetchOnsite,
+  fetchAcademy, submitAcademy,
   type LedgerRow, type AdminUserRow,
   type DisputeRow, type OnsiteData,
+  type AcademyQuestion, type AcademyCompletion, type AcademyResult,
 } from "@/lib/admin-client";
 import { EmergencyAlarm } from "@/components/emergency-alarm";
 
@@ -372,42 +375,280 @@ function UsersTab() {
   );
 }
 
-// ── Tab 3: Academy scaffold ───────────────────────────────────────
+// ── Tab 3: Operator training academy ──────────────────────────────
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function AcademyTab() {
+  const [questions, setQuestions] = useState<AcademyQuestion[]>([]);
+  const [completions, setCompletions] = useState<AcademyCompletion[]>([]);
+  const [passingScore, setPassingScore] = useState(80);
+  const [loading, setLoading] = useState(true);
+  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<AcademyResult | null>(null);
+  const [taking, setTaking] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await fetchAcademy();
+      setQuestions(data.questions);
+      setCompletions(data.completions);
+      setPassingScore(data.passingScore);
+    } catch {
+      /* keep last known state */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const startQuiz = () => {
+    setAnswers({});
+    setResult(null);
+    setTaking(true);
+  };
+
+  const answeredCount = Object.keys(answers).length;
+  const allAnswered = questions.length > 0 && answeredCount === questions.length;
+
+  const handleSubmit = async () => {
+    if (!allAnswered || submitting) return;
+    setSubmitting(true);
+    try {
+      const payload = questions.map((q) => ({
+        questionId: q.id,
+        selectedIndex: answers[q.id],
+      }));
+      const res = await submitAcademy(payload);
+      setResult(res);
+      setTaking(false);
+      await load();
+    } catch {
+      /* leave the quiz open so the operator can retry */
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const bestScore = completions.reduce((m, c) => Math.max(m, c.score), 0);
+  const hasPassed = completions.some((c) => c.passed);
+
+  if (loading) {
+    return (
+      <div className="py-16 flex justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+      </div>
+    );
+  }
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-        <h3 className="font-black text-gray-900 flex items-center gap-2 mb-1">
-          <ClipboardList className="w-4 h-4 text-emerald-700" /> Peserta Lulus Kuis
-        </h3>
-        <p className="text-xs text-gray-500 mb-4">Daftar pekerja yang menyelesaikan asesmen akademi.</p>
-        <div className="rounded-xl border-2 border-dashed border-gray-200 py-12 text-center">
-          <GraduationCap className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-          <p className="text-sm text-gray-400">Belum ada data — modul akademi segera hadir.</p>
-        </div>
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <SummaryCard label="Nilai Lulus Minimum" value={`${passingScore}%`} tone="amber" />
+        <SummaryCard label="Skor Terbaik Anda" value={completions.length ? `${bestScore}%` : "—"} tone="gold" />
+        <SummaryCard label="Total Percobaan" value={String(completions.length)} tone="emerald" />
       </div>
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-        <h3 className="font-black text-gray-900 flex items-center gap-2 mb-1">
-          <GraduationCap className="w-4 h-4 text-emerald-700" /> Editor Parameter Soal
-        </h3>
-        <p className="text-xs text-gray-500 mb-4">Kurasi bank soal &amp; parameter penilaian asesmen.</p>
-        <div className="space-y-3 opacity-60 pointer-events-none">
-          <div>
-            <label className="text-xs font-bold text-gray-600">Judul Soal</label>
-            <div className="mt-1 h-10 rounded-xl border border-gray-200 bg-gray-50" />
+
+      {/* Result banner */}
+      {result && (
+        <div
+          data-testid="academy-result"
+          className={`rounded-2xl border p-5 shadow-sm ${
+            result.passed ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            {result.passed ? (
+              <Award className="w-8 h-8 text-emerald-600" />
+            ) : (
+              <AlertTriangle className="w-8 h-8 text-amber-500" />
+            )}
+            <div>
+              <p className="font-black text-gray-900">
+                {result.passed ? "Selamat, Anda Lulus! 🎉" : "Belum Lulus"}
+              </p>
+              <p className="text-sm text-gray-600">
+                Skor {result.score}% · {result.correct}/{result.total} benar
+                {" · "}Batas lulus {result.passingScore}%
+              </p>
+            </div>
           </div>
-          <div>
-            <label className="text-xs font-bold text-gray-600">Kategori</label>
-            <div className="mt-1 h-10 rounded-xl border border-gray-200 bg-gray-50" />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-gray-600">Nilai Lulus (%)</label>
-            <div className="mt-1 h-10 rounded-xl border border-gray-200 bg-gray-50" />
-          </div>
-          <div className="h-10 rounded-xl bg-emerald-700/30" />
         </div>
-        <p className="text-[11px] text-gray-400 mt-3 text-center">Kerangka siap — logika akademi akan diaktifkan nanti.</p>
-      </div>
+      )}
+
+      {/* Quiz taking view */}
+      {taking ? (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-5">
+          <div className="flex items-center justify-between">
+            <h3 className="font-black text-gray-900 flex items-center gap-2">
+              <GraduationCap className="w-4 h-4 text-emerald-700" /> Asesmen Operator
+            </h3>
+            <span className="text-xs font-bold text-gray-500">
+              {answeredCount}/{questions.length} terjawab
+            </span>
+          </div>
+
+          {questions.map((q, qi) => (
+            <div key={q.id} data-testid={`question-${q.id}`} className="border-t border-gray-100 pt-4 first:border-t-0 first:pt-0">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">{q.category}</p>
+              <p className="font-semibold text-gray-900 mt-0.5">
+                {qi + 1}. {q.prompt}
+              </p>
+              <div className="mt-3 space-y-2">
+                {q.options.map((opt, oi) => {
+                  const selected = answers[q.id] === oi;
+                  return (
+                    <button
+                      key={oi}
+                      data-testid={`option-${q.id}-${oi}`}
+                      onClick={() => setAnswers((a) => ({ ...a, [q.id]: oi }))}
+                      className={`w-full text-left rounded-xl border px-3.5 py-2.5 text-sm transition-colors ${
+                        selected
+                          ? "border-emerald-600 bg-emerald-50 font-semibold text-emerald-900"
+                          : "border-gray-200 hover:bg-gray-50 text-gray-700"
+                      }`}
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          className={`w-4 h-4 rounded-full border flex-shrink-0 ${
+                            selected ? "border-emerald-600 bg-emerald-600" : "border-gray-300"
+                          }`}
+                        />
+                        {opt}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              data-testid="button-submit-quiz"
+              onClick={() => void handleSubmit()}
+              disabled={!allAnswered || submitting}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 text-white text-sm font-bold px-4 py-2.5 hover:bg-emerald-600 disabled:opacity-50"
+            >
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              Kirim Jawaban
+            </button>
+            <button
+              onClick={() => setTaking(false)}
+              className="text-sm font-bold text-gray-500 hover:text-gray-700"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Start / review card */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+            <h3 className="font-black text-gray-900 flex items-center gap-2 mb-1">
+              <GraduationCap className="w-4 h-4 text-emerald-700" /> Asesmen Onboarding Operator
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              {questions.length} soal seputar escrow, broadcast, presensi, dan moderasi. Nilai lulus {passingScore}%.
+            </p>
+
+            {hasPassed && !result && (
+              <div className="mb-4 flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2.5">
+                <Trophy className="w-4 h-4 text-emerald-600" />
+                <p className="text-sm font-semibold text-emerald-800">Anda sudah lulus asesmen ini.</p>
+              </div>
+            )}
+
+            <button
+              data-testid="button-start-quiz"
+              onClick={startQuiz}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 text-white text-sm font-bold px-4 py-2.5 hover:bg-emerald-600"
+            >
+              {completions.length ? <RotateCcw className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+              {completions.length ? "Ulangi Asesmen" : "Mulai Asesmen"}
+            </button>
+
+            {result && (
+              <div className="mt-5 space-y-2.5 border-t border-gray-100 pt-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Pembahasan</p>
+                {result.answers.map((a, i) => {
+                  const q = questions.find((qq) => qq.id === a.questionId);
+                  return (
+                    <div key={a.questionId} className="flex items-start gap-2 text-sm">
+                      {a.correct ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      ) : (
+                        <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                      )}
+                      <div>
+                        <p className="font-semibold text-gray-800">
+                          {i + 1}. {q?.prompt ?? a.questionId}
+                        </p>
+                        {!a.correct && (
+                          <p className="text-[13px] text-emerald-800">
+                            Jawaban benar: {q?.options[a.correctIndex] ?? "—"}
+                          </p>
+                        )}
+                        <p className="text-[12px] text-gray-500">{a.explanation}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Completion history */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+            <h3 className="font-black text-gray-900 flex items-center gap-2 mb-1">
+              <ClipboardList className="w-4 h-4 text-emerald-700" /> Riwayat Penyelesaian
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">Rekam jejak asesmen yang telah Anda selesaikan.</p>
+
+            {completions.length === 0 ? (
+              <div className="rounded-xl border-2 border-dashed border-gray-200 py-12 text-center">
+                <GraduationCap className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                <p className="text-sm text-gray-400">Belum ada percobaan — mulai asesmen pertama Anda.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {completions.map((c) => (
+                  <div
+                    key={c.id}
+                    data-testid={`completion-${c.id}`}
+                    className="flex items-center justify-between rounded-xl border border-gray-100 px-3.5 py-2.5"
+                  >
+                    <div>
+                      <p className="font-bold text-gray-900 text-sm">{c.score}% <span className="font-normal text-gray-400">({c.correct}/{c.total})</span></p>
+                      <p className="text-[11px] text-gray-400">{formatDateTime(c.completedAt)}</p>
+                    </div>
+                    {c.passed ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-bold px-2.5 py-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Lulus
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 text-red-600 text-[11px] font-bold px-2.5 py-1">
+                        <XCircle className="w-3.5 h-3.5" /> Belum Lulus
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
