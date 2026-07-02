@@ -1,8 +1,9 @@
 import { useState } from "react";
 import {
-  CustomJob, calcCommission, calcTotal, paymentLabels,
+  CustomJob, calcTotal, paymentLabels,
   durasiKontrakOptions,
 } from "@/types/custom-job";
+import { calcEmployerFee } from "@/types/escrow";
 import { WorkerProfile, isVerified } from "@/types/worker-profile";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -34,9 +35,10 @@ export default function JobSheet({
   if (!job) return null;
 
   const total = calcTotal(job.nominal, job.pembayaran);
-  const commission = calcCommission(job.nominal, job.pembayaran, job.durasiKontrak);
-  const commRate = durasiKontrakOptions.find((o) => o.value === (job.durasiKontrak ?? "harian"))?.rate ?? 0.15;
-  const workerGets = total - commission;
+  // Platform fee is a flat 15% mark-up borne by the employer; the worker always
+  // receives 100% of the base wage (matches the escrow release payout).
+  const commission = calcEmployerFee(total);
+  const workerGets = total;
   const verified = workerProfile ? isVerified(workerProfile) : false;
   const durasiLabel = durasiKontrakOptions.find((o) => o.value === (job.durasiKontrak ?? "harian"))?.label ?? "Harian";
 
@@ -94,7 +96,7 @@ export default function JobSheet({
             <Calendar className="w-4 h-4 text-primary shrink-0" />
             <div>
               <p className="text-xs font-semibold text-primary">{durasiLabel}</p>
-              <p className="text-[10px] text-gray-500">Komisi platform: {(commRate * 100)}%</p>
+              <p className="text-[10px] text-gray-500">Biaya platform 15% (ditanggung perusahaan)</p>
             </div>
           </div>
 
@@ -134,12 +136,12 @@ export default function JobSheet({
               </div>
               <div className="border-t border-primary/10 pt-2 space-y-1.5">
                 <div className="flex justify-between text-xs text-gray-500">
-                  <span>Komisi platform ({(commRate * 100)}%)</span>
-                  <span>−{formatRp(commission)}</span>
+                  <span>Biaya platform 15% (ditanggung perusahaan)</span>
+                  <span>+{formatRp(commission)}</span>
                 </div>
               </div>
               <div className="flex justify-between border-t border-primary/10 pt-2.5">
-                <span className="font-bold text-gray-800">Anda terima bersih</span>
+                <span className="font-bold text-gray-800">Anda terima bersih (100%)</span>
                 <span className="font-bold text-primary text-lg">{formatRp(workerGets)}</span>
               </div>
               <p className="text-[10px] text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 leading-relaxed">

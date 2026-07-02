@@ -17,7 +17,15 @@ All wage-type text comes from three maps in `types/custom-job.ts`: `paymentLabel
 
 # Flat wage math
 
-`calcTotal` and `calcCommission` are flat: gross = `nominal` (no ×8 hourly multiplier). `escrow.ts calcEscrowAmount` special-cases only `per_projek` (nominal × kuota); everything else is `nominal × hari × kuota`.
+`calcTotal` is flat: gross = `nominal` (no ×8 hourly multiplier). `escrow.ts calcEscrowAmount` special-cases only `per_projek` (nominal × kuota); everything else is `nominal × hari × kuota`.
+
+# Fee model is a single flat 15% employer-borne mark-up
+
+There is exactly ONE platform-fee rate: `PLATFORM_FEE_CEPAT = 0.15` in `escrow.ts`, applied through `calcEmployerFee` / `calcEmployerDeposit` / `calcSplit`. Deposit = wage × 1.15; the worker always receives 100% of the base wage and the 15% is borne by the employer, so amount charged == amount paid out.
+
+**Why:** the old tiered/duration-based commission model (`calcCommission`, `effectiveCommissionRate`, `PLATFORM_RATE=0.10`, `PLATFORM_FEE_LAMA=0.07`) let the deposit be computed at one rate while release paid out at another — a real charge/payout mismatch (e.g. chat-modal negotiation locked escrow at 7%, release split at 15%). Those functions/constants were removed.
+
+**How to apply:** never re-introduce a per-duration or per-agency commission rate for escrow/fee math. `durasiKontrakOptions[].rate` and `commissionRate()` still exist but are only cosmetic contract-duration metadata; do NOT wire them back into deposit/release/display of the fee. The analytics `CONTRACT_SCENARIOS` bar chart is a hardcoded what-if simulation, not live fee math.
 
 # Rupiah input + WS payload
 

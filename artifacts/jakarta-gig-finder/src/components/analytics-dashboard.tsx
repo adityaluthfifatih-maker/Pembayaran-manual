@@ -3,7 +3,8 @@ import {
   TrendingUp, DollarSign, Star, Briefcase, Zap, BarChart2,
   ArrowUpRight, Shield, Users,
 } from "lucide-react";
-import { CustomJob, calcTotal, calcCommission, durasiKontrakOptions } from "@/types/custom-job";
+import { CustomJob, calcTotal, durasiKontrakOptions } from "@/types/custom-job";
+import { calcEmployerFee } from "@/types/escrow";
 import { RatingPayload } from "@/components/rating-modal";
 
 interface AnalyticsDashboardProps {
@@ -29,7 +30,7 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
     let totalComm = 0;
     customJobs.forEach((job) => {
       const g = calcTotal(job.nominal, job.pembayaran);
-      const c = calcCommission(job.nominal, job.pembayaran, job.durasiKontrak, job.isAgency, job.kuota);
+      const c = calcEmployerFee(g);
       totalGross += g;
       totalComm += c;
     });
@@ -53,8 +54,8 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
   const jobBreakdowns = useMemo(() =>
     customJobs.map((job) => {
       const gross = calcTotal(job.nominal, job.pembayaran);
-      const comm = calcCommission(job.nominal, job.pembayaran, job.durasiKontrak, job.isAgency, job.kuota);
-      const workerPay = gross - comm;
+      const comm = calcEmployerFee(gross);
+      const workerPay = gross;
       const rate = comm / gross;
       return { job, gross, comm, workerPay, rate };
     }),

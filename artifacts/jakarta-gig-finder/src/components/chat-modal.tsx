@@ -3,7 +3,7 @@ import {
   X, Send, ShieldCheck, Lock, AlertTriangle, Briefcase, ChevronRight,
   CheckCircle2, RefreshCw, Zap, BadgeDollarSign,
 } from "lucide-react";
-import { PLATFORM_FEE_LAMA, MAX_BYPASS_STRIKES } from "@/types/escrow";
+import { calcEmployerFee, calcEmployerDeposit, MAX_BYPASS_STRIKES } from "@/types/escrow";
 
 // ── Bypass detection (RegEx + keyword) ─────────────────────────────
 const BYPASS_RE = /(?:0[0-9]{8,13}|\+62[0-9]{8,12}|(?<![a-z])wa(?![a-z])|whatsapp|transfer\s*langsung|rekening|no\.?\s*rek|bayar\s*(?:di\s*luar|langsung|cash|tunai)|di\s*luar\s*(?:aplikasi|sistem)|kasih\s*nomor|minta\s*(?:wa|nomor|kontak|hp)|hubungi\s*(?:langsung|saya)|pindah\s*wa|bb[mn]|telpon(?:an)?|line\s*aja)/gi;
@@ -114,8 +114,8 @@ export default function ChatModal({
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const currentNominal = lockedNominal ?? nominal;
-  const fee7 = Math.round(currentNominal * PLATFORM_FEE_LAMA);
-  const totalEscrow = currentNominal + fee7;
+  const systemFee = calcEmployerFee(currentNominal);
+  const totalEscrow = calcEmployerDeposit(currentNominal);
   const dealLocked = lockedNominal !== null;
   const canNegotiate = hiringMode !== "cepat" && !dealLocked;
   const isOtherPartyOffer = pendingOffer && pendingOffer.from !== currentRole;
@@ -341,7 +341,7 @@ export default function ChatModal({
                 <p className="text-xs font-bold text-emerald-800">✅ Kesepakatan Upah Terkunci</p>
                 <p className="text-[10px] text-emerald-700 flex flex-wrap gap-x-2">
                   <span>Upah Pokok: <b>Rp {lockedNominal!.toLocaleString("id-ID")}</b></span>
-                  <span>· Biaya Sistem (7%): Rp {fee7.toLocaleString("id-ID")}</span>
+                  <span>· Biaya Sistem (15%): Rp {systemFee.toLocaleString("id-ID")}</span>
                   <span>· Total Escrow: <b>Rp {totalEscrow.toLocaleString("id-ID")}</b></span>
                 </p>
               </div>

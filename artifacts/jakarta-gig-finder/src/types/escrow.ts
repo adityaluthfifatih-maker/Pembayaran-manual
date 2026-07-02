@@ -30,9 +30,11 @@ export interface WalletTransaction {
 }
 
 // ── Platform rates (Rekhastha) ─────────────────────────
-export const PLATFORM_RATE = 0.10;         // 10% komisi platform (default/legacy)
-export const PLATFORM_FEE_CEPAT = 0.15;   // 15% biaya sistem — Mode Butuh Cepat (instant broadcast)
-export const PLATFORM_FEE_LAMA = 0.07;    // 7%  biaya sistem — Mode Bisa Lama (scheduled contract)
+// The platform fee is a single flat 15% employer-borne mark-up. All escrow /
+// fee math funnels through PLATFORM_FEE_CEPAT + calcEmployerFee /
+// calcEmployerDeposit / calcSplit so the amount charged always equals the
+// amount paid out (worker net == base wage).
+export const PLATFORM_FEE_CEPAT = 0.15;   // 15% biaya sistem — beban perusahaan
 export const ADMIN_DISPUTE_FEE = 0.05;     // 5% biaya admin sengketa
 export const CANCELLATION_FEE_1HR = 20_000; // Rp 20.000 potongan jika pemberi kerja batal <1 jam
 

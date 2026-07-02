@@ -58,32 +58,10 @@ export const durasiKontrakOptions: { value: DurasiKontrak; label: string; rate: 
   { value: "6_bulan", label: "6 Bulan (Semi-tetap)",    rate: 0.05 },
 ];
 
-export function effectiveCommissionRate(
-  durasi?: DurasiKontrak,
-  isAgency?: boolean,
-  kuota?: number
-): number {
-  // Volume discount for agencies with > 15 workers
-  if (isAgency && (kuota ?? 0) > 15) return 0.07;
-  const opt = durasiKontrakOptions.find((o) => o.value === durasi);
-  return opt ? opt.rate : 0.15;
-}
-
 /** Alias kept for compatibility */
 export function commissionRate(durasi?: DurasiKontrak): number {
   const opt = durasiKontrakOptions.find((o) => o.value === durasi);
   return opt ? opt.rate : 0.15;
-}
-
-export function calcCommission(
-  nominal: number,
-  _pembayaran: PaymentType,
-  durasi?: DurasiKontrak,
-  isAgency?: boolean,
-  kuota?: number
-): number {
-  const rate = effectiveCommissionRate(durasi, isAgency, kuota);
-  return nominal * rate;
 }
 
 /** Gross wage per worker. Every payment type is a flat nominal (no hourly ×8). */

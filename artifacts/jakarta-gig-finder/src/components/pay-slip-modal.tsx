@@ -1,5 +1,6 @@
 import { X, Download, Printer } from "lucide-react";
-import { CustomJob, calcTotal, calcCommission, paymentLabels, paymentUnits } from "@/types/custom-job";
+import { CustomJob, calcTotal, paymentLabels, paymentUnits } from "@/types/custom-job";
+import { calcEmployerFee } from "@/types/escrow";
 import { WorkerProfile } from "@/types/worker-profile";
 
 interface PaySlipModalProps {
@@ -20,7 +21,7 @@ function formatDate(d: Date) {
 
 export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedOutAt, onClose }: PaySlipModalProps) {
   const gross = calcTotal(job.nominal, job.pembayaran);
-  const commission = calcCommission(job.nominal, job.pembayaran);
+  const commission = calcEmployerFee(gross);
   const net = gross;
 
   const durationHours = clockedInAt && clockedOutAt
