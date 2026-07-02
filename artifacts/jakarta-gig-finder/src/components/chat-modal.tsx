@@ -130,9 +130,13 @@ export default function ChatModal({
   const canNegotiate = hiringMode !== "cepat" && !dealLocked;
   const isOtherPartyOffer = pendingOffer && pendingOffer.from !== currentRole;
 
-  // ── Fetch message history on mount ───────────────────────────────
+  // ── Fetch message history when thread changes ─────────────────────
   useEffect(() => {
     let cancelled = false;
+    // Reset thread state whenever the (jobId, workerId) pair changes.
+    setMessages([]);
+    seenMsgIds.current = new Set();
+    setLoading(true);
     (async () => {
       try {
         const res = await fetch(`/api/chat/${jobId}/${workerId}`);
@@ -151,17 +155,19 @@ export default function ChatModal({
       }
     })();
     return () => { cancelled = true; };
-  }, [jobId]);
+  }, [jobId, workerId]);
 
   // ── Subscribe to incoming WS chat messages ────────────────────────
   useEffect(() => {
     return subscribeChatMessage((ev) => {
-      if (ev.jobId !== jobId) return;
+      // Scope strictly to this (jobId, workerId) thread so that messages
+      // from other workers on the same job don't bleed into this view.
+      if (ev.jobId !== jobId || ev.workerId !== workerId) return;
       if (seenMsgIds.current.has(ev.id)) return; // our own POST echo
       seenMsgIds.current.add(ev.id);
       setMessages(prev => [...prev, rowToMsg(ev)]);
     });
-  }, [jobId]);
+  }, [jobId, workerId]);
 
   // ── Send regular message ──────────────────────────────────────────
   const handleSend = useCallback(async () => {
