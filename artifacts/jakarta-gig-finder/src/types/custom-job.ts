@@ -27,6 +27,10 @@ export interface CustomJob {
   // ── Hiring mode ──────────────────────────────────────
   hiringMode?: HiringMode;     // "cepat" = instant broadcast, "lama" = scheduled
   broadcastActive?: boolean;   // true when instant broadcast is live
+  // ── Scheduling / placement (Posting Reguler) ─────────
+  jobDate?: Date;              // start date — auto "today" for instant, chosen for scheduled
+  jamKerja?: string;          // shift hours, e.g. "08:00 - 17:00 WIB"
+  alamat?: string;            // specific placement address (scheduled jobs)
   // ── Escrow fields ────────────────────────────────────
   escrowStatus?: EscrowStatus;
   escrowAmount?: number;   // Total gross locked in escrow (per ALL workers)

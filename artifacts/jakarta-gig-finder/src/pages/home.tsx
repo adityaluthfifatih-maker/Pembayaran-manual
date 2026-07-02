@@ -35,7 +35,7 @@ import CompanyProfilePage from "@/components/company-profile-page";
 import { workers, Worker } from "@/data/workers";
 import { jobs } from "@/data/jobs";
 import { CustomJob, calcTotal } from "@/types/custom-job";
-import { WalletTransaction, EscrowEvent, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, DURATION_DAYS, LATE_CLOCKIN_PENALTY, CLOCKIN_GRACE_MS, DISPUTE_WINDOW_MS } from "@/types/escrow";
+import { WalletTransaction, EscrowEvent, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, DURATION_DAYS, LATE_CLOCKIN_PENALTY, CLOCKIN_GRACE_MS, DISPUTE_WINDOW_MS, PLATFORM_FEE_CEPAT } from "@/types/escrow";
 import { WorkerProfile, isVerified } from "@/types/worker-profile";
 import { AuthUser } from "@/types/auth";
 import {
@@ -47,6 +47,7 @@ import {
   MapPin, Clock, Banknote, Search, X, ShieldCheck, UserCircle,
   Map as MapIcon, Briefcase, TrendingUp, XCircle, MessageSquare,
   BarChart2, Home as HomeIcon, User, Users, Lock, CheckCircle2, AlertTriangle,
+  CalendarDays,
 } from "lucide-react";
 
 let nextJobId = 100;
@@ -437,7 +438,7 @@ export default function Home() {
         actor: "company" as const,
         amount: escrowAmount,
         timestamp: new Date(),
-        note: `Dana dikunci setelah seleksi kandidat (Mode Bisa Lama — biaya sistem 7%).`,
+        note: `Dana dikunci setelah seleksi kandidat (Posting Reguler — biaya sistem 15%).`,
       }]);
     }
   }, [customJobs]);
@@ -765,7 +766,7 @@ export default function Home() {
     if (!chatContext?.jobId) return;
     const jid = chatContext.jobId;
     setCustomJobs(prev => prev.map(j => j.id === jid
-      ? { ...j, nominal: newNominal, escrowAmount: Math.round(newNominal * j.kuota * 1.07) }
+      ? { ...j, nominal: newNominal, escrowAmount: Math.round(newNominal * j.kuota * (1 + PLATFORM_FEE_CEPAT)) }
       : j
     ));
     setChatContext(prev => prev ? { ...prev, nominal: newNominal } : null);
@@ -1438,6 +1439,27 @@ export default function Home() {
                         <span className="text-xs font-semibold bg-violet-100 text-violet-700 px-2 py-1 rounded ml-2 shrink-0">Baru</span>
                       </div>
                       <p className="text-sm text-gray-600 line-clamp-2">{job.deskripsi}</p>
+                      {job.hiringMode === "lama" && (job.jobDate || job.jamKerja || job.alamat) && (
+                        <div className="flex flex-col gap-1 bg-emerald-50/60 border border-emerald-100 rounded-lg px-2.5 py-2 text-[11px] text-gray-600">
+                          {job.jobDate && (
+                            <span className="flex items-center gap-1.5">
+                              <CalendarDays className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              Mulai {new Date(job.jobDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
+                            </span>
+                          )}
+                          {job.jamKerja && (
+                            <span className="flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> {job.jamKerja}
+                            </span>
+                          )}
+                          {job.alamat && (
+                            <span className="flex items-center gap-1.5">
+                              <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span className="line-clamp-1">{job.alamat}</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <Banknote className="w-4 h-4 text-primary shrink-0" />
                         <span className="font-semibold text-gray-900">

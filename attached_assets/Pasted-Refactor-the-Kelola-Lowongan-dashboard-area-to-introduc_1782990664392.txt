@@ -1,0 +1,31 @@
+Refactor the "Kelola Lowongan" dashboard area to introduce a dual-recruitment architecture: "Broadcast Instan (⚡ Hari Ini)" and "Posting Reguler (📅 Terjadwal)".
+
+Please implement these UI and architectural logic enhancements:
+
+1. DUAL TAB NAVIGATION COMPONENT:
+- At the top of the vacancy form card (referencing image_79f2e3.png layout), insert a clean, responsive tab switcher using Tailwind CSS. 
+- Left Tab: "⚡ Broadcast Instan" (Active by default).
+- Right Tab: "📅 Posting Reguler".
+- Use the emerald green color motif with gold accents to highlight the active tab state.
+
+2. LOGIC FOR "⚡ BROADCAST INSTAN" (THE INSTANT ENGINE):
+- Form Fields: Nama Posisi, Tipe Pembayaran, Jumlah Pekerja, Upah Per Shift.
+- NEW FIELD - SHORT DESCRIPTION: Add a textarea field titled "Catatan Singkat / Syarat Mendesak * (Maks 150 Karakter)". Place a placeholder like: "cth: Butuh cepat untuk angkat barang gudang, wajib sepatu tertutup & kaos hitam. Langsung datang!".
+- AUTOMATED DATE: Completely hide any date-picker elements. Force JavaScript to automatically assign `jobDate = new Date()` (Today) on submission.
+- AUTOMATED LOCATION: Force-fetch the user's current browser/device GPS coordinates (`navigator.geolocation`). Display a text badge: "📍 Lokasi: Terkunci Otomatis (Radius Radar 5km)".
+- AUDIO & OS SOUND NOTIFICATION: Clicking submit triggers a physical application alert sound ("Ding-Dong" / "Chime") through the Web Audio API and fires a native device OS push notification for the Worker.
+- RADAR INJECTION: Instantly drops a dynamic, pulsing green marker pin onto the Worker's active radar layer view.
+
+3. LOGIC FOR "📅 POSTING REGULER" (THE SCHEDULED ENGINE):
+- Additional Input Fields:
+  * "Tanggal Mulai Kerja *" (HTML input type="date", min restricted to today).
+  * "Jam Kerja / Shift *" (Text input or dropdown, e.g., "08:00 - 17:00 WIB").
+  * "Alamat Penempatan Spesifik *" (Text search input to type structural addresses manually).
+- NEW FIELD - DETAILED DESCRIPTION: Add a comprehensive textarea field titled "Deskripsi Pekerjaan & Kualifikasi Lengkap *". Place a placeholder like: "cth: Detail Tanggung Jawab: 1. Melakukan rekapitulasi data harian... Kualifikasi: Minimal SMA, jujur, teliti...".
+- SUBMIT ACTION: Submission for Scheduled Jobs goes into a general marketplace feed array. It does NOT trigger immediate loud buzzer alerts or pulsing radar pins, but lists it inside a searchable "Daftar Lowongan Kerja Terjadwal" job board tab for workers to browse at their leisure.
+
+4. UNIFIED ESCROW INTEGRATION & BRANDING:
+- Both tabs must strictly utilize the 15% platform mark-up billing presentation.
+- Keep all updated branding identities intact: The name remains "Rekhastha by Tilu Company" and the logo must consistently render as the premium emerald-gold shield with the letter "R".
+
+Regenerate the unified single-file codebase incorporating these dual-form rendering mechanics and run the interactive updated application preview.

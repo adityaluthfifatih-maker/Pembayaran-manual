@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { CustomJob, PaymentType, HiringMode, paymentLabels } from "@/types/custom-job";
 import { ApplicationNotification, ApplicationStatus, maskName } from "@/types/notification";
-import { PLATFORM_FEE_CEPAT, PLATFORM_FEE_LAMA, CANCELLATION_FEE_1HR } from "@/types/escrow";
+import { PLATFORM_FEE_CEPAT, CANCELLATION_FEE_1HR } from "@/types/escrow";
 import { AuthUser } from "@/types/auth";
 
 interface HiringModePanelProps {
@@ -146,6 +146,12 @@ export default function HiringModePanel({
   const [namaPerusahaan, setNamaPerusahaan] = useState(currentUser.name || "");
   const [dresscode, setDresscode] = useState("Bebas rapi");
 
+  // ── Posting Reguler (scheduled) extra fields ──────────────────
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [tanggalMulai, setTanggalMulai] = useState("");
+  const [jamKerja, setJamKerja] = useState("");
+  const [alamat, setAlamat] = useState("");
+
   // ── Butuh Cepat state ─────────────────────────────────────────
   const [broadcastState, setBroadcastState] = useState<BroadcastState>("idle");
   const [broadcastCount, setBroadcastCount] = useState(0);
@@ -165,12 +171,18 @@ export default function HiringModePanel({
   // ── Derived calc ──────────────────────────────────────────────
   const nominalNum = parseInt(nominalRaw.replace(/\D/g, "")) || 0;
   const kuotaNum = Math.max(1, parseInt(kuota) || 1);
-  const feeRate = hiringMode === "cepat" ? PLATFORM_FEE_CEPAT : PLATFORM_FEE_LAMA;
+  // Unified 15% platform mark-up billing presentation across BOTH tabs.
+  const feeRate = PLATFORM_FEE_CEPAT;
   const upahPokok = nominalNum * kuotaNum;
   const biayaSistem = Math.round(upahPokok * feeRate);
   const totalEscrow = upahPokok + biayaSistem;
   const isEscrowLocked = broadcastState === "done" && hiringMode === "cepat";
-  const formValid = posisi.trim().length >= 3 && nominalNum >= 10_000;
+  const baseValid = posisi.trim().length >= 3 && nominalNum >= 10_000;
+  const catatanValid = deskripsi.trim().length > 0;
+  const formValid =
+    hiringMode === "cepat"
+      ? baseValid && catatanValid
+      : baseValid && catatanValid && tanggalMulai !== "" && jamKerja.trim() !== "" && alamat.trim() !== "";
 
   // ── Mode-filtered job lists ───────────────────────────────────
   const cepatJobs = useMemo(() => customJobs.filter(j => j.hiringMode === "cepat"), [customJobs]);
@@ -182,9 +194,15 @@ export default function HiringModePanel({
     setNominalRaw(raw ? parseInt(raw).toLocaleString("id-ID") : "");
   };
 
-  // ── Submit Butuh Cepat ─────────────────────────────────────────
+  // ── Submit Broadcast Instan ────────────────────────────────────
   const handleCepatSubmit = () => {
     if (!formValid || broadcastState !== "idle") return;
+    // Force-fetch device GPS (permission prompt) — location is auto-locked to a 5km radar radius.
+    if (typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(() => {}, () => {}, {
+        enableHighAccuracy: true, timeout: 8000, maximumAge: 5000,
+      });
+    }
     setBroadcastState("locking");
 
     setTimeout(() => {
@@ -195,7 +213,7 @@ export default function HiringModePanel({
 
       onJobPosted({
         posisi: posisi.trim(),
-        deskripsi: deskripsi || `Dibutuhkan segera ${posisi} di Jakarta. Gaji langsung melalui escrow Rekhastha.`,
+        deskripsi: deskripsi.trim() || `Dibutuhkan segera ${posisi} di Jakarta. Gaji langsung melalui escrow Rekhastha.`,
         pembayaran,
         nominal: nominalNum,
         dresscode,
@@ -206,12 +224,13 @@ export default function HiringModePanel({
         escrowStatus: "locked",
         escrowAmount: totalEscrow,
         durasiKontrak: "harian",
+        jobDate: new Date(), // AUTOMATED DATE — always today for instant broadcasts
       });
 
       setTimeout(() => {
         setBroadcastState("done");
         setTimeout(() => {
-          setPosisi(""); setDeskripsi(""); setNominalRaw(""); setKuota("1");
+          resetForm();
           setBroadcastState("idle");
           setFormOpen(false);
         }, 4000);
@@ -219,12 +238,12 @@ export default function HiringModePanel({
     }, 1800);
   };
 
-  // ── Submit Bisa Lama ───────────────────────────────────────────
+  // ── Submit Posting Reguler (scheduled marketplace listing) ─────
   const handleLamaSubmit = () => {
     if (!formValid) return;
     onJobPosted({
       posisi: posisi.trim(),
-      deskripsi: deskripsi || `Lowongan ${posisi} untuk kontrak terjadwal. Dikelola melalui escrow Rekhastha.`,
+      deskripsi: deskripsi.trim() || `Lowongan ${posisi} untuk kontrak terjadwal. Dikelola melalui escrow Rekhastha.`,
       pembayaran,
       nominal: nominalNum,
       dresscode,
@@ -234,16 +253,24 @@ export default function HiringModePanel({
       broadcastActive: false,
       escrowStatus: "pending",
       durasiKontrak: "harian",
+      jobDate: tanggalMulai ? new Date(tanggalMulai) : undefined,
+      jamKerja: jamKerja.trim(),
+      alamat: alamat.trim(),
     });
-    setPosisi(""); setDeskripsi(""); setNominalRaw(""); setKuota("1");
+    resetForm();
     setFormOpen(false);
+  };
+
+  const resetForm = () => {
+    setPosisi(""); setDeskripsi(""); setNominalRaw(""); setKuota("1");
+    setTanggalMulai(""); setJamKerja(""); setAlamat("");
   };
 
   // ── Lock escrow for Bisa Lama after candidate selection ────────
   const handleConfirmEscrow = (jobId: number) => {
     const job = customJobs.find(j => j.id === jobId);
     if (!job) return;
-    const amount = Math.round(job.nominal * job.kuota * (1 + PLATFORM_FEE_LAMA));
+    const amount = Math.round(job.nominal * job.kuota * (1 + PLATFORM_FEE_CEPAT));
     onLockEscrow(jobId, amount);
     setLockedJobIds(prev => new Set([...prev, jobId]));
     setLockedAtMap(prev => ({ ...prev, [jobId]: new Date() }));
@@ -348,32 +375,32 @@ export default function HiringModePanel({
             onClick={() => { setHiringMode("cepat"); setBroadcastState("idle"); setFormOpen(true); }}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all ${
               hiringMode === "cepat"
-                ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md"
-                : "text-gray-500 hover:text-orange-600"
+                ? "bg-gradient-to-r from-emerald-600 to-green-600 text-white shadow-md ring-2 ring-amber-400/70"
+                : "text-gray-500 hover:text-emerald-700"
             }`}>
-            <Zap className="w-3.5 h-3.5" />
-            ⚡ Butuh Cepat
+            <Zap className={`w-3.5 h-3.5 ${hiringMode === "cepat" ? "text-amber-300" : ""}`} />
+            ⚡ Broadcast Instan
           </button>
           <button
             onClick={() => { setHiringMode("lama"); setBroadcastState("idle"); setFormOpen(true); }}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all ${
               hiringMode === "lama"
-                ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md"
-                : "text-gray-500 hover:text-blue-600"
+                ? "bg-gradient-to-r from-emerald-600 to-green-600 text-white shadow-md ring-2 ring-amber-400/70"
+                : "text-gray-500 hover:text-emerald-700"
             }`}>
-            <CalendarDays className="w-3.5 h-3.5" />
-            📅 Bisa Lama
+            <CalendarDays className={`w-3.5 h-3.5 ${hiringMode === "lama" ? "text-amber-300" : ""}`} />
+            📅 Posting Reguler
           </button>
         </div>
         {/* Mode description pill */}
         <div className={`mt-2 rounded-xl px-3 py-2 text-[11px] leading-relaxed font-medium border ${
           hiringMode === "cepat"
-            ? "bg-orange-50 text-orange-800 border-orange-200"
-            : "bg-blue-50 text-blue-800 border-blue-200"
+            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+            : "bg-emerald-50/60 text-emerald-800 border-emerald-200"
         }`}>
           {hiringMode === "cepat"
             ? "🚨 Untuk kebutuhan mendesak. Sistem broadcast ke semua pekerja aktif dalam radius 5km. Escrow HARUS dikunci terlebih dahulu (biaya sistem 15%)."
-            : "📋 Untuk kontrak terencana. Post lowongan, pilih kandidat terbaik, lalu kunci escrow setelah seleksi (biaya sistem 7%)."}
+            : "📅 Untuk kontrak terencana & terjadwal. Lowongan masuk ke Daftar Lowongan Kerja Terjadwal untuk dilihat pekerja — tanpa alarm broadcast (biaya sistem 15%)."}
         </div>
       </div>
 
@@ -475,13 +502,69 @@ export default function HiringModePanel({
                         className={`${inputCls} pl-10`} />
                     </div>
                   </div>
+                  {/* ── Broadcast Instan: short urgent note + auto date/location ── */}
+                  {hiringMode === "cepat" && (
+                    <>
+                      <div>
+                        <label className={labelCls}>Catatan Singkat / Syarat Mendesak * (Maks 150 Karakter)</label>
+                        <textarea value={deskripsi}
+                          onChange={e => setDeskripsi(e.target.value.slice(0, 150))}
+                          maxLength={150}
+                          placeholder="cth: Butuh cepat untuk angkat barang gudang, wajib sepatu tertutup & kaos hitam. Langsung datang!"
+                          rows={2} className={`${inputCls} resize-none`} />
+                        <p className="text-[10px] text-gray-400 text-right mt-0.5">{deskripsi.length}/150</p>
+                      </div>
+                      {/* Automated date + GPS location badges */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-xl px-2.5 py-2">
+                          <CalendarDays className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="text-[10px] font-bold text-emerald-800 leading-tight">
+                            📅 Tanggal: Hari Ini Otomatis
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-xl px-2.5 py-2">
+                          <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="text-[10px] font-bold text-emerald-800 leading-tight">
+                            📍 Lokasi: Terkunci Otomatis (Radius Radar 5km)
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ── Posting Reguler: schedule + address + full description ── */}
                   {hiringMode === "lama" && (
-                    <div>
-                      <label className={labelCls}>Deskripsi Pekerjaan</label>
-                      <textarea value={deskripsi} onChange={e => setDeskripsi(e.target.value)}
-                        placeholder="Jelaskan tugas, lokasi, dan persyaratan..."
-                        rows={2} className={`${inputCls} resize-none`} />
-                    </div>
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className={labelCls}>Tanggal Mulai Kerja *</label>
+                          <input type="date" value={tanggalMulai} min={todayStr}
+                            onChange={e => setTanggalMulai(e.target.value)}
+                            className={inputCls} />
+                        </div>
+                        <div>
+                          <label className={labelCls}>Jam Kerja / Shift *</label>
+                          <input value={jamKerja} onChange={e => setJamKerja(e.target.value)}
+                            placeholder="cth: 08:00 - 17:00 WIB"
+                            className={inputCls} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className={labelCls}>Alamat Penempatan Spesifik *</label>
+                        <div className="relative">
+                          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                          <input value={alamat} onChange={e => setAlamat(e.target.value)}
+                            placeholder="cth: Jl. Sudirman No. 52, Gedung Menara BCA Lt. 8, Jakarta Pusat"
+                            className={`${inputCls} pl-9`} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className={labelCls}>Deskripsi Pekerjaan &amp; Kualifikasi Lengkap *</label>
+                        <textarea value={deskripsi} onChange={e => setDeskripsi(e.target.value)}
+                          placeholder="cth: Detail Tanggung Jawab: 1. Melakukan rekapitulasi data harian... Kualifikasi: Minimal SMA, jujur, teliti..."
+                          rows={4} className={`${inputCls} resize-none`} />
+                      </div>
+                    </>
                   )}
                 </>
               )}
@@ -499,7 +582,7 @@ export default function HiringModePanel({
                     <span className={`ml-auto text-[10px] font-black px-2 py-0.5 rounded-full ${
                       hiringMode === "cepat" ? "bg-orange-200 text-orange-800" : "bg-blue-200 text-blue-800"
                     }`}>
-                      {hiringMode === "cepat" ? "15% TERKUNCI" : "7% SETELAH SELEKSI"}
+                      {hiringMode === "cepat" ? "15% TERKUNCI" : "15% MARK-UP"}
                     </span>
                   </div>
                   <div className="space-y-1.5 text-xs">
@@ -587,7 +670,7 @@ export default function HiringModePanel({
         {/* Section label */}
         {customJobs.length > 0 && (
           <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-            {hiringMode === "cepat" ? `⚡ Lowongan Butuh Cepat (${cepatJobs.length})` : `📅 Lowongan Bisa Lama (${lamaJobs.length})`}
+            {hiringMode === "cepat" ? `⚡ Lowongan Broadcast Instan (${cepatJobs.length})` : `📅 Lowongan Posting Reguler (${lamaJobs.length})`}
           </p>
         )}
 
@@ -756,12 +839,12 @@ export default function HiringModePanel({
                         <span className="font-semibold">{formatRp(job.nominal * job.kuota)}</span>
                       </div>
                       <div className="flex justify-between text-gray-600">
-                        <span>Biaya Sistem Bisa Lama (7%)</span>
-                        <span className="font-semibold">{formatRp(job.nominal * job.kuota * PLATFORM_FEE_LAMA)}</span>
+                        <span>Biaya Sistem Platform (15%)</span>
+                        <span className="font-semibold">{formatRp(job.nominal * job.kuota * PLATFORM_FEE_CEPAT)}</span>
                       </div>
                       <div className="flex justify-between font-bold text-blue-900 border-t border-blue-200 pt-1.5">
                         <span>Total Dikunci Escrow</span>
-                        <span>{formatRp(job.nominal * job.kuota * (1 + PLATFORM_FEE_LAMA))}</span>
+                        <span>{formatRp(job.nominal * job.kuota * (1 + PLATFORM_FEE_CEPAT))}</span>
                       </div>
                     </div>
                     <div className="flex gap-2">
