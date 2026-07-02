@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   X, Send, ShieldCheck, Lock, AlertTriangle, Briefcase, ChevronRight,
-  CheckCircle2, RefreshCw, Zap, BadgeDollarSign,
+  CheckCircle2, RefreshCw, Zap, BadgeDollarSign, Loader2,
 } from "lucide-react";
 import { calcEmployerFee, calcEmployerDeposit, MAX_BYPASS_STRIKES } from "@/types/escrow";
+import { subscribeChatMessage, type ChatMessageEvent } from "@/lib/central-server";
 
 // ── Bypass detection (RegEx + keyword) ─────────────────────────────
 const BYPASS_RE = /(?:0[0-9]{8,13}|\+62[0-9]{8,12}|(?<![a-z])wa(?![a-z])|whatsapp|transfer\s*langsung|rekening|no\.?\s*rek|bayar\s*(?:di\s*luar|langsung|cash|tunai)|di\s*luar\s*(?:aplikasi|sistem)|kasih\s*nomor|minta\s*(?:wa|nomor|kontak|hp)|hubungi\s*(?:langsung|saya)|pindah\s*wa|bb[mn]|telpon(?:an)?|line\s*aja)/gi;
@@ -31,24 +32,26 @@ export interface ChatModalProps {
   workerName: string;
   currentRole: "company" | "worker";
   hiringMode?: "cepat" | "lama";
+  /** Numeric gig ID. When provided, messages are persisted and synced in real-time. */
+  jobId?: number;
   onClose: () => void;
   onNominalUpdate?: (newNominal: number) => void;
 }
 
-let msgId = 100;
+// Local-only message counter (for offer / counter messages that aren't persisted)
+let localMsgId = -1;
 
-const INITIAL_MESSAGES: ChatMessage[] = [
-  {
-    id: 1, sender: "company",
-    text: "Halo! Lamaran Anda untuk posisi ini telah kami terima. Mohon pastikan ketersediaan jadwal Anda.",
-    time: new Date(Date.now() - 120000),
-  },
-  {
-    id: 2, sender: "worker",
-    text: "Siap! Saya tersedia sesuai jadwal yang tertera. Ada instruksi khusus dari perusahaan?",
-    time: new Date(Date.now() - 60000),
-  },
-];
+/** Convert a server chat row into the local ChatMessage shape. */
+function rowToMsg(
+  row: ChatMessageEvent | { id: number; senderRole: string; text: string; sentAt: string },
+): ChatMessage {
+  return {
+    id: row.id,
+    sender: row.senderRole === "perusahaan" ? "company" : "worker",
+    text: row.text,
+    time: new Date(row.sentAt),
+  };
+}
 
 // ── Buy-Out Modal ────────────────────────────────────────────────────
 function BuyOutModal({ jobTitle, nominal, onClose }: { jobTitle: string; nominal: number; onClose: () => void }) {
@@ -94,10 +97,12 @@ function BuyOutModal({ jobTitle, nominal, onClose }: { jobTitle: string; nominal
 // ── Main Component ───────────────────────────────────────────────────
 export default function ChatModal({
   jobTitle, nominal, companyName, workerName,
-  currentRole, hiringMode = "lama", onClose, onNominalUpdate,
+  currentRole, hiringMode = "lama", jobId, onClose, onNominalUpdate,
 }: ChatModalProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loading, setLoading] = useState(!!jobId);
   const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
   const [bypassWarning, setBypassWarning] = useState(false);
   const [bypassStrikes, setBypassStrikes] = useState(0);
   const [blacklisted, setBlacklisted] = useState(false);
@@ -111,6 +116,9 @@ export default function ChatModal({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Track IDs we've already appended so WS echo doesn't duplicate the sender's own message.
+  const seenMsgIds = useRef(new Set<number>());
+
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const currentNominal = lockedNominal ?? nominal;
@@ -120,10 +128,48 @@ export default function ChatModal({
   const canNegotiate = hiringMode !== "cepat" && !dealLocked;
   const isOtherPartyOffer = pendingOffer && pendingOffer.from !== currentRole;
 
+  // ── Fetch message history on mount ───────────────────────────────
+  useEffect(() => {
+    if (!jobId) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/chat/${jobId}`);
+        if (res.ok && !cancelled) {
+          const rows = (await res.json()) as Array<{
+            id: number; senderRole: string; text: string; sentAt: string;
+          }>;
+          const msgs = rows.map(rowToMsg);
+          msgs.forEach(m => seenMsgIds.current.add(m.id));
+          setMessages(msgs);
+        }
+      } catch {
+        /* stay with empty state if offline */
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [jobId]);
+
+  // ── Subscribe to incoming WS chat messages ────────────────────────
+  useEffect(() => {
+    if (!jobId) return;
+    return subscribeChatMessage((ev) => {
+      if (ev.jobId !== jobId) return;
+      if (seenMsgIds.current.has(ev.id)) return; // our own POST echo
+      seenMsgIds.current.add(ev.id);
+      setMessages(prev => [...prev, rowToMsg(ev)]);
+    });
+  }, [jobId]);
+
   // ── Send regular message ──────────────────────────────────────────
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || sending) return;
     if (blacklisted) return;
     if (hasBypass(text)) {
       setBypassStrikes(prev => {
@@ -138,31 +184,49 @@ export default function ChatModal({
       setInput("");
       return;
     }
-    setMessages(prev => [...prev, { id: ++msgId, sender: currentRole, text, time: new Date() }]);
     setInput("");
-    setTimeout(() => {
-      const pool = currentRole === "company"
-        ? ["Terima kasih, kami catat. Harap tiba 15 menit sebelum shift.", "Baik, kami konfirmasi segera.", "Instruksi akan dikirim via sistem sebelum hari H."]
-        : ["Siap, kami proses. Ada hal lain yang perlu dipersiapkan?", "Terima kasih konfirmasinya.", "Oke, saya sudah catat lokasinya."];
+
+    if (jobId) {
+      // ── Backed mode: persist to DB + fan-out via WS ────────────
+      setSending(true);
+      try {
+        const res = await fetch(`/api/chat/${jobId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+        if (res.ok) {
+          const row = (await res.json()) as { id: number; senderRole: string; text: string; sentAt: string };
+          const msg = rowToMsg(row);
+          seenMsgIds.current.add(msg.id); // mark as seen so WS echo is skipped
+          setMessages(prev => [...prev, msg]);
+        }
+      } catch {
+        /* best-effort — message may still arrive via WS */
+      } finally {
+        setSending(false);
+      }
+    } else {
+      // ── Demo/local fallback (no jobId) ─────────────────────────
       setMessages(prev => [...prev, {
-        id: ++msgId,
-        sender: currentRole === "company" ? "worker" : "company",
-        text: pool[Math.floor(Math.random() * pool.length)],
+        id: --localMsgId,
+        sender: currentRole,
+        text,
         time: new Date(),
       }]);
-    }, 800);
-  }, [input, currentRole]);
+    }
+  }, [input, currentRole, jobId, sending, blacklisted]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); }
   };
 
-  // ── Send wage offer ───────────────────────────────────────────────
+  // ── Send wage offer (local-only UI — offer state not persisted) ───
   const handleSendOffer = () => {
     const amount = parseInt(offerRaw.replace(/\D/g, ""));
     if (!amount || amount < 10_000) return;
     setMessages(prev => [...prev, {
-      id: ++msgId,
+      id: --localMsgId,
       sender: currentRole,
       text: `💰 Tawaran Upah Baru: Rp ${amount.toLocaleString("id-ID")}`,
       time: new Date(),
@@ -181,7 +245,7 @@ export default function ChatModal({
       m.isOfferMsg && m.offerStatus === "pending" ? { ...m, offerStatus: "accepted" as const } : m
     ));
     setMessages(prev => [...prev, {
-      id: ++msgId, sender: currentRole,
+      id: --localMsgId, sender: currentRole,
       text: `✅ Kesepakatan! Upah Rp ${amount.toLocaleString("id-ID")} resmi disetujui. Escrow diperbarui.`,
       time: new Date(),
     }]);
@@ -350,67 +414,80 @@ export default function ChatModal({
 
           {/* Messages area */}
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2" style={{ background: "#ece5dd" }}>
-            <div className="flex justify-center my-2">
-              <span className="bg-white/80 text-gray-500 text-[10px] font-medium px-3 py-1 rounded-full shadow-sm">Hari ini</span>
-            </div>
-
-            {messages.map(msg => {
-              const isMine = msg.sender === currentRole;
-              const isReceivedPendingOffer = msg.isOfferMsg && !isMine && msg.offerStatus === "pending";
-              return (
-                <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                  <div className="max-w-[82%] space-y-1.5">
-                    <div className={`px-3.5 py-2.5 rounded-2xl shadow-sm ${
-                      msg.isOfferMsg
-                        ? msg.offerStatus === "accepted"
-                          ? "bg-emerald-100 border border-emerald-300 text-emerald-900"
-                          : msg.offerStatus === "countered"
-                            ? "bg-gray-100 border border-gray-200 text-gray-500"
-                            : isMine
-                              ? "bg-amber-100 border border-amber-200 text-amber-900"
-                              : "bg-blue-50 border border-blue-200 text-blue-900"
-                        : isMine
-                          ? "bg-primary text-white rounded-tr-sm"
-                          : "bg-white text-gray-900 rounded-tl-sm"
-                    }`}>
-                      {!isMine && !msg.isOfferMsg && (
-                        <p className="text-[10px] font-bold text-primary mb-0.5">
-                          {msg.sender === "company" ? companyName : workerName}
-                        </p>
-                      )}
-                      {msg.isOfferMsg && (
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <BadgeDollarSign className="w-3.5 h-3.5 shrink-0" />
-                          <span className="text-[10px] font-black uppercase tracking-wide flex-1">Tawaran Upah</span>
-                          {msg.offerStatus === "accepted" && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
-                          {msg.offerStatus === "countered" && <span className="text-[10px] text-gray-400">⚡ Di-counter</span>}
-                        </div>
-                      )}
-                      <p className="text-sm leading-relaxed">{msg.text}</p>
-                      <p className={`text-[10px] mt-1 text-right ${
-                        msg.isOfferMsg ? "opacity-50" : isMine ? "text-white/60" : "text-gray-400"
-                      }`}>{formatTime(msg.time)}</p>
-                    </div>
-
-                    {/* Receiver sees Accept / Counter buttons */}
-                    {isReceivedPendingOffer && msg.offerAmount && (
-                      <div className="flex gap-1.5">
-                        <button
-                          onClick={() => handleAcceptOffer(msg.offerAmount!)}
-                          className="flex-1 flex items-center justify-center gap-1 bg-emerald-500 text-white text-[10px] font-black py-2 rounded-xl active:scale-95 transition-all shadow-sm">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Setujui Upah
-                        </button>
-                        <button
-                          onClick={handleCounterOffer}
-                          className="flex-1 flex items-center justify-center gap-1 bg-blue-500 text-white text-[10px] font-black py-2 rounded-xl active:scale-95 transition-all shadow-sm">
-                          <RefreshCw className="w-3.5 h-3.5" /> Tawar Balik
-                        </button>
-                      </div>
-                    )}
-                  </div>
+            {loading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="w-6 h-6 text-primary animate-spin" />
+                  <p className="text-xs text-gray-500">Memuat riwayat chat...</p>
                 </div>
-              );
-            })}
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-center my-2">
+                  <span className="bg-white/80 text-gray-500 text-[10px] font-medium px-3 py-1 rounded-full shadow-sm">
+                    {messages.length === 0 ? "Belum ada pesan — mulai percakapan!" : "Hari ini"}
+                  </span>
+                </div>
+
+                {messages.map(msg => {
+                  const isMine = msg.sender === currentRole;
+                  const isReceivedPendingOffer = msg.isOfferMsg && !isMine && msg.offerStatus === "pending";
+                  return (
+                    <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+                      <div className="max-w-[82%] space-y-1.5">
+                        <div className={`px-3.5 py-2.5 rounded-2xl shadow-sm ${
+                          msg.isOfferMsg
+                            ? msg.offerStatus === "accepted"
+                              ? "bg-emerald-100 border border-emerald-300 text-emerald-900"
+                              : msg.offerStatus === "countered"
+                                ? "bg-gray-100 border border-gray-200 text-gray-500"
+                                : isMine
+                                  ? "bg-amber-100 border border-amber-200 text-amber-900"
+                                  : "bg-blue-50 border border-blue-200 text-blue-900"
+                            : isMine
+                              ? "bg-primary text-white rounded-tr-sm"
+                              : "bg-white text-gray-900 rounded-tl-sm"
+                        }`}>
+                          {!isMine && !msg.isOfferMsg && (
+                            <p className="text-[10px] font-bold text-primary mb-0.5">
+                              {msg.sender === "company" ? companyName : workerName}
+                            </p>
+                          )}
+                          {msg.isOfferMsg && (
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <BadgeDollarSign className="w-3.5 h-3.5 shrink-0" />
+                              <span className="text-[10px] font-black uppercase tracking-wide flex-1">Tawaran Upah</span>
+                              {msg.offerStatus === "accepted" && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                              {msg.offerStatus === "countered" && <span className="text-[10px] text-gray-400">⚡ Di-counter</span>}
+                            </div>
+                          )}
+                          <p className="text-sm leading-relaxed">{msg.text}</p>
+                          <p className={`text-[10px] mt-1 text-right ${
+                            msg.isOfferMsg ? "opacity-50" : isMine ? "text-white/60" : "text-gray-400"
+                          }`}>{formatTime(msg.time)}</p>
+                        </div>
+
+                        {/* Receiver sees Accept / Counter buttons */}
+                        {isReceivedPendingOffer && msg.offerAmount && (
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={() => handleAcceptOffer(msg.offerAmount!)}
+                              className="flex-1 flex items-center justify-center gap-1 bg-emerald-500 text-white text-[10px] font-black py-2 rounded-xl active:scale-95 transition-all shadow-sm">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Setujui Upah
+                            </button>
+                            <button
+                              onClick={handleCounterOffer}
+                              className="flex-1 flex items-center justify-center gap-1 bg-blue-500 text-white text-[10px] font-black py-2 rounded-xl active:scale-95 transition-all shadow-sm">
+                              <RefreshCw className="w-3.5 h-3.5" /> Tawar Balik
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
             <div ref={messagesEndRef} />
           </div>
 
@@ -475,10 +552,13 @@ export default function ChatModal({
                 />
               </div>
               <button
-                onClick={handleSend}
-                disabled={!input.trim()}
-                className={`w-11 h-11 rounded-full flex items-center justify-center transition-all ${input.trim() ? "bg-primary hover:bg-primary/90 active:scale-95" : "bg-gray-200"}`}>
-                <Send className={`w-4 h-4 ${input.trim() ? "text-white" : "text-gray-400"}`} />
+                onClick={() => void handleSend()}
+                disabled={!input.trim() || sending}
+                className={`w-11 h-11 rounded-full flex items-center justify-center transition-all ${input.trim() && !sending ? "bg-primary hover:bg-primary/90 active:scale-95" : "bg-gray-200"}`}>
+                {sending
+                  ? <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                  : <Send className={`w-4 h-4 ${input.trim() ? "text-white" : "text-gray-400"}`} />
+                }
               </button>
             </div>
           </div>

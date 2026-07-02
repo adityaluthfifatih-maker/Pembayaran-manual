@@ -10,6 +10,7 @@ import adminOpsRouter from "./admin-ops";
 import boronganRouter from "./borongan";
 import emergencyRouter from "./emergency";
 import applicationsRouter from "./applications";
+import chatRouter from "./chat";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(adminOpsRouter);
 router.use(boronganRouter);
 router.use(emergencyRouter);
 router.use(applicationsRouter);
+router.use(chatRouter);
 
 export default router;

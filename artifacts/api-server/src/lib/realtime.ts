@@ -118,3 +118,11 @@ export function broadcastApplicationStatus(
 ): void {
   broadcast({ type: "application_status", id, status, jobId });
 }
+
+/**
+ * Push a new chat message to every connected device. The client-side handler
+ * filters by `jobId` so only the two parties in that conversation react.
+ */
+export function broadcastChatMessage(message: unknown): void {
+  broadcast({ type: "chat_message", message });
+}

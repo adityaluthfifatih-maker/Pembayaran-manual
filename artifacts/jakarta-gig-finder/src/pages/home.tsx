@@ -1342,6 +1342,7 @@ export default function Home() {
         <ChatModal jobTitle={chatContext.jobTitle} nominal={chatContext.nominal}
           companyName={chatContext.companyName} workerName={chatContext.workerName}
           currentRole={chatContext.currentRole} hiringMode={chatContext.hiringMode}
+          jobId={chatContext.jobId}
           onNominalUpdate={handleNominalUpdate}
           onClose={() => setChatContext(null)} />
       )}

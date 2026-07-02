@@ -54,12 +54,25 @@ export interface ApplicationEvent {
 }
 export type ApplicationSubscriber = (event: ApplicationEvent) => void;
 
+/** A chat message row as returned by the server (POST /api/chat/:jobId). */
+export interface ChatMessageEvent {
+  id: number;
+  jobId: number;
+  senderId: string;
+  /** "pekerja" | "perusahaan" — map to "worker" | "company" on the client. */
+  senderRole: string;
+  text: string;
+  sentAt: string;
+}
+export type ChatMessageSubscriber = (event: ChatMessageEvent) => void;
+
 const API_BASE = "/api";
 
 let activeGigs: Gig[] = [];
 let subscribers: ServerSubscriber[] = [];
 let attendanceSubscribers: AttendanceSubscriber[] = [];
 let applicationSubscribers: ApplicationSubscriber[] = [];
+let chatMessageSubscribers: ChatMessageSubscriber[] = [];
 
 function notify(gig: Gig | null): void {
   for (const cb of [...subscribers]) {
@@ -149,6 +162,7 @@ function connectWs(): void {
           gig?: Record<string, unknown>;
           attendance?: Record<string, unknown>;
           application?: Record<string, unknown>;
+          message?: Record<string, unknown>;
           id?: number;
           status?: string;
           jobId?: number;
@@ -190,6 +204,15 @@ function connectWs(): void {
               cb(event);
             } catch {
               /* best effort */
+            }
+          }
+        } else if (msg.type === "chat_message" && msg.message) {
+          const event = msg.message as unknown as ChatMessageEvent;
+          for (const cb of [...chatMessageSubscribers]) {
+            try {
+              cb(event);
+            } catch {
+              /* a broken subscriber must not break the fan-out */
             }
           }
         }
@@ -325,6 +348,19 @@ export function subscribeApplication(cb: ApplicationSubscriber): () => void {
   ensureStarted();
   return () => {
     applicationSubscribers = applicationSubscribers.filter((s) => s !== cb);
+  };
+}
+
+/**
+ * Subscribe to real-time chat message events for any job. The subscriber
+ * should filter by `event.jobId` to ignore messages for other conversations.
+ * Ensures the WebSocket is started. Returns an unsubscribe function.
+ */
+export function subscribeChatMessage(cb: ChatMessageSubscriber): () => void {
+  chatMessageSubscribers.push(cb);
+  ensureStarted();
+  return () => {
+    chatMessageSubscribers = chatMessageSubscribers.filter((s) => s !== cb);
   };
 }
 
