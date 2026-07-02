@@ -1,0 +1,24 @@
+Enhance the dual-recruitment architecture with critical Worker interface mechanics: persistent urgent alerts for Instant Jobs, a dedicated Regular Job board, and an active Geofence Radar On/Off Toggle.
+
+Please implement these specific frontend layout and interactive logic updates:
+
+1. WORKER RADAR ON/OFF TOGGLE SWITCH:
+- At the top of the Worker's dashboard, build a prominent, clean interactive Toggle Switch styled with Tailwind CSS: "Status Radar Mencari Kerja".
+- RADAR ACTIVE STATE (ON): When toggled ON, render the map layout with a pulsing animation around the worker's current location badge, allow WebSocket connections to listen for new instant gigs, and show a toast: "🟢 Radar Aktif: Anda siap menerima lowongan instan terdekat!".
+- RADAR INACTIVE STATE (OFF): When toggled OFF, dim the map, disconnect or filter out any incoming dynamic instant broadcast events, hide pulsing green pins, and show a toast: "⚪ Radar Mati: Anda tidak akan menerima panggilan kerja instan harian sementara waktu".
+
+2. PERSISTENT FLOATING ALARM & FLASHING SCREEN FOR INSTANT JOBS:
+- Update the WebSocket listener on the Worker's device. When a new "Broadcast Instan" payload arrives AND the Worker's Radar is turned ON:
+  * PERSISTENT AUDIO: Use a continuous looping JavaScript `Audio` engine or Web Audio synth function to repeatedly play a loud alert chime ("Buzzer/Ringtone" alert) every 2 seconds.
+  * FLASHING UI ACCENT: Trigger a floating full-screen overlay or a massive banner container with a high-intensity pulsing red/emerald flashing animation effect (`animate-pulse` or custom CSS keyframes blinking background colors).
+  * DISMISS REQUIRED: This audio chime and screen flashing MUST NOT STOP until the Worker explicitly clicks one of two action buttons inside the alert: "🟢 Terima Kerja (Buka Radar)" or "❌ Lewati".
+
+3. THE MISSING "CARI KERJA TERJADWAL" FEED COMPONENT (REGULAR JOBS):
+- Add a second tab switcher on the Worker screen titled "📅 Cari Kerja Terjadwal" alongside the active Radar view.
+- Inside this feed tab, pull all regular scheduled job listings from the database. Render them as clean cards featuring: Nama Posisi, Company Name ("Rekhastha by Tilu Company"), automatic formatted Rupiah rates (e.g., "Rp 300.000 / Hari"), Specific Date, and structural Location Address text.
+- Regular job submissions must push silently into this feed list in real-time over the network without triggering the loud looping buzzer or flashing screen overlay.
+
+4. PRESERVE BRANDING IDENTITY & INPUT MASKS:
+- Keep the overall aesthetic matched perfectly to the premium Emerald Green/Gold theme, use the structural Shield "R" branding identity, and ensure all currency fields dynamically format to "Rp [Amount]".
+
+Execute these interactive logic upgrades across the synchronized client-server architecture and launch the updated live preview.

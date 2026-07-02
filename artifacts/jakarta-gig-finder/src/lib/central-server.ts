@@ -275,6 +275,37 @@ export function playAlertChime(): void {
   }
 }
 
+/**
+ * Loud, urgent "buzzer/ringtone" alert for a new Broadcast Instan. Unlike the
+ * gentle two-tone chime, this is a rapid square-wave triple-beep designed to be
+ * impossible to ignore. It is meant to be called on a loop (every ~2s) by the
+ * persistent instant-gig alarm overlay until the worker dismisses it.
+ */
+export function playAlarmBuzzer(): void {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    // Three rapid rising beeps — a clear emergency-style buzzer.
+    [0, 0.2, 0.4].forEach((t) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      const start = now + t;
+      osc.frequency.setValueAtTime(880, start);
+      osc.frequency.setValueAtTime(1245, start + 0.09);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.32, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.17);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.19);
+    });
+  } catch {
+    /* audio is best-effort */
+  }
+}
+
 const NATIVE_NOTIF_TITLE = "Rekhastha by Tilu Company";
 const NATIVE_NOTIF_BODY =
   "Rekhastha: Lowongan Kerja Baru Terjamin Escrow Tersedia Dekat Anda!";

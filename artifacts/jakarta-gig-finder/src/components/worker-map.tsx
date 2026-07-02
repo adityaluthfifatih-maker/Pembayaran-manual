@@ -22,15 +22,17 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-const createUserIcon = () =>
+const createUserIcon = (active = true) =>
   L.divIcon({
     className: "",
     html: `
       <div style="position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center">
+        ${active ? `
         <div class="radar-ring" style="position:absolute;inset:0;border-radius:50%;border:2px solid #065F46;animation:radarPulse 2s ease-out infinite;opacity:0.6"></div>
         <div class="radar-ring" style="position:absolute;inset:0;border-radius:50%;border:2px solid #065F46;animation:radarPulse 2s ease-out 0.7s infinite;opacity:0.4"></div>
         <div class="radar-ring" style="position:absolute;inset:0;border-radius:50%;border:2px solid #065F46;animation:radarPulse 2s ease-out 1.4s infinite;opacity:0.2"></div>
-        <div style="width:16px;height:16px;border-radius:50%;background:#065F46;border:3px solid white;box-shadow:0 2px 8px rgba(6,95,70,0.5);z-index:1;position:relative"></div>
+        ` : ``}
+        <div style="width:16px;height:16px;border-radius:50%;background:${active ? "#065F46" : "#9CA3AF"};border:3px solid white;box-shadow:0 2px 8px rgba(6,95,70,0.5);z-index:1;position:relative"></div>
       </div>
     `,
     iconSize: [44, 44],
@@ -75,6 +77,7 @@ interface WorkerMapProps {
   broadcastGigs?: CustomJob[];
   selectedJob: CustomJob | null;
   onJobClick: (job: CustomJob) => void;
+  radarActive?: boolean;
 }
 
 export default function WorkerMap({
@@ -84,6 +87,7 @@ export default function WorkerMap({
   broadcastGigs = [],
   selectedJob,
   onJobClick,
+  radarActive = true,
 }: WorkerMapProps) {
   const distanceKm = selectedJob
     ? haversineKm(userLat, userLng, selectedJob.lat, selectedJob.lng)
@@ -109,7 +113,7 @@ export default function WorkerMap({
         />
 
         {/* User location (pulsing) */}
-        <Marker position={[userLat, userLng]} icon={createUserIcon()}>
+        <Marker position={[userLat, userLng]} icon={createUserIcon(radarActive)}>
           <Tooltip permanent direction="top" offset={[0, -22]} className="!bg-primary !text-white !text-[10px] !font-semibold !border-0 !rounded-lg !shadow-lg">
             Lokasi Saya
           </Tooltip>

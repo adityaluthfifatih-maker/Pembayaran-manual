@@ -16,7 +16,8 @@ import AnalyticsDashboard from "@/components/analytics-dashboard";
 import HiringModePanel from "@/components/hiring-mode-panel";
 import JobPingModal from "@/components/job-ping-modal";
 import ApplicantToast from "@/components/applicant-toast";
-import GigBroadcastToast from "@/components/gig-broadcast-toast";
+import InstantGigAlarm from "@/components/instant-gig-alarm";
+import ScheduledJobsFeed from "@/components/scheduled-jobs-feed";
 import { RekhasthaLogo } from "@/components/rekhastha-logo";
 import {
   subscribeToServer,
@@ -25,7 +26,6 @@ import {
   randomGeofenceCoords,
   triggerGlobalEscrowBroadcast,
   requestNotifPermission,
-  playAlertChime,
   fireNativeNotification,
   unlockAudio,
 } from "@/lib/central-server";
@@ -82,6 +82,11 @@ const JAKARTA_CENTER = { lat: -6.2088, lng: 106.8456 };
 type JobStatus = "accepted" | "clocked_in" | "completed" | null;
 type CompanyView = "jobs" | "analytics";
 type AppTab = "home" | "chat" | "profile";
+
+// A gig is "instant" (Broadcast Instan) only when it is a cepat posting. Regular
+// (lama) jobs — even once their escrow is locked and they go live — stay in the
+// silent scheduled feed and never trigger the radar alarm or green pins.
+const isInstantGig = (j: CustomJob) => j.hiringMode === "cepat";
 
 // ── Demo data factories ────────────────────────────────────────────
 function makeDemoWorkerProfile(): WorkerProfile {
@@ -157,7 +162,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<AppTab>("home");
   const [mode, setMode] = useState<"perusahaan" | "pekerja">("perusahaan");
   const [companyView, setCompanyView] = useState<CompanyView>("jobs");
-  const [workerView, setWorkerView] = useState<"list" | "map">("list");
+  const [workerView, setWorkerView] = useState<"list" | "map" | "scheduled">("list");
 
   // ── Search ──────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
@@ -227,7 +232,11 @@ export default function Home() {
 
   // ── Central virtual server: live employer→worker broadcast sync ──
   const [centralGigs, setCentralGigs] = useState<CustomJob[]>(() => getActiveGigs());
-  const [gigToast, setGigToast] = useState<CustomJob | null>(null);
+  const [alarmGig, setAlarmGig] = useState<CustomJob | null>(null);
+  const [radarOn, setRadarOn] = useState(true);
+  const radarOnRef = useRef(true);
+  const [radarStatusToast, setRadarStatusToast] = useState<string | null>(null);
+  const radarToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Live mirror of the active UI role so the broadcast subscriber (registered once)
   // always reads the CURRENT viewport role instead of a stale closure value.
   const modeRef = useRef<"perusahaan" | "pekerja">(mode);
@@ -238,17 +247,21 @@ export default function Home() {
   // Register the central-server subscriber exactly once.
   useEffect(() => {
     const unsubscribe = subscribeToServer((gig, gigs) => {
-      // Always keep the gig array in sync so radar pins stay accurate for any viewport.
+      // Always keep the gig array in sync so radar pins + the scheduled feed stay
+      // accurate for any viewport.
       setCentralGigs([...gigs]);
       if (!gig) return; // bulk/reset signal — never a notification
-      // Notification dispatcher: ONLY the worker viewport gets the toast + alert.
-      // An employer broadcasting from employer view stores the gig silently.
+      // Regular (lama) scheduled jobs are SILENT: they simply appear in the
+      // "Cari Kerja Terjadwal" feed via centralGigs above — no buzzer, no flash.
+      if (!isInstantGig(gig)) return;
+      // Instant broadcasts alert ONLY on a worker viewport with radar ON.
       if (modeRef.current === "pekerja") {
-        // This device is a worker → alert on arrival: toast + chime + native OS
-        // notification. (The employer device that posted stays silent.)
-        setGigToast(gig);
-        playAlertChime();
-        fireNativeNotification();
+        if (radarOnRef.current) {
+          seenPingJobIds.current.add(gig.id); // dedup vs the local JobPingModal path
+          setAlarmGig(gig);
+          fireNativeNotification();
+        }
+        // radar OFF → ignore the instant broadcast entirely (no alarm, pins hidden)
       } else {
         pendingBroadcastRef.current = gig;
       }
@@ -280,12 +293,26 @@ export default function Home() {
   useEffect(() => {
     modeRef.current = mode;
     if (mode === "pekerja" && pendingBroadcastRef.current) {
-      setGigToast(pendingBroadcastRef.current);
+      const pend = pendingBroadcastRef.current;
       pendingBroadcastRef.current = null;
-      playAlertChime();
-      fireNativeNotification();
+      if (radarOnRef.current) {
+        seenPingJobIds.current.add(pend.id);
+        setAlarmGig(pend);
+        fireNativeNotification();
+      }
     }
   }, [mode]);
+
+  // Keep the radar ref in sync so the (once-registered) subscriber always reads
+  // the current on/off state.
+  useEffect(() => {
+    radarOnRef.current = radarOn;
+  }, [radarOn]);
+
+  // Clear any pending radar-status toast timer on unmount.
+  useEffect(() => () => {
+    if (radarToastTimer.current) clearTimeout(radarToastTimer.current);
+  }, []);
   const [activePing, setActivePing] = useState<CustomJob | null>(null);
   const seenNotifIds = useRef<Set<number>>(new Set());
   const seenPingJobIds = useRef<Set<number>>(new Set());
@@ -328,7 +355,10 @@ export default function Home() {
     setCustomJobs([]);
     resetServer();
     setCentralGigs([]);
-    setGigToast(null);
+    setAlarmGig(null);
+    setRadarOn(true);
+    radarOnRef.current = true;
+    setRadarStatusToast(null);
     pendingBroadcastRef.current = null;
     setNotifications([]);
     setRatings([]);
@@ -680,11 +710,42 @@ export default function Home() {
   const addTag = useCallback((tag: string) => { setActiveTags((p) => p.includes(tag) ? p : [...p, tag]); setSearchQuery(""); }, []);
   const removeTag = useCallback((tag: string) => setActiveTags((p) => p.filter((t) => t !== tag)), []);
 
-  // Purple pins on the radar = jobs that are NOT live broadcasts (broadcasts render as green).
-  const mapPurpleJobs = useMemo(() => {
-    const broadcastIds = new Set(centralGigs.map((g) => g.id));
-    return customJobs.filter((j) => !broadcastIds.has(j.id));
-  }, [customJobs, centralGigs]);
+  // Unified, de-duplicated pool of every gig this device knows about — local
+  // postings (customJobs) plus everything from the live server (centralGigs).
+  const allJobs = useMemo(() => {
+    const seen = new Set<CustomJob["id"]>();
+    const out: CustomJob[] = [];
+    for (const j of [...centralGigs, ...customJobs]) {
+      if (seen.has(j.id)) continue;
+      seen.add(j.id);
+      out.push(j);
+    }
+    return out;
+  }, [centralGigs, customJobs]);
+
+  // Instant broadcasts → pulsing GREEN radar pins. Regular scheduled jobs → the
+  // "Cari Kerja Terjadwal" feed. Purple pins = anything non-instant on the map.
+  const instantGigs = useMemo(() => allJobs.filter(isInstantGig), [allJobs]);
+  const scheduledGigs = useMemo(
+    () => allJobs.filter((j) => j.hiringMode === "lama"),
+    [allJobs],
+  );
+  const mapPurpleJobs = useMemo(() => allJobs.filter((j) => !isInstantGig(j)), [allJobs]);
+
+  // Radar on/off toggle: flips the state, silences any live alarm when turned
+  // off, and surfaces the required transient status toast.
+  const handleToggleRadar = useCallback((next: boolean) => {
+    setRadarOn(next);
+    radarOnRef.current = next;
+    if (!next) setAlarmGig(null);
+    if (radarToastTimer.current) clearTimeout(radarToastTimer.current);
+    setRadarStatusToast(
+      next
+        ? "🟢 Radar Aktif: Anda siap menerima lowongan instan terdekat!"
+        : "⚪ Radar Mati: Anda tidak akan menerima panggilan kerja instan harian sementara waktu",
+    );
+    radarToastTimer.current = setTimeout(() => setRadarStatusToast(null), 4000);
+  }, []);
 
   const filteredWorkers = useMemo(() => {
     if (!activeTags.length && !searchQuery.trim()) return workers;
@@ -727,10 +788,10 @@ export default function Home() {
     const now = new Date();
     const newJob: CustomJob = { id: newId, type: "custom_job", ...data, ...coords, postedAt: now };
     setCustomJobs(p => [...p, newJob]);
-    if (isBroadcast) {
-      // Push to the central virtual server → live radar marker + worker toast + alert pipeline.
-      triggerGlobalEscrowBroadcast(newJob);
-    }
+    // Publish EVERY posting to the live server so it fans out to worker devices:
+    // instant (cepat) jobs raise the persistent radar alarm on receivers, while
+    // regular (lama) jobs push silently into the "Cari Kerja Terjadwal" feed.
+    triggerGlobalEscrowBroadcast(newJob);
     if (data.escrowStatus === "locked" && data.escrowAmount) {
       setEscrowEvents(prev => [...prev, {
         id: Date.now(),
@@ -1002,17 +1063,28 @@ export default function Home() {
         />
       )}
 
-      {/* ── GIG BROADCAST TOAST (central server → worker subsystem) ─ */}
-      {gigToast && (
-        <GigBroadcastToast
-          gig={gigToast}
-          onView={() => {
-            setSelectedJob(gigToast);
+      {/* ── INSTANT-GIG PERSISTENT ALARM (radar ON only) ─ */}
+      {alarmGig && (
+        <InstantGigAlarm
+          gig={alarmGig}
+          onAccept={() => {
+            setSelectedJob(alarmGig);
+            setRadarOn(true);
+            radarOnRef.current = true;
             setWorkerView("map");
-            setGigToast(null);
+            setAlarmGig(null);
           }}
-          onDismiss={() => setGigToast(null)}
+          onSkip={() => setAlarmGig(null)}
         />
+      )}
+
+      {/* ── RADAR STATUS TOAST (On/Off feedback) ─ */}
+      {radarStatusToast && (
+        <div className="fixed top-3 left-3 right-3 z-[210] mx-auto max-w-md">
+          <div className="rounded-2xl bg-gray-900 text-white text-xs font-semibold px-4 py-3 shadow-2xl border border-white/10 text-center leading-snug">
+            {radarStatusToast}
+          </div>
+        </div>
       )}
 
       {/* ── LIVE GIG DETAILS (opens from toast while in employer view) ─ */}
@@ -1230,6 +1302,28 @@ export default function Home() {
             {/* Worker header */}
             {mode === "pekerja" && (
               <div className="px-4 pb-3 space-y-2">
+                {/* ── Status Radar Mencari Kerja (On/Off toggle) ── */}
+                <div className={`flex items-center justify-between rounded-2xl px-3.5 py-2.5 border transition-colors ${radarOn ? "bg-primary/10 border-primary/30" : "bg-gray-100 border-gray-200"}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="relative flex h-3 w-3 shrink-0 items-center justify-center">
+                      {radarOn && <span className="absolute inline-flex h-full w-full rounded-full bg-primary/50 animate-ping" />}
+                      <span className={`relative inline-flex rounded-full h-3 w-3 ${radarOn ? "bg-primary" : "bg-gray-400"}`} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className={`text-xs font-black leading-tight ${radarOn ? "text-primary" : "text-gray-500"}`}>Status Radar Mencari Kerja</p>
+                      <p className="text-[10px] text-gray-500 leading-tight">{radarOn ? "Aktif — menerima lowongan instan terdekat" : "Mati — tidak menerima panggilan instan"}</p>
+                    </div>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={radarOn}
+                    aria-label="Status Radar Mencari Kerja"
+                    onClick={() => handleToggleRadar(!radarOn)}
+                    className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${radarOn ? "bg-primary" : "bg-gray-300"}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform ${radarOn ? "translate-x-5" : "translate-x-0"}`} />
+                  </button>
+                </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {verified ? (
@@ -1276,10 +1370,11 @@ export default function Home() {
                       ⚡ Ping Demo
                     </button>
                     <div className="flex bg-gray-100 p-0.5 rounded-lg">
-                      <button onClick={() => setWorkerView("list")} className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${workerView === "list" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}>Daftar</button>
-                      <button onClick={() => setWorkerView("map")} className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 ${workerView === "map" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}>
+                      <button onClick={() => setWorkerView("list")} className={`px-2 py-1 text-xs font-semibold rounded-md transition-colors ${workerView === "list" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}>Daftar</button>
+                      <button onClick={() => setWorkerView("map")} className={`px-2 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 ${workerView === "map" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}>
                         <MapIcon className="w-3 h-3" /> Radar
                       </button>
+                      <button onClick={() => setWorkerView("scheduled")} className={`px-2 py-1 text-xs font-semibold rounded-md transition-colors ${workerView === "scheduled" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}>📅 Jadwal</button>
                     </div>
                   </div>
                 </div>
@@ -1399,16 +1494,26 @@ export default function Home() {
 
             ) : workerView === "map" ? (
               <div className="flex-1 relative">
-                <WorkerMap userLat={userLocation.lat} userLng={userLocation.lng} customJobs={mapPurpleJobs} broadcastGigs={centralGigs} selectedJob={selectedJob} onJobClick={(j) => setSelectedJob(j)} />
+                <WorkerMap userLat={userLocation.lat} userLng={userLocation.lng} customJobs={mapPurpleJobs} broadcastGigs={radarOn ? instantGigs : []} radarActive={radarOn} selectedJob={selectedJob} onJobClick={(j) => setSelectedJob(j)} />
+                {!radarOn && (
+                  <div className="absolute inset-0 z-[5] bg-gray-900/45 backdrop-grayscale flex items-start justify-center pt-16 pointer-events-none">
+                    <span className="bg-gray-900/85 text-white text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5">
+                      ⚪ Radar Mati — panggilan instan dinonaktifkan
+                    </span>
+                  </div>
+                )}
                 <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur-sm rounded-xl px-3 py-2 shadow border border-gray-100 space-y-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-primary border-2 border-white shadow-sm shrink-0" />
-                    <span className="text-[10px] font-medium text-gray-600">Lokasi Saya</span>
+                    <span className="relative flex h-3 w-3 shrink-0 items-center justify-center">
+                      {radarOn && <span className="absolute inline-flex h-full w-full rounded-full bg-primary/50 animate-ping" />}
+                      <span className={`relative w-3 h-3 rounded-full border-2 border-white shadow-sm ${radarOn ? "bg-primary" : "bg-gray-400"}`} />
+                    </span>
+                    <span className="text-[10px] font-medium text-gray-600">Lokasi Saya{radarOn ? "" : " (Radar Mati)"}</span>
                   </div>
-                  {centralGigs.length > 0 && (
+                  {radarOn && instantGigs.length > 0 && (
                     <div className="flex items-center gap-2">
                       <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white shadow-sm shrink-0 flex items-center justify-center text-white text-[8px]">⚡</span>
-                      <span className="text-[10px] font-medium text-gray-600">{centralGigs.length} Broadcast Live</span>
+                      <span className="text-[10px] font-medium text-gray-600">{instantGigs.length} Broadcast Live</span>
                     </div>
                   )}
                   {mapPurpleJobs.length > 0 ? (
@@ -1416,7 +1521,7 @@ export default function Home() {
                       <span className="w-3.5 h-3.5 rounded-[3px] bg-violet-600 border-2 border-white shadow-sm shrink-0 flex items-center justify-center text-white text-[8px] font-black">+</span>
                       <span className="text-[10px] font-medium text-gray-600">{mapPurpleJobs.length} Lowongan</span>
                     </div>
-                  ) : centralGigs.length === 0 ? <p className="text-[10px] text-gray-400">Belum ada lowongan</p> : null}
+                  ) : (!radarOn || instantGigs.length === 0) ? <p className="text-[10px] text-gray-400">Belum ada lowongan</p> : null}
                 </div>
                 {selectedJob && (
                   <div className="absolute bottom-4 left-4 right-4 z-10 bg-white rounded-xl shadow-lg border border-gray-100 p-3 flex justify-between items-center">
@@ -1430,6 +1535,18 @@ export default function Home() {
                 <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile}
                   onApply={isSuspended ? undefined : handleApply} onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect} />
               </div>
+
+            ) : workerView === "scheduled" ? (
+              <>
+                <ScheduledJobsFeed
+                  jobs={scheduledGigs}
+                  suspended={isSuspended}
+                  onSelect={(job) => setSelectedJob(job)}
+                  onChat={(job) => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id })}
+                />
+                <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile}
+                  onApply={isSuspended ? undefined : handleApply} onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect} />
+              </>
 
             ) : (
               <div className="flex-1 overflow-y-auto bg-gray-50">
