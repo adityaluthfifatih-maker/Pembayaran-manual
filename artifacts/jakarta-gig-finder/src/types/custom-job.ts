@@ -51,17 +51,12 @@ export interface CustomJob {
   daysPaid?: number;             // on-site daily fractions already released
 }
 
-export const durasiKontrakOptions: { value: DurasiKontrak; label: string; rate: number }[] = [
-  { value: "harian",  label: "Harian (Gig biasa)",      rate: 0.15 },
-  { value: "1_bulan", label: "1 Bulan (Jangka pendek)", rate: 0.15 },
-  { value: "3_bulan", label: "3 Bulan (Paruh waktu)",   rate: 0.15 },
-  { value: "6_bulan", label: "6 Bulan (Semi-tetap)",    rate: 0.15 },
+export const durasiKontrakOptions: { value: DurasiKontrak; label: string }[] = [
+  { value: "harian",  label: "Harian (Gig biasa)"      },
+  { value: "1_bulan", label: "1 Bulan (Jangka pendek)" },
+  { value: "3_bulan", label: "3 Bulan (Paruh waktu)"   },
+  { value: "6_bulan", label: "6 Bulan (Semi-tetap)"    },
 ];
-
-/** Alias kept for compatibility — always returns the flat platform fee */
-export function commissionRate(_durasi?: DurasiKontrak): number {
-  return 0.15;
-}
 
 /** Gross wage per worker. Every payment type is a flat nominal (no hourly ×8). */
 export function calcTotal(nominal: number, _pembayaran?: PaymentType): number {
