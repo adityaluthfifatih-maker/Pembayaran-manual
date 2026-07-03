@@ -327,8 +327,14 @@ export default function Home() {
   // `application_status` partial update (handled below in handleStatusChange).
   const applicationHandlerRef = useRef<(e: ApplicationEvent) => void>(() => {});
   const processedApplicationRef = useRef<Set<number>>(new Set());
+  // Buffer for events that arrive before the auth cookie resolves (race window).
+  const preAuthApplicationBuffer = useRef<ApplicationEvent[]>([]);
   applicationHandlerRef.current = (e: ApplicationEvent) => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      // Auth hasn't resolved yet — park the event and replay it once it does.
+      preAuthApplicationBuffer.current.push(e);
+      return;
+    }
 
     if (currentUser.role === "perusahaan") {
       // ── Employer side: new application arrived (application_new) ──────
@@ -375,6 +381,13 @@ export default function Home() {
   useEffect(() => {
     return subscribeApplication((e) => applicationHandlerRef.current(e));
   }, []);
+
+  // Replay any application events that arrived before auth resolved.
+  useEffect(() => {
+    if (!currentUser) return;
+    const buffered = preAuthApplicationBuffer.current.splice(0);
+    buffered.forEach((e) => applicationHandlerRef.current(e));
+  }, [currentUser]);
 
   // ── Employer: hydrate existing applications on login/refresh ─────
   // Fetches all applications from the server for the logged-in employer so the
