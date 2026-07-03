@@ -1,0 +1,30 @@
+Please build, refine, and fully deploy the complete unified architecture for the Rekhastha application using Power Mode. Integrate all these specific requirements cleanly into the codebase:
+
+1. RECRUITMENT LOGIC PIPELINE (Apply -> Accept -> Attendance & Chat):
+- Modify the workflow: When a Worker clicks "Apply", the application status must be set to 'pending'. The worker CANNOT access the live chat or QR attendance system yet.
+- On the Employer/HR Dashboard, provide a list of incoming applications with "Accept" and "Reject" action buttons.
+- Clicking "Accept" updates the status to 'accepted'. Only then, instantly unlock the Live Chat room and the QR Attendance menu for that specific worker.
+
+2. WORKER MAP "MY LOCATION" FLOATING BUTTON:
+- On the Worker's map view, add a floating circular navigation button. Clicking this button must trigger navigator.geolocation.getCurrentPosition() to fetch the worker's exact coordinates and instantly re-center/pan the map view back to their current position marker.
+
+3. EMPLOYER SMART HYBRID LOCATION INPUT (Search Autocomplete + Map Pin + Current GPS):
+- On the Employer's Instant Job creation form, implement a comprehensive location selector:
+  A. Text Search Autocomplete: Provide a text input field for the address. When HR types a location name (e.g., "UNJ" or "Universitas Negeri Jakarta"), the application must automatically search, show autocomplete recommendations, and pan the map directly to that selected location.
+  B. Manual Map Pin Placement: Allow HR to click directly on the interactive map or drag-and-drop a marker pin to manually select or fine-tune the exact job location.
+  C. "Gunakan Lokasi Saya Saat Ini" Button: Add a shortcut button that fetches the HR's current browser HTML5 Geolocation, automatically updates the text input, and moves the map marker.
+- Ensure the final resolved Latitude, Longitude, and Text Address are synchronized and stored in the database for proximity measurements.
+
+4. REAL-TIME NOTIFICATION SYSTEM RESTORATION:
+- Inspect and fix the real-time event system or database notification handlers that were broken during the server freeze.
+- Restore the code that triggers and displays instant pop-ups/radar alerts on both Worker and Employer dashboards when key actions occur (e.g., when a new application arrives, or when a job status updates).
+
+5. REALISTIC LOW-RATE PLATFORM FEE SYSTEM (0% Worker Cut, Cheap Employer Fee):
+- Workers must receive 100% of their advertised salary with ZERO platform cuts (Aplikator tidak memotong upah pekerja).
+- Charge a dynamic platform fee to the Employer on top of the worker's salary during job creation, using these optimized, business-friendly rates:
+  * General/Manual Labor Jobs: 2% to 3% additional fee.
+  * Skilled Trades/Technical Jobs: 5% additional fee.
+  * Professional/Specialist Jobs: 7% to 10% additional fee.
+- Update backend billing calculators and show a transparent breakdown (Salary + Low Platform Fee = Total Payment) to the Employer before posting.
+
+Run all necessary database schema migrations, verify WebSocket/API real-time routes, and deploy the application smoothly.
