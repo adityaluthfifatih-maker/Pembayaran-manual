@@ -289,6 +289,28 @@ export default function Home() {
     return unsubscribe;
   }, []);
 
+  // ── Employer gig history: sync own jobs from server into customJobs ───────
+  // On page reload customJobs starts empty; the employer's own gigs come back
+  // via centralGigs (server hydration). This effect merges them into customJobs
+  // so the history / escrow panel always shows the stored jobCategory + feeRate
+  // from the server record — not a client-side default.
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "perusahaan") return;
+    const myServerGigs = centralGigs.filter((g) => g.employerId === currentUser.id);
+    if (myServerGigs.length === 0) return;
+    setCustomJobs((prev) => {
+      const localIds = new Set(prev.map((j) => j.id));
+      // Update feeRate + jobCategory for gigs already in local state.
+      const updated = prev.map((j) => {
+        const srv = myServerGigs.find((g) => g.id === j.id);
+        return srv ? { ...j, feeRate: srv.feeRate, jobCategory: srv.jobCategory } : j;
+      });
+      // Append server gigs that have no local copy yet (e.g. after reload).
+      const newFromServer = myServerGigs.filter((g) => !localIds.has(g.id));
+      return [...updated, ...newFromServer];
+    });
+  }, [centralGigs, currentUser]);
+
   // ── Real-time QR attendance (Presensi) — EMPLOYER side ───────────
   // The worker device flips its own shift state locally on a successful scan
   // (see ClockInModal). This subscriber acts ONLY on the employer device that
