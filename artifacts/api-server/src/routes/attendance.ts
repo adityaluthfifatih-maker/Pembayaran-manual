@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { randomUUID } from "crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, attendanceTable, gigsTable } from "@workspace/db";
 import { broadcastAttendance } from "../lib/realtime";
@@ -31,6 +31,11 @@ function sweepExpired(): void {
   for (const [token, rec] of tokens) {
     if (rec.expiresAt <= now) tokens.delete(token);
   }
+}
+
+/** Returns today's date as "YYYY-MM-DD" in the Asia/Jakarta timezone. */
+function jakartaDateString(): string {
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Jakarta" });
 }
 
 const tokenBody = z.object({
@@ -82,6 +87,9 @@ const scanBody = z.object({
  * Worker redeems a scanned QR token. The recorded worker name is taken from the
  * authenticated session — never trusted from the body — so a scan cannot be
  * attributed to someone else.
+ *
+ * A worker may not scan the same event kind (masuk/pulang) more than once for
+ * the same job on the same calendar day. Duplicates return HTTP 409.
  */
 router.post("/attendance/scan", async (req, res): Promise<void> => {
   const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
@@ -102,12 +110,38 @@ router.post("/attendance/scan", async (req, res): Promise<void> => {
   }
   tokens.delete(parsed.data.token); // single-use
 
+  const scanDate = jakartaDateString();
+
+  // Duplicate-scan guard: one masuk and one pulang per worker per job per day.
+  const [existing] = await db
+    .select({ id: attendanceTable.id })
+    .from(attendanceTable)
+    .where(
+      and(
+        eq(attendanceTable.jobId, rec.jobId),
+        eq(attendanceTable.workerId, user.id),
+        eq(attendanceTable.kind, rec.kind),
+        eq(attendanceTable.scanDate, scanDate),
+      ),
+    );
+  if (existing) {
+    res.status(409).json({
+      error:
+        rec.kind === "masuk"
+          ? "Anda sudah melakukan presensi masuk hari ini untuk pekerjaan ini."
+          : "Anda sudah melakukan presensi pulang hari ini untuk pekerjaan ini.",
+    });
+    return;
+  }
+
   const [row] = await db
     .insert(attendanceTable)
     .values({
       jobId: rec.jobId,
+      workerId: user.id,
       workerName: user.name,
       kind: rec.kind,
+      scanDate,
     })
     .returning();
 
