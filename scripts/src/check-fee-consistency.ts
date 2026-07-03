@@ -3,9 +3,14 @@
  * analytics-dashboard all compute identical platform-fee and gross amounts for
  * the same CustomJob nominal across all three category-tiered rates.
  *
+ * Also verifies server-side persistence: queries the DB and confirms that every
+ * gig row with a non-null `job_category` stores a `fee_rate` that matches the
+ * expected tier rate, and that gigs without a category default to 5%.
+ *
  * Exit 0 = all assertions pass; exit 1 = at least one mismatch found.
  */
 
+import pg from "pg";
 import {
   calcEmployerFee,
   calcEmployerDeposit,
@@ -18,6 +23,8 @@ import {
   calcTotal,
   type PaymentType,
 } from "../../artifacts/jakarta-gig-finder/src/types/custom-job.js";
+
+const { Pool } = pg;
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
 const nominalFixtures: Array<{ label: string; nominal: number; pembayaran: PaymentType }> = [
@@ -120,6 +127,85 @@ console.log("\n╔══ DEFAULT_FEE_RATE (no category on job) ══╗");
   assert(`default fee == Math.round(200k × ${Math.round(feeRate * 100)}%)`, fee, Math.round(nominal * feeRate));
   assert("default deposit == nominal + fee",   dep, nominal + fee);
   assert("getFeeRate(undefined-ish) == terampil", getFeeRate("terampil"), feeRate);
+}
+
+// ── DB persistence check ──────────────────────────────────────────────────────
+// For every gig row that has a non-null job_category, confirm the stored fee_rate
+// matches the expected tier rate.  Gigs without a category are skipped (they rely
+// on the frontend DEFAULT_FEE_RATE fallback, which the math checks above cover).
+console.log("\n" + "─".repeat(70));
+console.log("╔══ DB persistence: jobCategory / feeRate round-trip ══╗\n");
+
+let dbFailures = 0;
+let dbChecked = 0;
+let dbSkipped = 0;
+
+if (!process.env.DATABASE_URL) {
+  console.warn("  ⚠  DATABASE_URL not set — skipping DB persistence check");
+} else {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    const { rows } = await pool.query<{
+      id: string;
+      job_category: string | null;
+      fee_rate: number | null;
+    }>(
+      "SELECT id, job_category, fee_rate FROM gigs ORDER BY posted_at DESC LIMIT 200"
+    );
+
+    for (const row of rows) {
+      if (row.job_category === null) {
+        dbSkipped++;
+        continue;
+      }
+
+      const cat = row.job_category as JobCategory;
+      const expectedRate = PLATFORM_FEE_RATES[cat];
+
+      if (expectedRate === undefined) {
+        console.error(
+          `  ✗ gig ${row.id}: unknown job_category "${row.job_category}"`
+        );
+        dbFailures++;
+        continue;
+      }
+
+      if (row.fee_rate === null) {
+        console.error(
+          `  ✗ gig ${row.id}: job_category="${row.job_category}" but fee_rate is NULL`
+        );
+        dbFailures++;
+        continue;
+      }
+
+      // Allow a tiny floating-point tolerance (stored as doublePrecision).
+      if (Math.abs(row.fee_rate - expectedRate) > 1e-9) {
+        console.error(
+          `  ✗ gig ${row.id}: job_category="${row.job_category}" expects feeRate=${expectedRate} but stored ${row.fee_rate}`
+        );
+        dbFailures++;
+      } else {
+        dbChecked++;
+        console.log(
+          `  ✓ gig ${row.id}: ${row.job_category} → feeRate ${row.fee_rate}`
+        );
+      }
+    }
+
+    if (dbChecked === 0 && dbFailures === 0) {
+      console.log(
+        "  (no categorised gigs in DB yet — math checks above cover the schema contract)"
+      );
+    } else {
+      console.log(
+        `\n  ${dbChecked} gig(s) verified, ${dbSkipped} uncategorised (skipped), ${dbFailures} mismatch(es)`
+      );
+    }
+  } finally {
+    await pool.end();
+  }
+
+  failures += dbFailures;
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────

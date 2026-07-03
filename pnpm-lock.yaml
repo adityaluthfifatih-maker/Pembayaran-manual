@@ -678,10 +678,17 @@ importers:
         version: 0.31.10
 
   scripts:
+    dependencies:
+      pg:
+        specifier: ^8.20.0
+        version: 8.20.0
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
         version: 25.6.2
+      '@types/pg':
+        specifier: ^8.11.6
+        version: 8.20.0
       tsx:
         specifier: 'catalog:'
         version: 4.21.0

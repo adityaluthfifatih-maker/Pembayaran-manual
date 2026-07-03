@@ -9,8 +9,12 @@
     "check-fee-consistency": "tsx ./src/check-fee-consistency.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "pg": "^8.20.0"
+  },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/pg": "^8.11.6",
     "tsx": "catalog:"
   }
 }
