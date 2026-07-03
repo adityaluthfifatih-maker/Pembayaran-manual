@@ -129,6 +129,35 @@ async function hydrate(): Promise<void> {
   }
 }
 
+/**
+ * Re-fetch all applications from the server and fan each row out through
+ * `applicationSubscribers`. Called on WS reconnect so any `application_new`
+ * events that were missed during the offline window are recovered.
+ *
+ * Deduplication is the subscriber's responsibility: the employer handler in
+ * home.tsx checks `processedApplicationRef` before adding a row to state, so
+ * already-visible applications are silently dropped and only new ones appear.
+ */
+async function hydrateApplications(): Promise<void> {
+  try {
+    const res = await fetch(`${API_BASE}/applications`);
+    if (!res.ok) return;
+    const rows = (await res.json()) as ApplicationEvent[];
+    if (!rows.length) return;
+    for (const row of rows) {
+      for (const cb of [...applicationSubscribers]) {
+        try {
+          cb(row);
+        } catch {
+          /* a broken subscriber must not break the fan-out */
+        }
+      }
+    }
+  } catch {
+    /* offline / server not ready — subscribers will catch up on the next reconnect */
+  }
+}
+
 let ws: WebSocket | null = null;
 let wsRetry = 0;
 let wsHasOpened = false;
@@ -150,10 +179,15 @@ function connectWs(): void {
 
     ws.onopen = () => {
       wsRetry = 0;
-      // On a RECONNECT, re-hydrate so any gigs broadcast while this client was
+      // On a RECONNECT, re-hydrate so any events broadcast while this client was
       // offline are recovered (initial hydrate already ran in ensureStarted).
       if (wsHasOpened) {
         void hydrate();
+        // Also re-fetch applications: any `application_new` events missed during
+        // the offline window are replayed through applicationSubscribers.
+        // The employer handler in home.tsx deduplicates via processedApplicationRef,
+        // so already-visible rows are silently dropped.
+        void hydrateApplications();
       }
       wsHasOpened = true;
     };
