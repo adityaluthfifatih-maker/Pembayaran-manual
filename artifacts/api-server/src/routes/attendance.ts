@@ -149,4 +149,41 @@ router.post("/attendance/scan", async (req, res): Promise<void> => {
   res.status(201).json(row);
 });
 
+const statusQuery = z.object({
+  jobId: z.coerce.number(),
+});
+
+/**
+ * Worker checks their own attendance status for today.
+ * Returns { scannedIn: boolean } — true when a "masuk" record already exists
+ * for the requesting worker + job + today's Jakarta date.
+ */
+router.get("/attendance/status", async (req, res): Promise<void> => {
+  const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
+  if (!user) {
+    res.status(401).json({ error: "Tidak terautentikasi." });
+    return;
+  }
+  const parsed = statusQuery.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const scanDate = jakartaDateString();
+  const [existing] = await db
+    .select({ id: attendanceTable.id })
+    .from(attendanceTable)
+    .where(
+      and(
+        eq(attendanceTable.jobId, parsed.data.jobId),
+        eq(attendanceTable.workerId, user.id),
+        eq(attendanceTable.kind, "masuk"),
+        eq(attendanceTable.scanDate, scanDate),
+      ),
+    );
+
+  res.json({ scannedIn: !!existing });
+});
+
 export default router;

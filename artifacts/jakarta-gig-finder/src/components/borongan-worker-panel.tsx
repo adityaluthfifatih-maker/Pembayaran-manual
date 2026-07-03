@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { Link2, QrCode, CheckCircle2, Clock3, XCircle, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Link2, QrCode, CheckCircle2, Clock3, XCircle, Loader2, ScanLine } from "lucide-react";
 import {
   submitRemoteProof,
   onsiteCheckout,
+  fetchAttendanceStatus,
   type DailyPayout,
 } from "@/lib/borongan-client";
 import type { CustomJob } from "@/types/custom-job";
@@ -134,11 +135,20 @@ function OnsiteDailyQr({ activeJob, onJobUpdate }: BoronganWorkerPanelProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastPayout, setLastPayout] = useState<DailyPayout | null>(null);
+  const [scannedIn, setScannedIn] = useState<boolean | null>(null);
 
   const totalDays = activeJob.jumlahHari ?? 1;
   const daysPaid = activeJob.daysPaid ?? 0;
   const done = daysPaid >= totalDays;
   const progressPct = Math.min(100, Math.round((daysPaid / Math.max(1, totalDays)) * 100));
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAttendanceStatus(activeJob.id)
+      .then(({ scannedIn: s }) => { if (!cancelled) setScannedIn(s); })
+      .catch(() => { if (!cancelled) setScannedIn(false); });
+    return () => { cancelled = true; };
+  }, [activeJob.id]);
 
   const checkout = async () => {
     setBusy(true);
@@ -201,6 +211,21 @@ function OnsiteDailyQr({ activeJob, onJobUpdate }: BoronganWorkerPanelProps) {
           <p className="text-xs font-bold text-emerald-700">
             Seluruh {totalDays} hari upah telah dicairkan.
           </p>
+        </div>
+      ) : scannedIn === null ? (
+        <div className="flex items-center justify-center gap-2 py-3">
+          <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+          <span className="text-xs text-gray-500">Memeriksa presensi...</span>
+        </div>
+      ) : !scannedIn ? (
+        <div className="flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-3 py-3">
+          <ScanLine className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-black text-amber-800">Scan QR masuk terlebih dahulu</p>
+            <p className="text-[11px] text-amber-700 mt-0.5 leading-snug">
+              Minta employer untuk menampilkan QR presensi masuk hari ini sebelum dapat check-out.
+            </p>
+          </div>
         </div>
       ) : (
         <button

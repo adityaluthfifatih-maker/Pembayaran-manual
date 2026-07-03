@@ -45,6 +45,15 @@ export interface DailyPayout {
   at: string;
 }
 
+export async function fetchAttendanceStatus(jobId: number): Promise<{ scannedIn: boolean }> {
+  const res = await fetch(`${API_BASE}/attendance/status?jobId=${jobId}`);
+  if (!res.ok) {
+    const msg = await res.json().catch(() => ({}));
+    throw new Error((msg as { error?: string }).error ?? "Gagal memeriksa presensi.");
+  }
+  return (await res.json()) as { scannedIn: boolean };
+}
+
 export function onsiteCheckout(
   jobId: number,
 ): Promise<{ gig: CustomJob; payout: DailyPayout }> {
