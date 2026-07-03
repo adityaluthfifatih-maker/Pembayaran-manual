@@ -99,11 +99,28 @@ function notify(gig: Gig | null): void {
  * effect in home.tsx — no intermediate DEFAULT_FEE_RATE flash is possible.
  */
 function reviveGig(raw: Record<string, unknown>): Gig {
+  // Coerce feeRate to a finite number.  If the server sends it as a string
+  // (e.g. "0.03") or as NaN we convert safely; if it is absent we leave it
+  // undefined so callers fall back to the category default rather than NaN.
+  let feeRate: number | undefined;
+  if (raw.feeRate !== undefined && raw.feeRate !== null) {
+    const coerced = Number(raw.feeRate);
+    if (Number.isFinite(coerced)) {
+      feeRate = coerced;
+    } else {
+      console.warn(
+        "[reviveGig] Non-numeric feeRate received from server — ignoring.",
+        { raw: raw.feeRate, gigId: raw.id },
+      );
+    }
+  }
+
   return {
     ...(raw as unknown as Gig),
     type: "custom_job",
     postedAt: raw.postedAt ? new Date(raw.postedAt as string) : new Date(),
     jobDate: raw.jobDate ? new Date(raw.jobDate as string) : undefined,
+    feeRate,
   };
 }
 
