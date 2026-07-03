@@ -89,7 +89,7 @@ function randomJakartaCoords() {
 }
 
 const JAKARTA_CENTER = { lat: -6.2088, lng: 106.8456 };
-type JobStatus = "accepted" | "clocked_in" | "completed" | null;
+type JobStatus = "applied" | "accepted" | "clocked_in" | "completed" | null;
 type CompanyView = "jobs" | "analytics";
 type AppTab = "home" | "chat" | "profile";
 
@@ -376,6 +376,14 @@ export default function Home() {
             : n,
         ),
       );
+      // Employer just accepted — unlock clock-in and start the 15-min grace timer.
+      // We match on jobId (present in the partial event) against the worker's
+      // activeJob so we never unlock for a different job they also applied for.
+      if (e.status === "diterima" && activeJob && e.jobId === activeJob.id) {
+        setJobStatus("accepted");
+        setGraceJob(activeJob);
+        setGraceDeadline(Date.now() + CLOCKIN_GRACE_MS);
+      }
     }
   };
   useEffect(() => {
@@ -1041,13 +1049,14 @@ export default function Home() {
       }
     }).catch(() => {/* best effort */});
     setActiveJob(job);
-    setJobStatus("accepted");
+    // Status starts at "applied" — clock-in and the 15-min grace timer only
+    // activate once the employer explicitly clicks "Terima" (status → "diterima"),
+    // which arrives here via the WS `application_status` event handler below.
+    setJobStatus("applied");
     setContractClosed(false);
     setDisputeDeadline(null);
     setDisputeJob(null);
     setStandbyReroute(null);
-    setGraceJob(job); // snapshot job so grace-expiry penalty/re-route target the right job
-    setGraceDeadline(Date.now() + CLOCKIN_GRACE_MS); // start 15-min Clock-In grace timer
   }, []);
 
   const handleStatusChange = useCallback((id: number, status: ApplicationStatus) => {
@@ -1395,56 +1404,80 @@ export default function Home() {
             ) : (
               <div className="p-4 space-y-3">
                 {/* Active job banner */}
-                {activeJob && (
-                  <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shrink-0">
-                        <Briefcase className="w-5 h-5 text-white" />
+                {activeJob && (() => {
+                  const isAccepted = notifications.some(
+                    n => n.jobId === activeJob.id && n.status === "diterima",
+                  );
+                  return (
+                    <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shrink-0">
+                          <Briefcase className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">{activeJob.posisi}</p>
+                          <p className="text-xs text-primary font-medium">{activeJob.namaPerusahaan || "Perusahaan"}</p>
+                          <p className="text-[10px] text-gray-500 mt-0.5">
+                            {jobStatus === "clocked_in" ? "🟢 Sedang bekerja" : jobStatus === "completed" ? "✅ Selesai" : isAccepted ? "⏳ Menunggu Clock-In" : "⌛ Menunggu persetujuan perusahaan"}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-bold text-gray-900">{activeJob.posisi}</p>
-                        <p className="text-xs text-primary font-medium">{activeJob.namaPerusahaan || "Perusahaan"}</p>
-                        <p className="text-[10px] text-gray-500 mt-0.5">{jobStatus === "clocked_in" ? "🟢 Sedang bekerja" : jobStatus === "completed" ? "✅ Selesai" : "⏳ Menunggu Clock-In"}</p>
-                      </div>
+                      {isAccepted ? (
+                        <button
+                          onClick={() => setChatContext({ jobTitle: activeJob.posisi, nominal: activeJob.nominal, companyName: activeJob.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker", hiringMode: activeJob.hiringMode, jobId: activeJob.id, workerId: currentUser?.id ?? "" })}
+                          className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-xl shrink-0">
+                          <MessageSquare className="w-3.5 h-3.5" /> Chat
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1 text-[10px] text-gray-400 font-semibold shrink-0">
+                          <Lock className="w-3 h-3" /> Menunggu
+                        </div>
+                      )}
                     </div>
-                    <button
-                      onClick={() => setChatContext({ jobTitle: activeJob.posisi, nominal: activeJob.nominal, companyName: activeJob.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker", hiringMode: activeJob.hiringMode, jobId: activeJob.id, workerId: currentUser?.id ?? "" })}
-                      className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-xl shrink-0">
-                      <MessageSquare className="w-3.5 h-3.5" /> Chat
-                    </button>
-                  </div>
-                )}
+                  );
+                })()}
                 {/* Other jobs from the list */}
-                {customJobs.filter(j => j.id !== activeJob?.id).map((job) => (
-                  <div key={job.id} className="bg-white border border-gray-100 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center font-black text-sm text-white ${job.isAgency ? "bg-gradient-to-br from-blue-600 to-violet-600" : "bg-violet-600"}`}>
-                        {job.isAgency ? "AG" : "+"}
+                {customJobs.filter(j => j.id !== activeJob?.id).map((job) => {
+                  const isAccepted = notifications.some(
+                    n => n.jobId === job.id && n.status === "diterima",
+                  );
+                  return (
+                    <div key={job.id} className="bg-white border border-gray-100 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center font-black text-sm text-white ${job.isAgency ? "bg-gradient-to-br from-blue-600 to-violet-600" : "bg-violet-600"}`}>
+                          {job.isAgency ? "AG" : "+"}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-900 truncate">{job.posisi}</p>
+                          <p className="text-xs text-gray-500 truncate">{job.namaPerusahaan || "Perusahaan"}</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">Rp {job.nominal.toLocaleString("id-ID")} / {paymentUnits[job.pembayaran]}</p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-gray-900 truncate">{job.posisi}</p>
-                        <p className="text-xs text-gray-500 truncate">{job.namaPerusahaan || "Perusahaan"}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">Rp {job.nominal.toLocaleString("id-ID")} / {paymentUnits[job.pembayaran]}</p>
-                      </div>
+                      {isAccepted ? (
+                        <button
+                          onClick={() => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "" })}
+                          className="flex items-center gap-1.5 bg-gray-100 text-gray-700 text-xs font-bold px-3 py-2 rounded-xl shrink-0 hover:bg-primary/10 hover:text-primary transition-colors">
+                          <MessageSquare className="w-3.5 h-3.5" /> Chat
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1 text-[10px] text-gray-400 font-semibold shrink-0 px-2">
+                          <Lock className="w-3 h-3" /> Menunggu persetujuan
+                        </div>
+                      )}
                     </div>
-                    <button
-                      onClick={() => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "" })}
-                      className="flex items-center gap-1.5 bg-gray-100 text-gray-700 text-xs font-bold px-3 py-2 rounded-xl shrink-0 hover:bg-primary/10 hover:text-primary transition-colors">
-                      <MessageSquare className="w-3.5 h-3.5" /> Chat
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )
           ) : (
             /* ── COMPANY CHAT LIST ── */
-            notifications.filter(n => n.status === "diterima" || n.status === "ditinjau").length === 0 ? (
+            notifications.filter(n => n.status === "diterima").length === 0 ? (
               <ChatEmptyState label="Belum ada percakapan aktif" sub="Terima lamaran pekerja terlebih dahulu untuk mulai berkomunikasi." />
             ) : (
               <div className="p-4 space-y-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1">Pelamar Diterima / Ditinjau</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1">Pelamar Diterima</p>
                 {notifications
-                  .filter(n => n.status === "diterima" || n.status === "ditinjau")
+                  .filter(n => n.status === "diterima")
                   .map((n) => {
                     const job = customJobs.find(j => j.id === n.jobId);
                     const isAccepted = n.status === "diterima";
@@ -1701,13 +1734,13 @@ export default function Home() {
                 )}
 
                 {activeJob && (
-                  <div className={`rounded-xl px-3 py-2.5 border flex items-center justify-between gap-2 ${jobStatus === "clocked_in" ? "bg-primary text-white border-primary" : jobStatus === "completed" ? "bg-gray-50 border-gray-200" : "bg-amber-50 border-amber-200"}`}>
+                  <div className={`rounded-xl px-3 py-2.5 border flex items-center justify-between gap-2 ${jobStatus === "clocked_in" ? "bg-primary text-white border-primary" : jobStatus === "completed" ? "bg-gray-50 border-gray-200" : jobStatus === "accepted" ? "bg-amber-50 border-amber-200" : "bg-gray-100 border-gray-200"}`}>
                     <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <Briefcase className={`w-4 h-4 shrink-0 ${jobStatus === "clocked_in" ? "text-white" : jobStatus === "completed" ? "text-gray-400" : "text-amber-600"}`} />
+                      <Briefcase className={`w-4 h-4 shrink-0 ${jobStatus === "clocked_in" ? "text-white" : jobStatus === "completed" ? "text-gray-400" : jobStatus === "accepted" ? "text-amber-600" : "text-gray-400"}`} />
                       <div className="flex-1 min-w-0">
                         <p className={`text-xs font-bold truncate ${jobStatus === "clocked_in" ? "text-white" : "text-gray-900"}`}>{activeJob.posisi}</p>
                         <p className={`text-[10px] ${jobStatus === "clocked_in" ? "text-white/70" : "text-gray-500"}`}>
-                          {jobStatus === "accepted" ? "Diterima — belum Clock-In" : jobStatus === "clocked_in" ? "Sedang bekerja..." : "Selesai"}
+                          {jobStatus === "applied" ? "⌛ Menunggu persetujuan perusahaan" : jobStatus === "accepted" ? "Diterima — belum Clock-In" : jobStatus === "clocked_in" ? "Sedang bekerja..." : "Selesai"}
                         </p>
                       </div>
                     </div>
@@ -1720,6 +1753,14 @@ export default function Home() {
                             <MessageSquare className="w-3 h-3" />
                           </button>
                           <button onClick={() => { setActiveJob(null); setJobStatus(null); }} className="text-[10px] font-bold bg-gray-200 text-gray-600 px-2 py-1.5 rounded-lg">Tutup</button>
+                        </>
+                      ) : jobStatus === "applied" ? (
+                        /* Pending acceptance — show only a cancel option */
+                        <>
+                          <div className="flex items-center gap-1 text-[10px] text-gray-400 font-semibold">
+                            <Lock className="w-3 h-3" /> Menunggu
+                          </div>
+                          <button data-testid="button-cancel-job" onClick={handleWorkerCancelJob} className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-1.5 rounded-lg">Batal</button>
                         </>
                       ) : (
                         <>

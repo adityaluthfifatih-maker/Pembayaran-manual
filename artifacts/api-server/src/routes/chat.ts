@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { eq, asc, and } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, chatMessagesTable, gigsTable } from "@workspace/db";
+import { db, chatMessagesTable, gigsTable, applicationsTable } from "@workspace/db";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
 import { broadcastChatMessage } from "../lib/realtime";
 
@@ -48,6 +48,26 @@ async function resolveParticipant(
   if (!isEmployer && !isWorker) {
     res.status(404).json({ error: "Tidak ditemukan." });
     return null;
+  }
+
+  // Workers may only open a chat thread once the employer has accepted their
+  // application (status = "diterima"). Without this check any worker who knows
+  // a jobId/workerId pair could read or write messages before being accepted.
+  if (isWorker) {
+    const [app] = await db
+      .select({ status: applicationsTable.status })
+      .from(applicationsTable)
+      .where(
+        and(
+          eq(applicationsTable.jobId, jobId),
+          eq(applicationsTable.workerId, workerId),
+        ),
+      )
+      .limit(1);
+    if (!app || app.status !== "diterima") {
+      res.status(403).json({ error: "Chat hanya tersedia setelah lamaran Anda diterima oleh pemberi kerja." });
+      return null;
+    }
   }
 
   return { user, gig };
