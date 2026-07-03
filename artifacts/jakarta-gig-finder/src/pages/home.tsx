@@ -46,7 +46,7 @@ import CompanyProfilePage from "@/components/company-profile-page";
 import { workers, Worker } from "@/data/workers";
 import { jobs } from "@/data/jobs";
 import { CustomJob, calcTotal, paymentUnits } from "@/types/custom-job";
-import { WalletTransaction, EscrowEvent, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, calcEmployerDeposit, DEFAULT_FEE_RATE, DURATION_DAYS, LATE_CLOCKIN_PENALTY, CLOCKIN_GRACE_MS, DISPUTE_WINDOW_MS } from "@/types/escrow";
+import { WalletTransaction, EscrowEvent, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, calcEmployerDeposit, DEFAULT_FEE_RATE, DURATION_DAYS, LATE_CLOCKIN_PENALTY, CLOCKIN_GRACE_MS, DISPUTE_WINDOW_MS, warnIfFeeRateMissing } from "@/types/escrow";
 import { WorkerProfile, isVerified } from "@/types/worker-profile";
 import { AuthUser } from "@/types/auth";
 import {
@@ -594,6 +594,7 @@ export default function Home() {
     const notif = notifications.find(n => n.id === notifId);
     if (!notif || notif.status === "selesai") return;
     const job = customJobs.find(j => j.id === notif.jobId);
+    if (job) warnIfFeeRateMissing(job, "handleSplitPayment");
     const gross = job?.escrowAmount ?? calcTotal(job?.nominal ?? 0, job?.pembayaran ?? "per_shift");
     const jobFeeRate = job?.feeRate ?? DEFAULT_FEE_RATE;
     const { platformCut, workerNet } = calcSplit(gross, jobFeeRate);
@@ -738,6 +739,7 @@ export default function Home() {
     const job = customJobs.find(j => j.id === jobId);
     if (!job || !job.escrowAmount) return;
     if (winner === "worker") {
+      warnIfFeeRateMissing(job, "handleAdminResolve");
       const jobFeeRate = job.feeRate ?? DEFAULT_FEE_RATE;
       const { platformCut, workerNet } = calcSplit(job.escrowAmount, jobFeeRate);
       setWalletBalance(prev => prev + workerNet);
@@ -1164,6 +1166,7 @@ export default function Home() {
     // Guard: never auto-release a job that was already disputed or released.
     const live = customJobs.find(j => j.id === job.id);
     if (live && (live.escrowStatus === "disputed" || live.escrowStatus === "released")) return;
+    warnIfFeeRateMissing(job, "handleAutoRelease");
     const gross = job.escrowAmount ?? calcTotal(job.nominal, job.pembayaran);
     const { platformCut, workerNet } = calcSplit(gross, job.feeRate ?? DEFAULT_FEE_RATE);
     setWalletBalance(prev => prev + workerNet);

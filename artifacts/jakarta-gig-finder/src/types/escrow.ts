@@ -48,6 +48,31 @@ export function getFeeRate(category?: JobCategory | null): number {
   return category ? (PLATFORM_FEE_RATES[category] ?? DEFAULT_FEE_RATE) : DEFAULT_FEE_RATE;
 }
 
+/**
+ * Runtime guard: emit a console.error whenever an escrow-release path is about
+ * to fall back to DEFAULT_FEE_RATE because neither `feeRate` nor `jobCategory`
+ * was stored on the gig.  This makes the mismatch immediately visible in the
+ * browser console instead of silently over/under-paying.
+ *
+ * Call this BEFORE every `calcSplit` / `calcDailyFraction` that would use
+ * `job.feeRate ?? DEFAULT_FEE_RATE`.
+ */
+export function warnIfFeeRateMissing(
+  job: { id?: number | string; posisi?: string; feeRate?: number; jobCategory?: JobCategory | null },
+  context: string,
+): void {
+  if (job.feeRate === undefined || job.feeRate === null) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[Rekhastha] feeRate mismatch — escrow released with DEFAULT_FEE_RATE (${DEFAULT_FEE_RATE * 100}%) ` +
+      `instead of the category-specific rate. ` +
+      `Context: ${context} | jobId: ${job.id ?? "?"} | posisi: ${job.posisi ?? "?"} | ` +
+      `jobCategory: ${job.jobCategory ?? "missing"}. ` +
+      `Fix: ensure category + feeRate are both stored when the gig is created (hiring-mode-panel → onJobPosted).`,
+    );
+  }
+}
+
 export const ADMIN_DISPUTE_FEE = 0.05;     // 5% biaya admin sengketa (unchanged)
 export const CANCELLATION_FEE_1HR = 20_000; // Rp 20.000 potongan jika pemberi kerja batal <1 jam
 
