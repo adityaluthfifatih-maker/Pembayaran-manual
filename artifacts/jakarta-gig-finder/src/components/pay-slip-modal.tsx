@@ -20,7 +20,11 @@ function formatDate(d: Date) {
 }
 
 export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedOutAt, onClose }: PaySlipModalProps) {
-  const gross = calcTotal(job.nominal, job.pembayaran);
+  const jumlahHari = job.jumlahHari ?? 1;
+  const isMultiDay = job.hiringMode === "lama" && jumlahHari > 1;
+  const gross = isMultiDay
+    ? job.nominal * jumlahHari
+    : calcTotal(job.nominal, job.pembayaran);
   const commission = calcEmployerFee(gross, job.feeRate ?? DEFAULT_FEE_RATE);
   const net = gross;
 
@@ -120,7 +124,18 @@ export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedO
             {/* Earnings breakdown */}
             <div className="py-3 border-b border-dashed border-gray-300 space-y-1">
               <p className="font-bold text-[10px] text-gray-700 mb-1.5">RINCIAN PENGHASILAN</p>
-              <Row label={`Total Kotor (${paymentLabels[job.pembayaran]})`} value={formatRp(gross)} />
+              {isMultiDay ? (
+                <>
+                  <Row label="Tarif Harian" value={`${formatRp(job.nominal)} / hari`} />
+                  <Row
+                    label="Rincian Kontrak"
+                    value={`${formatRp(job.nominal)}/hari × ${jumlahHari} hari × ${job.kuota} orang`}
+                  />
+                  <Row label="Total Kotor Pekerja" value={formatRp(gross)} />
+                </>
+              ) : (
+                <Row label={`Total Kotor (${paymentLabels[job.pembayaran]})`} value={formatRp(gross)} />
+              )}
             </div>
 
             {/* Deductions */}
