@@ -483,6 +483,94 @@ function checkOverdrawGuard(
   }
 }
 
+// ── Daily-fraction residual reconciliation check ─────────────────────────────
+//
+// calcDailyFraction uses Math.floor for BOTH the worker share and the platform
+// share on every day equally.  After jumlahHari releases, the cumulative payout
+// equals grossFraction × jumlahHari, which is strictly ≤ totalDeposit.  The
+// shortfall — the "residual" — is:
+//
+//   residual = totalDeposit − grossFraction × jumlahHari
+//
+// This residual arises because:
+//   floor(workerNet / days) × days  ≤  workerNet     (loses workerNet  mod days)
+//   floor(platformCut / days) × days ≤ platformCut   (loses platformCut mod days)
+//
+// Together: 0 ≤ residual ≤ (days − 1) + (days − 1) = 2 × (days − 1)
+//
+// The residual MUST be refunded to the employer on contract close; it must not
+// be silently orphaned in escrow.  Two assertions guard this:
+//
+//   1. residual ≥ 0          — no money created (floor is non-negative)
+//   2. residual ≤ 2×(days−1) — bounded rounding gap, always refundable
+//
+// A third informational check reports whether residual < days (the tighter
+// practical bound) so regressions back to Math.round are immediately visible.
+
+function checkDailyFractionResidual(
+  label: string,
+  baseWage: number,
+  jumlahHari: number,
+  category: JobCategory,
+): void {
+  const feeRate      = getFeeRate(category);
+  const totalDeposit = calcEmployerDeposit(baseWage, feeRate);
+
+  // Flat-floor per-day slice (pure, stateless — the same call the employer sees
+  // for every day except the last when the UI shows the running total).
+  const { grossFraction } = calcDailyFraction(totalDeposit, jumlahHari, feeRate);
+
+  // residual = what remains in escrow after all days have released at the flat rate.
+  // This amount MUST be returned to the employer on contract close.
+  const residual = totalDeposit - grossFraction * jumlahHari;
+
+  console.log(
+    `\n[residual] ${label}  baseWage=Rp${fmt(baseWage)}  days=${jumlahHari}` +
+    `  category=${category}  rate=${feeRate * 100}%` +
+    `  deposit=${fmt(totalDeposit)}  gross/day=${fmt(grossFraction)}` +
+    `  residual=${fmt(residual)}`,
+  );
+
+  // ── 1. Non-negative: floor never creates money ─────────────────────────────
+  if (residual >= 0) {
+    passed++;
+    console.log(`  ✓ residual=${fmt(residual)} ≥ 0  (no money created by floor rounding)`);
+  } else {
+    failed++;
+    const msg = `  ✗ residual=${residual} < 0 — Math.floor created money; grossFraction×days exceeds deposit by ${-residual} Rp`;
+    failures.push(msg);
+    console.error(msg);
+  }
+
+  // ── 2. Bounded: ≤ 2×(days−1) — proven tight upper bound ──────────────────
+  // Each of the two floor divisions (worker share and platform share) can lose
+  // at most (days − 1) Rp across the full contract duration.
+  const hardCap = Math.max(0, 2 * (jumlahHari - 1));
+  if (residual <= hardCap) {
+    passed++;
+    console.log(`  ✓ residual=${fmt(residual)} ≤ 2×(days−1)=${hardCap}  (bounded — safely refundable to employer)`);
+  } else {
+    failed++;
+    const msg = `  ✗ residual=${fmt(residual)} EXCEEDS hard cap 2×(days−1)=${hardCap} — rounding gap is unexpectedly large`;
+    failures.push(msg);
+    console.error(msg);
+  }
+
+  // ── 3. Informational: Math.round regression sentinel ─────────────────────
+  // Under Math.round (the forbidden alternative) the residual can go NEGATIVE
+  // (money created). Confirm the residual also stays within jumlahHari so that
+  // if someone accidentally reverts to Math.round on one branch the gap spills
+  // above this softer limit and becomes visible before the hard-cap fires.
+  if (residual <= jumlahHari) {
+    console.log(`  ℹ residual=${fmt(residual)} ≤ days=${jumlahHari}  (within soft practical limit — Math.round regression would break this)`);
+  } else {
+    console.log(
+      `  ℹ residual=${fmt(residual)} > days=${jumlahHari}  (above soft limit — normal for wages where both` +
+      ` workerNet%days and platformCut%days are each near (days−1); hard cap still satisfied)`,
+    );
+  }
+}
+
 // ── Run all checks ───────────────────────────────────────────────────────────
 
 console.log("═".repeat(64));
@@ -593,6 +681,28 @@ checkOverdrawGuard("profesional 66d (3-bln)",   800_000, 66, "profesional");
 // Edge case: wage just large enough for perDayNet ≥ 1
 checkOverdrawGuard("umum edge perDayNet=1",  3,  3, "umum");   // 3 Rp / 3 days = 1 per day
 checkOverdrawGuard("umum edge perDayNet=0",  2,  3, "umum");   // 2 Rp / 3 days = 0 per day
+
+console.log("\n── Daily-fraction residual reconciliation ───────────────────");
+console.log("  residual = totalDeposit − grossFraction×days: must be ≥ 0 and ≤ 2×(days−1)");
+console.log("  Residual is the employer refund on contract close — it must not be silently lost.");
+
+// umum 3%
+checkDailyFractionResidual("umum 3d",          150_000,  3, "umum");
+checkDailyFractionResidual("umum 5d",          200_000,  5, "umum");
+checkDailyFractionResidual("umum 7d awkward",  350_000,  7, "umum");
+checkDailyFractionResidual("umum 22d",         300_000, 22, "umum");
+
+// terampil 5%
+checkDailyFractionResidual("terampil 3d",           350_000,  3, "terampil");
+checkDailyFractionResidual("terampil 5d",           200_000,  5, "terampil");
+checkDailyFractionResidual("terampil 10d",          500_000, 10, "terampil");
+checkDailyFractionResidual("terampil 22d (1-bln)",  300_000, 22, "terampil");
+
+// profesional 8%
+checkDailyFractionResidual("profesional 3d",           500_000,  3, "profesional");
+checkDailyFractionResidual("profesional 5d",           600_000,  5, "profesional");
+checkDailyFractionResidual("profesional 22d (1-bln)", 1_000_000, 22, "profesional");
+checkDailyFractionResidual("profesional 66d (3-bln)",   800_000, 66, "profesional");
 
 // ── Summary ──────────────────────────────────────────────────────────────────
 

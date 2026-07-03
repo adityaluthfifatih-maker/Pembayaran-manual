@@ -210,11 +210,22 @@ router.post("/borongan/onsite/checkout", async (req, res): Promise<void> => {
     }
 
     const dayIndex = already + 1;
+    const deposit = gig.escrowAmount ?? 0;
     const { grossFraction, platformFee, netToWorker } = dailyFractionFor(
-      gig.escrowAmount ?? 0,
+      deposit,
       totalDays,
       dayIndex,
     );
+
+    // Flat-floor residual: the amount left in escrow after all days release at
+    // the constant per-day rate (Math.floor).  On the final day this represents
+    // the rounding gap that MUST be refunded to the employer — not orphaned.
+    // Formula: deposit − (Math.floor(workerNetTotal/d) + Math.floor(platformCutTotal/d)) × d
+    const workerNetTotal = Math.round(deposit / 1.15);
+    const platformCutTotal = deposit - workerNetTotal;
+    const perDayNet = Math.floor(workerNetTotal / totalDays);
+    const perDayFee = Math.floor(platformCutTotal / totalDays);
+    const residualForEmployer = deposit - (perDayNet + perDayFee) * totalDays;
 
     const [payout] = await tx
       .insert(dailyPayoutsTable)
@@ -239,7 +250,7 @@ router.post("/borongan/onsite/checkout", async (req, res): Promise<void> => {
       .where(eq(gigsTable.id, gig.id))
       .returning();
 
-    return { status: 201 as const, gig: updated, payout, dayIndex, netToWorker };
+    return { status: 201 as const, gig: updated, payout, dayIndex, netToWorker, residualForEmployer };
   });
 
   if (outcome.status !== 201) {
@@ -250,10 +261,19 @@ router.post("/borongan/onsite/checkout", async (req, res): Promise<void> => {
   broadcastGig(outcome.gig);
   broadcastDailyPayout(outcome.payout);
   req.log.info(
-    { jobId: outcome.gig.id, dayIndex: outcome.dayIndex, netToWorker: outcome.netToWorker },
+    {
+      jobId: outcome.gig.id,
+      dayIndex: outcome.dayIndex,
+      netToWorker: outcome.netToWorker,
+      residualForEmployer: outcome.residualForEmployer,
+    },
     "On-site borongan daily fraction released",
   );
-  res.status(201).json({ gig: outcome.gig, payout: outcome.payout });
+  res.status(201).json({
+    gig: outcome.gig,
+    payout: outcome.payout,
+    residualForEmployer: outcome.residualForEmployer,
+  });
 });
 
 export default router;
