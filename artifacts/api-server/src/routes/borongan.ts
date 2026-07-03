@@ -222,6 +222,12 @@ router.post("/borongan/onsite/checkout", async (req, res): Promise<void> => {
   // Read-modify-write under a row lock inside a single transaction so two
   // concurrent check-outs can never pay the same day twice or overshoot the
   // contract duration.
+  //
+  // Per-day dedup: a "pulang" attendance record is inserted atomically inside
+  // the transaction. If the DB unique constraint on (jobId, workerId, kind,
+  // scanDate) fires (concurrent or repeated request), onConflictDoNothing
+  // returns an empty array → 409. This is the authoritative guard; the row is
+  // also the audit trail for today's check-out.
   const outcome = await db.transaction(async (tx) => {
     const [gig] = await tx
       .select()
@@ -240,6 +246,29 @@ router.post("/borongan/onsite/checkout", async (req, res): Promise<void> => {
     // ensures two concurrent checkouts never both read `already < totalDays`.
     if (already >= totalDays) {
       return { status: 409 as const, error: "Semua pembayaran harian sudah dicairkan." };
+    }
+
+    // Atomic per-day dedup: insert the "pulang" attendance record now.
+    // onConflictDoNothing silently skips on a unique-constraint violation so
+    // the transaction doesn't abort; an empty returning() means today's
+    // checkout was already claimed → return 409 before any funds move.
+    const pulangRows = await tx
+      .insert(attendanceTable)
+      .values({
+        jobId: gig.id,
+        workerId: user.id,
+        workerName: user.name,
+        kind: "pulang",
+        scanDate: today,
+      })
+      .onConflictDoNothing()
+      .returning({ id: attendanceTable.id });
+
+    if (pulangRows.length === 0) {
+      return {
+        status: 409 as const,
+        error: "Kamu sudah checkout hari ini. Hanya satu checkout per hari yang diperbolehkan.",
+      };
     }
 
     const dayIndex = already + 1;
