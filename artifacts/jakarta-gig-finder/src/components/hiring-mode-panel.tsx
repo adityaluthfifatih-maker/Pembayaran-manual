@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { CustomJob, PaymentType, HiringMode, paymentLabels, paymentInputLabels, paymentUnits } from "@/types/custom-job";
 import { ApplicationNotification, ApplicationStatus, maskName } from "@/types/notification";
-import { JobCategory, PLATFORM_FEE_RATES, getFeeRate, DEFAULT_FEE_RATE, CANCELLATION_FEE_1HR } from "@/types/escrow";
+import { JobCategory, PLATFORM_FEE_RATES, getFeeRate, CANCELLATION_FEE_1HR } from "@/types/escrow";
 import { AuthUser } from "@/types/auth";
 
 interface HiringModePanelProps {
@@ -287,7 +287,7 @@ export default function HiringModePanel({
   const handleConfirmEscrow = (jobId: number) => {
     const job = customJobs.find(j => j.id === jobId);
     if (!job) return;
-    const jobFeeRate = job.feeRate ?? DEFAULT_FEE_RATE;
+    const jobFeeRate = job.feeRate ?? getFeeRate(job.jobCategory);
     const jumlahHari = job.jumlahHari ?? 1;
     const amount = Math.round(job.nominal * jumlahHari * job.kuota * (1 + jobFeeRate));
     onLockEscrow(jobId, amount);
@@ -1008,7 +1008,7 @@ export default function HiringModePanel({
 
                 {/* Bisa Lama: escrow confirmation inline */}
                 {confirmingEscrow && !isJobLocked && (() => {
-                  const confirmFeeRate = job.feeRate ?? DEFAULT_FEE_RATE;
+                  const confirmFeeRate = job.feeRate ?? getFeeRate(job.jobCategory);
                   const confirmDays    = job.jumlahHari ?? 1;
                   const confirmBase    = job.nominal * confirmDays * job.kuota;
                   const confirmFee     = Math.round(confirmBase * confirmFeeRate);
