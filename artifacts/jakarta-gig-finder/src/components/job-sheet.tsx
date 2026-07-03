@@ -96,7 +96,7 @@ export default function JobSheet({
             <Calendar className="w-4 h-4 text-primary shrink-0" />
             <div>
               <p className="text-xs font-semibold text-primary">{durasiLabel}</p>
-              <p className="text-[10px] text-gray-500">Biaya platform 15% (ditanggung perusahaan)</p>
+              <p className="text-[10px] text-gray-500">Biaya platform {Math.round((job.feeRate ?? DEFAULT_FEE_RATE) * 100)}% (ditanggung perusahaan)</p>
             </div>
           </div>
 
@@ -136,7 +136,7 @@ export default function JobSheet({
               </div>
               <div className="border-t border-primary/10 pt-2 space-y-1.5">
                 <div className="flex justify-between text-xs text-gray-500">
-                  <span>Biaya platform 15% (ditanggung perusahaan)</span>
+                  <span>Biaya platform {Math.round((job.feeRate ?? DEFAULT_FEE_RATE) * 100)}% (ditanggung perusahaan)</span>
                   <span>+{formatRp(commission)}</span>
                 </div>
               </div>

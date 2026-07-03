@@ -46,7 +46,7 @@ import CompanyProfilePage from "@/components/company-profile-page";
 import { workers, Worker } from "@/data/workers";
 import { jobs } from "@/data/jobs";
 import { CustomJob, calcTotal, paymentUnits } from "@/types/custom-job";
-import { WalletTransaction, EscrowEvent, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, calcEmployerDeposit, DURATION_DAYS, LATE_CLOCKIN_PENALTY, CLOCKIN_GRACE_MS, DISPUTE_WINDOW_MS } from "@/types/escrow";
+import { WalletTransaction, EscrowEvent, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, calcEmployerDeposit, DEFAULT_FEE_RATE, DURATION_DAYS, LATE_CLOCKIN_PENALTY, CLOCKIN_GRACE_MS, DISPUTE_WINDOW_MS } from "@/types/escrow";
 import { WorkerProfile, isVerified } from "@/types/worker-profile";
 import { AuthUser } from "@/types/auth";
 import {
@@ -595,7 +595,8 @@ export default function Home() {
     if (!notif || notif.status === "selesai") return;
     const job = customJobs.find(j => j.id === notif.jobId);
     const gross = job?.escrowAmount ?? calcTotal(job?.nominal ?? 0, job?.pembayaran ?? "per_shift");
-    const { platformCut, workerNet } = calcSplit(gross);
+    const jobFeeRate = job?.feeRate ?? DEFAULT_FEE_RATE;
+    const { platformCut, workerNet } = calcSplit(gross, jobFeeRate);
 
     setCustomJobs(prev => prev.map(j =>
       j.id === notif.jobId ? { ...j, escrowStatus: "released" as const } : j
@@ -737,7 +738,8 @@ export default function Home() {
     const job = customJobs.find(j => j.id === jobId);
     if (!job || !job.escrowAmount) return;
     if (winner === "worker") {
-      const { platformCut, workerNet } = calcSplit(job.escrowAmount);
+      const jobFeeRate = job.feeRate ?? DEFAULT_FEE_RATE;
+      const { platformCut, workerNet } = calcSplit(job.escrowAmount, jobFeeRate);
       setWalletBalance(prev => prev + workerNet);
       setWalletTransactions(prev => [...prev, {
         id: Date.now(),
@@ -765,7 +767,7 @@ export default function Home() {
       toStatus: finalStatus,
       actor: "admin",
       amount: winner === "worker"
-        ? calcSplit(job.escrowAmount!).workerNet
+        ? calcSplit(job.escrowAmount!, job.feeRate ?? DEFAULT_FEE_RATE).workerNet
         : Math.round((job.escrowAmount ?? 0) * (1 - ADMIN_DISPUTE_FEE)),
       timestamp: new Date(),
       note: winner === "worker"
@@ -1098,7 +1100,7 @@ export default function Home() {
     if (!chatContext?.jobId) return;
     const jid = chatContext.jobId;
     setCustomJobs(prev => prev.map(j => j.id === jid
-      ? { ...j, nominal: newNominal, escrowAmount: calcEmployerDeposit(calcEscrowAmount(newNominal, j.pembayaran, j.jumlahHari ?? 1, j.kuota)) }
+      ? { ...j, nominal: newNominal, escrowAmount: calcEmployerDeposit(calcEscrowAmount(newNominal, j.pembayaran, j.jumlahHari ?? 1, j.kuota), j.feeRate ?? DEFAULT_FEE_RATE) }
       : j
     ));
     setChatContext(prev => prev ? { ...prev, nominal: newNominal } : null);
@@ -1163,7 +1165,7 @@ export default function Home() {
     const live = customJobs.find(j => j.id === job.id);
     if (live && (live.escrowStatus === "disputed" || live.escrowStatus === "released")) return;
     const gross = job.escrowAmount ?? calcTotal(job.nominal, job.pembayaran);
-    const { platformCut, workerNet } = calcSplit(gross);
+    const { platformCut, workerNet } = calcSplit(gross, job.feeRate ?? DEFAULT_FEE_RATE);
     setWalletBalance(prev => prev + workerNet);
     setWalletTransactions(prev => [{
       id: Date.now(), type: "credit" as const,
