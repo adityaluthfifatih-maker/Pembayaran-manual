@@ -311,14 +311,19 @@ export default function Home() {
     setCustomJobs((prev) => {
       const localIds = new Set(prev.map((j) => j.id));
       // Prefer the server value when present; keep the local value when the
-      // server sends null — prevents a null WS echo from regressing a fee badge.
+      // server sends null — prevents a null WS echo from regressing a badge.
+      // escrowStatus and escrowAmount are included so that a hydration pass
+      // arriving after a stale WS echo always restores the DB-authoritative
+      // lock state (fixes the disappearing lock badge on page reload).
       const updated = prev.map((j) => {
         const srv = myServerGigs.find((g) => g.id === j.id);
         if (!srv) return j;
         return {
           ...j,
-          feeRate:     srv.feeRate     ?? j.feeRate,
-          jobCategory: srv.jobCategory ?? j.jobCategory,
+          feeRate:      srv.feeRate      ?? j.feeRate,
+          jobCategory:  srv.jobCategory  ?? j.jobCategory,
+          escrowStatus: srv.escrowStatus ?? j.escrowStatus,
+          escrowAmount: srv.escrowAmount ?? j.escrowAmount,
         };
       });
       // Append server gigs that have no local copy yet (e.g. after reload).
