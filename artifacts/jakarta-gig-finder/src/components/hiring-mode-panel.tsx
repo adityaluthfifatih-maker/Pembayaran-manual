@@ -167,6 +167,7 @@ export default function HiringModePanel({
   const [broadcastState, setBroadcastState] = useState<BroadcastState>("idle");
   const [broadcastCount, setBroadcastCount] = useState(0);
   const [lastBroadcastJob, setLastBroadcastJob] = useState<string>("");
+  const [showCepatConfirm, setShowCepatConfirm] = useState(false);
 
   // ── Bisa Lama state ───────────────────────────────────────────
   const [sortKey, setSortKey] = useState<SortKey>("rating");
@@ -324,6 +325,71 @@ export default function HiringModePanel({
 
   return (
     <>
+    {/* ── Cepat Broadcast Fee Confirmation Modal ───────────────── */}
+    {showCepatConfirm && (
+      <div className="fixed inset-0 z-[250] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}>
+        <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4">
+          {/* Header */}
+          <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center mx-auto">
+            <Lock className="w-6 h-6 text-orange-500" />
+          </div>
+          <div className="text-center">
+            <h3 className="font-black text-gray-900">Konfirmasi Kunci Escrow</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Periksa rincian biaya sebelum broadcast dikirimkan
+            </p>
+          </div>
+
+          {/* Fee breakdown */}
+          <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 space-y-2.5">
+            <div className="flex items-center gap-2 mb-1">
+              <Banknote className="w-4 h-4 text-orange-600 shrink-0" />
+              <span className="text-xs font-bold text-orange-800">Rincian Dana Escrow</span>
+              <span className="ml-auto text-[10px] font-black px-2 py-0.5 rounded-full bg-orange-200 text-orange-800">
+                {Math.round(feeRate * 100)}% TERKUNCI
+              </span>
+            </div>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between text-gray-700">
+                <span>Upah Bersih Pekerja ({kuotaNum} orang)</span>
+                <span className="font-semibold text-emerald-700">{formatRp(upahPokok)}</span>
+              </div>
+              <div className="flex justify-between text-gray-600">
+                <span>Biaya Platform Rekhastha ({Math.round(feeRate * 100)}% Beban Perusahaan)</span>
+                <span className="font-semibold">{formatRp(biayaSistem)}</span>
+              </div>
+              <div className="flex justify-between font-bold border-t border-orange-200 pt-2 text-sm text-orange-900">
+                <span>Total Dana yang Dititipkan ke Escrow</span>
+                <span>{formatRp(totalEscrow)}</span>
+              </div>
+            </div>
+            <p className="text-[10px] text-emerald-700/80 leading-relaxed pt-0.5">
+              🟢 Pekerja menerima 100% upah utuh — biaya platform sepenuhnya ditanggung perusahaan.
+            </p>
+          </div>
+
+          {/* Posisi label */}
+          <p className="text-[11px] text-gray-500 text-center">
+            Posisi: <span className="font-bold text-gray-800">{posisi}</span> · Broadcast ke radius 5km
+          </p>
+
+          {/* Action buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setShowCepatConfirm(false); handleCepatSubmit(); }}
+              className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold py-3 rounded-xl text-sm shadow-md active:scale-[0.98] transition-all">
+              🔒 Kunci &amp; Broadcast
+            </button>
+            <button
+              onClick={() => setShowCepatConfirm(false)}
+              className="flex-1 bg-gray-100 text-gray-700 font-semibold py-3 rounded-xl text-sm hover:bg-gray-200 transition-colors">
+              Batal
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     {/* ── Cancel Confirmation Modal ────────────────────────────── */}
     {cancelConfirmJobId !== null && (() => {
       const job = customJobs.find(j => j.id === cancelConfirmJobId);
@@ -741,7 +807,7 @@ export default function HiringModePanel({
               {broadcastState === "idle" && (
                 hiringMode === "cepat" ? (
                   <button
-                    onClick={handleCepatSubmit}
+                    onClick={() => { if (formValid) setShowCepatConfirm(true); }}
                     disabled={!formValid}
                     className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all ${
                       formValid
