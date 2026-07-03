@@ -712,7 +712,7 @@ export default function Home() {
         actor: "company" as const,
         amount: escrowAmount,
         timestamp: new Date(),
-        note: `Dana dikunci setelah seleksi kandidat (Posting Reguler — biaya sistem 15%).`,
+        note: `Dana dikunci setelah seleksi kandidat (Posting Reguler — biaya platform ${Math.round((job.feeRate ?? DEFAULT_FEE_RATE) * 100)}% (${job.jobCategory ?? "terampil"})).`,
       }]);
     }
   }, [customJobs]);
