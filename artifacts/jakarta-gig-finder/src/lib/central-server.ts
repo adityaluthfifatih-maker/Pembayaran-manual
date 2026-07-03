@@ -86,7 +86,15 @@ function notify(gig: Gig | null): void {
   }
 }
 
-/** Normalise a raw server row into the app's `CustomJob` shape (revive Dates). */
+/**
+ * Normalise a raw server row into the app's `CustomJob` shape (revive Dates).
+ *
+ * The spread of `raw` intentionally carries ALL server fields through verbatim,
+ * including `feeRate` and `jobCategory`.  This is what guarantees that both the
+ * hydration path (GET /api/gigs → notify(null)) and the WS-echo path
+ * (gig_broadcast → notify(gig)) deliver the same stored fee rate to the sync
+ * effect in home.tsx — no intermediate DEFAULT_FEE_RATE flash is possible.
+ */
 function reviveGig(raw: Record<string, unknown>): Gig {
   return {
     ...(raw as unknown as Gig),

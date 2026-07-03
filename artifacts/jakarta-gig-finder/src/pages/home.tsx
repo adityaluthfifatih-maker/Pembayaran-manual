@@ -290,20 +290,36 @@ export default function Home() {
   }, []);
 
   // ── Employer gig history: sync own jobs from server into customJobs ───────
-  // On page reload customJobs starts empty; the employer's own gigs come back
-  // via centralGigs (server hydration). This effect merges them into customJobs
-  // so the history / escrow panel always shows the stored jobCategory + feeRate
-  // from the server record — not a client-side default.
+  // On page reload customJobs starts empty. The employer's own gigs return via
+  // TWO concurrent paths that can arrive in either order:
+  //
+  //   1. Hydration  — GET /api/gigs completes and calls notify(null).
+  //   2. WS echo    — a gig_broadcast frame arrives before hydration finishes.
+  //
+  // Both paths flow through setCentralGigs → this effect.  In both cases the
+  // server record carries the stored feeRate (reviveGig spreads the raw DB row
+  // unchanged), so the fee-rate badge is correct regardless of which fires first.
+  //
+  // Guard: use `srv.feeRate ?? j.feeRate` (not a bare assignment) so that a WS
+  // frame carrying a null feeRate (e.g. an in-flight echo for a legacy gig)
+  // never clobbers a correctly-set local value that arrived from the other path.
+  // The same guard applies to jobCategory.
   useEffect(() => {
     if (!currentUser || currentUser.role !== "perusahaan") return;
     const myServerGigs = centralGigs.filter((g) => g.employerId === currentUser.id);
     if (myServerGigs.length === 0) return;
     setCustomJobs((prev) => {
       const localIds = new Set(prev.map((j) => j.id));
-      // Update feeRate + jobCategory for gigs already in local state.
+      // Prefer the server value when present; keep the local value when the
+      // server sends null — prevents a null WS echo from regressing a fee badge.
       const updated = prev.map((j) => {
         const srv = myServerGigs.find((g) => g.id === j.id);
-        return srv ? { ...j, feeRate: srv.feeRate, jobCategory: srv.jobCategory } : j;
+        if (!srv) return j;
+        return {
+          ...j,
+          feeRate:     srv.feeRate     ?? j.feeRate,
+          jobCategory: srv.jobCategory ?? j.jobCategory,
+        };
       });
       // Append server gigs that have no local copy yet (e.g. after reload).
       const newFromServer = myServerGigs.filter((g) => !localIds.has(g.id));
