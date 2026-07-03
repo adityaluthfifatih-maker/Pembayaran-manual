@@ -1020,6 +1020,12 @@ export default function HiringModePanel({
                           <span>Upah Bersih Pekerja ({job.kuota} orang{confirmDays > 1 ? ` × ${confirmDays} hari` : ""})</span>
                           <span className="font-semibold text-emerald-700">{formatRp(confirmBase)}</span>
                         </div>
+                        {confirmDays > 1 && (
+                          <div className="flex justify-between text-gray-500 text-[10px] pl-2 border-l-2 border-emerald-200">
+                            <span>{formatRp(job.nominal)}/hari × {confirmDays} hari × {job.kuota} orang</span>
+                            <span>= {formatRp(confirmBase)}</span>
+                          </div>
+                        )}
                         <div className="flex justify-between text-gray-600">
                           <span>Biaya Platform Rekhastha ({Math.round(confirmFeeRate * 100)}% Beban Perusahaan)</span>
                           <span className="font-semibold">{formatRp(confirmFee)}</span>
