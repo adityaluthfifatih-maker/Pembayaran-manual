@@ -933,37 +933,50 @@ export default function HiringModePanel({
                 )}
 
                 {/* Bisa Lama: escrow confirmation inline */}
-                {confirmingEscrow && !isJobLocked && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
-                    <p className="text-xs font-bold text-blue-900 flex items-center gap-2">
-                      <Lock className="w-3.5 h-3.5" /> Konfirmasi Penguncian Escrow
-                    </p>
-                    <div className="space-y-1 text-[11px]">
-                      <div className="flex justify-between text-gray-700">
-                        <span>Upah Pokok ({job.kuota} orang)</span>
-                        <span className="font-semibold">{formatRp(job.nominal * job.kuota)}</span>
+                {confirmingEscrow && !isJobLocked && (() => {
+                  const confirmFeeRate = job.feeRate ?? DEFAULT_FEE_RATE;
+                  const confirmBase    = job.nominal * job.kuota;
+                  const confirmFee     = Math.round(confirmBase * confirmFeeRate);
+                  const confirmTotal   = confirmBase + confirmFee;
+                  return (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Lock className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                        <span className="text-xs font-bold text-blue-900">Konfirmasi Penguncian Escrow</span>
+                        <span className="ml-auto text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-200 text-blue-800">
+                          {Math.round(confirmFeeRate * 100)}% MARK-UP
+                        </span>
                       </div>
-                      <div className="flex justify-between text-gray-600">
-                        <span>Biaya Sistem Platform ({Math.round((job.feeRate ?? DEFAULT_FEE_RATE) * 100)}%)</span>
-                        <span className="font-semibold">{formatRp(job.nominal * job.kuota * (job.feeRate ?? DEFAULT_FEE_RATE))}</span>
+                      <div className="space-y-1.5 text-[11px]">
+                        <div className="flex justify-between text-gray-700">
+                          <span>Upah Bersih Pekerja ({job.kuota} orang)</span>
+                          <span className="font-semibold text-emerald-700">{formatRp(confirmBase)}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-600">
+                          <span>Biaya Platform Rekhastha ({Math.round(confirmFeeRate * 100)}% Beban Perusahaan)</span>
+                          <span className="font-semibold">{formatRp(confirmFee)}</span>
+                        </div>
+                        <div className="flex justify-between font-bold text-blue-900 border-t border-blue-200 pt-1.5 text-xs">
+                          <span>Total Dana yang Dititipkan ke Escrow</span>
+                          <span>{formatRp(confirmTotal)}</span>
+                        </div>
+                        <p className="text-[10px] text-emerald-700/80 leading-relaxed pt-0.5">
+                          🟢 Pekerja menerima 100% upah utuh — biaya platform {Math.round(confirmFeeRate * 100)}% sepenuhnya ditanggung perusahaan.
+                        </p>
                       </div>
-                      <div className="flex justify-between font-bold text-blue-900 border-t border-blue-200 pt-1.5">
-                        <span>Total Dikunci Escrow</span>
-                        <span>{formatRp(job.nominal * job.kuota * (1 + (job.feeRate ?? DEFAULT_FEE_RATE)))}</span>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleConfirmEscrow(job.id)}
+                          className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98]">
+                          <Lock className="w-3.5 h-3.5" /> Kunci Sekarang
+                        </button>
+                        <button onClick={() => setEscrowConfirmJobId(null)}
+                          className="px-4 bg-gray-100 text-gray-600 text-xs font-bold py-2 rounded-xl hover:bg-gray-200 transition-colors">
+                          Batal
+                        </button>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => handleConfirmEscrow(job.id)}
-                        className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98]">
-                        <Lock className="w-3.5 h-3.5" /> Kunci Sekarang
-                      </button>
-                      <button onClick={() => setEscrowConfirmJobId(null)}
-                        className="px-4 bg-gray-100 text-gray-600 text-xs font-bold py-2 rounded-xl hover:bg-gray-200 transition-colors">
-                        Batal
-                      </button>
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* QR Clock-In display for employer (locked jobs with accepted applicants) */}
                 {isJobLocked && job.escrowStatus !== "disputed" && (
