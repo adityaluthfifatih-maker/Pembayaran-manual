@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, gigsTable, dailyPayoutsTable } from "@workspace/db";
+import { db, gigsTable, dailyPayoutsTable, attendanceTable } from "@workspace/db";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
 import { broadcastGig, broadcastDailyPayout } from "../lib/realtime";
 
@@ -167,12 +167,20 @@ router.post("/borongan/remote/reject", async (req, res): Promise<void> => {
 
 // ── Borongan Di Tempat (On-site daily QR fractional payout) ──────────
 
+/** Returns today's date as "YYYY-MM-DD" in the Asia/Jakarta timezone. */
+function jakartaDateString(): string {
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Jakarta" });
+}
+
 const checkoutBody = z.object({ jobId: z.coerce.number() });
 
 /**
  * Worker performs a verified daily QR check-out on an on-site borongan. One
  * day's fraction of the contract (TotalContractValue / DurationDays) is released
  * from escrow to the worker, minus the 15% corporate fee, and logged for audit.
+ *
+ * Pre-condition: the worker must have a "masuk" (check-in) attendance record
+ * for this job today. Without it the checkout is blocked with 403.
  */
 router.post("/borongan/onsite/checkout", async (req, res): Promise<void> => {
   const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
@@ -183,6 +191,31 @@ router.post("/borongan/onsite/checkout", async (req, res): Promise<void> => {
   const parsed = checkoutBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "jobId tidak valid." });
+    return;
+  }
+
+  // Attendance pre-condition: a "masuk" scan must exist for this worker today
+  // before any escrow fraction can be released. This prevents a worker from
+  // calling checkout without ever having QR-scanned in on site.
+  const today = jakartaDateString();
+  const [checkIn] = await db
+    .select({ id: attendanceTable.id })
+    .from(attendanceTable)
+    .where(
+      and(
+        eq(attendanceTable.jobId, parsed.data.jobId),
+        eq(attendanceTable.workerId, user.id),
+        eq(attendanceTable.kind, "masuk"),
+        eq(attendanceTable.scanDate, today),
+      ),
+    )
+    .limit(1);
+
+  if (!checkIn) {
+    res.status(403).json({
+      error:
+        "Kamu belum scan presensi masuk hari ini. Minta employer tampilkan QR masuk terlebih dahulu.",
+    });
     return;
   }
 
