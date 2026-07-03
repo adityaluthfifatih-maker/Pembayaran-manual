@@ -58,7 +58,7 @@ router.post("/applications", async (req, res): Promise<void> => {
     .insert(applicationsTable)
     .values({ ...parsed.data, workerId: user.id, employerId })
     .returning();
-  broadcastApplication(row);
+  broadcastApplication(row, employerId);
   req.log.info(
     { applicationId: row.id, jobId: row.jobId, workerId: row.workerId },
     "New job application submitted",

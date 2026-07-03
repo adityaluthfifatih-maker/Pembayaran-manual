@@ -144,12 +144,14 @@ export function broadcastDailyPayout(payout: unknown): void {
 }
 
 /**
- * Push a new worker application to every connected device. The employer device
- * that owns the job reacts by adding the applicant to its notification panel;
- * other devices ignore it.
+ * Push a new worker application only to the owning employer's sockets.
+ * Using sendToUser keeps masked NIK/NPWP/rekening off every other client.
  */
-export function broadcastApplication(application: unknown): void {
-  broadcast({ type: "application_new", application });
+export function broadcastApplication(
+  application: unknown,
+  employerId: string,
+): void {
+  sendToUser(employerId, JSON.stringify({ type: "application_new", application }));
 }
 
 /**
