@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, gigsTable, insertGigSchema } from "@workspace/db";
 import { broadcastGig } from "../lib/realtime";
@@ -32,8 +32,9 @@ router.post("/gigs", async (req, res): Promise<void> => {
 
   // Upsert by client-provided id so re-broadcasting a gig (e.g. escrow locked
   // after posting) replaces the row instead of failing on the primary key.
-  // The conflict-update set explicitly carries jobCategory and feeRate so that
-  // an escrow-lock re-broadcast never overwrites a categorised gig with nulls.
+  // COALESCE guards on jobCategory, feeRate, and escrowAmount ensure a
+  // re-broadcast that omits one of these fields (null incoming) never overwrites
+  // the already-stored value — the existing column value is kept instead.
   const [gig] = await db
     .insert(gigsTable)
     .values(parsed.data)
@@ -41,8 +42,9 @@ router.post("/gigs", async (req, res): Promise<void> => {
       target: gigsTable.id,
       set: {
         ...parsed.data,
-        jobCategory: parsed.data.jobCategory ?? undefined,
-        feeRate: parsed.data.feeRate ?? undefined,
+        jobCategory: sql`COALESCE(EXCLUDED.job_category, ${gigsTable.jobCategory})`,
+        feeRate: sql`COALESCE(EXCLUDED.fee_rate, ${gigsTable.feeRate})`,
+        escrowAmount: sql`COALESCE(EXCLUDED.escrow_amount, ${gigsTable.escrowAmount})`,
       },
     })
     .returning();
