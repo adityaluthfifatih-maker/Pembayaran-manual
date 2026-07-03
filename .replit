@@ -28,6 +28,10 @@ args = "fee-consistency"
 task = "workflow.run"
 args = "admin-auth-tests"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "api-server"
+
 [[workflows.workflow]]
 name = "check:escrow"
 author = "agent"
@@ -60,6 +64,18 @@ args = "pnpm --filter @workspace/api-server run test"
 
 [workflows.workflow.metadata]
 isValidation = true
+
+[[workflows.workflow]]
+name = "api-server"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=8080 pnpm --filter @workspace/api-server run dev"
+waitForPort = 8080
 
 [agent]
 stack = "PNPM_WORKSPACE"
