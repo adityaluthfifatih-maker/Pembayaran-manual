@@ -26,6 +26,7 @@ import {
   subscribeAttendance,
   subscribeApplication,
   postApplication,
+  reconnectWs,
   type AttendanceEvent,
   type ApplicationEvent,
   getActiveGigs,
@@ -333,15 +334,19 @@ export default function Home() {
       // ── Employer side: new application arrived (application_new) ──────
       // Partial status events have no workerName — skip them on the employer.
       if (!e.workerName) return;
-      const gig = allJobs.find((j) => j.id === e.jobId);
-      if (!gig || gig.employerId !== currentUser.id) return; // only my own jobs
+      // Trust the server's scoping: the server resolves employerId from the DB
+      // before inserting and before broadcasting, so any application_new event
+      // that reaches this client with a workerName is already for this employer.
+      // We do NOT re-check gig.employerId here because allJobs may not yet be
+      // hydrated when a fast WS event arrives right after page load.
       if (processedApplicationRef.current.has(e.id)) return; // duplicate WS frame
       processedApplicationRef.current.add(e.id);
+      const gig = allJobs.find((j) => j.id === e.jobId);
       const notif: ApplicationNotification = {
         id: nextNotifId++,
         serverId: e.id,  // DB row id for server-side status persistence
         jobId: e.jobId,
-        jobTitle: e.jobTitle || gig.posisi,
+        jobTitle: e.jobTitle || gig?.posisi || "",
         workerId: e.workerId,
         applicantName: e.workerName,
         applicantNikMasked: e.workerNikMasked,
@@ -507,6 +512,11 @@ export default function Home() {
     } else {
       setCompanyView("jobs");  // companies land on job management panel
     }
+    // The WS was opened at app-mount before the session cookie existed, so the
+    // server couldn't register this socket in userClients. Force a reconnect now
+    // so the new connection carries the cookie and gets into userClients — this
+    // is required for scoped chat delivery (sendToUser) to work.
+    reconnectWs();
   }, []);
 
   const handleLogout = useCallback(() => {

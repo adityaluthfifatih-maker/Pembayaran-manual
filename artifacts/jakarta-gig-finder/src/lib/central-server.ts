@@ -245,6 +245,27 @@ function ensureStarted(): void {
   connectWs();
 }
 
+/**
+ * Force-close the current WebSocket and immediately reconnect.
+ *
+ * Call this after a successful login so the new connection carries the
+ * freshly-set session cookie. Without this, the socket opened at app-mount
+ * (before auth) is never registered in the server's `userClients` map, and
+ * scoped deliveries (chat messages) are silently dropped.
+ *
+ * The existing auto-reconnect + hydrate path handles the re-open; all
+ * subscribers remain registered and receive events from the new socket.
+ */
+export function reconnectWs(): void {
+  if (typeof window === "undefined") return;
+  wsRetry = 0; // reconnect immediately, no backoff
+  try {
+    ws?.close();
+  } catch {
+    /* ignore errors on already-closing sockets */
+  }
+}
+
 // ── Public API (unchanged surface) ────────────────────────────────────
 
 async function postGig(gig: Gig): Promise<void> {
