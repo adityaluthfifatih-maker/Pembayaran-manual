@@ -21,9 +21,14 @@ function formatDate(d: Date) {
 
 export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedOutAt, onClose }: PaySlipModalProps) {
   const jumlahHari = job.jumlahHari ?? 1;
+  const daysPaid = job.daysPaid ?? 0;
   const isMultiDay = job.hiringMode === "lama" && jumlahHari > 1;
+  // For partial lama contracts (contract ended before all days completed), use
+  // the actual days paid so the payslip total matches the escrow release amount.
+  const isPartial = isMultiDay && daysPaid > 0 && daysPaid < jumlahHari;
+  const effectiveDays = isPartial ? daysPaid : jumlahHari;
   const gross = isMultiDay
-    ? job.nominal * jumlahHari
+    ? job.nominal * effectiveDays
     : calcTotal(job.nominal, job.pembayaran);
   const commission = calcEmployerFee(gross, job.feeRate ?? DEFAULT_FEE_RATE);
   const net = gross;
@@ -127,10 +132,21 @@ export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedO
               {isMultiDay ? (
                 <>
                   <Row label="Tarif Harian" value={`${formatRp(job.nominal)} / hari`} />
-                  <Row
-                    label="Rincian Kontrak"
-                    value={`${formatRp(job.nominal)}/hari × ${jumlahHari} hari × ${job.kuota} orang`}
-                  />
+                  {isPartial ? (
+                    <>
+                      <Row label="Durasi Kontrak" value={`${jumlahHari} hari (penuh)`} />
+                      <Row label="Hari Terbayar" value={`${effectiveDays} hari`} />
+                      <Row
+                        label="Rincian Aktual"
+                        value={`${formatRp(job.nominal)}/hari × ${effectiveDays} hari`}
+                      />
+                    </>
+                  ) : (
+                    <Row
+                      label="Rincian Kontrak"
+                      value={`${formatRp(job.nominal)}/hari × ${jumlahHari} hari × ${job.kuota} orang`}
+                    />
+                  )}
                   <Row label="Total Kotor Pekerja" value={formatRp(gross)} />
                 </>
               ) : (
