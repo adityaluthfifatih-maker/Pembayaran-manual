@@ -1,11 +1,12 @@
 import { useMemo } from "react";
 import {
   TrendingUp, DollarSign, Star, Briefcase, Zap, BarChart2,
-  ArrowUpRight, Shield, Users,
+  ArrowUpRight, Shield, Users, AlertTriangle,
 } from "lucide-react";
 import { CustomJob, calcTotal, durasiKontrakOptions } from "@/types/custom-job";
 import { calcEmployerFee, DEFAULT_FEE_RATE, PLATFORM_FEE_RATES } from "@/types/escrow";
 import { RatingPayload } from "@/components/rating-modal";
+import type { JobCategory } from "@/types/escrow";
 
 interface AnalyticsDashboardProps {
   customJobs: CustomJob[];
@@ -15,17 +16,47 @@ interface AnalyticsDashboardProps {
 
 function fmt(n: number) { return "Rp " + Math.round(n).toLocaleString("id-ID"); }
 
+/**
+ * Determine the fee certainty for a job.
+ *
+ * - "exact"    → feeRate was stored at posting time; value is authoritative.
+ * - "inferred" → feeRate is NULL but jobCategory is known; we can reconstruct
+ *                the rate from PLATFORM_FEE_RATES.  This is a reliable estimate
+ *                for gigs posted after category storage was introduced but before
+ *                feeRate snapshotting was added.
+ * - "unknown"  → both feeRate and jobCategory are absent (pre-category legacy
+ *                gigs).  Any figure shown is the DEFAULT_FEE_RATE (5%) guess
+ *                and may be wrong for umum (3%) or profesional (8%) gigs.
+ */
+type FeeCertainty = "exact" | "inferred" | "unknown";
+
+function resolveJobFee(job: CustomJob): { rate: number; certainty: FeeCertainty } {
+  if (job.feeRate != null) {
+    return { rate: job.feeRate, certainty: "exact" };
+  }
+  if (job.jobCategory && PLATFORM_FEE_RATES[job.jobCategory as JobCategory] != null) {
+    return { rate: PLATFORM_FEE_RATES[job.jobCategory as JobCategory], certainty: "inferred" };
+  }
+  return { rate: DEFAULT_FEE_RATE, certainty: "unknown" };
+}
 
 export default function AnalyticsDashboard({ customJobs, ratings, totalApplicants }: AnalyticsDashboardProps) {
   // ── Computed metrics ────────────────────────────────────────────
   const metrics = useMemo(() => {
     let totalGross = 0;
-    let totalComm = 0;
+    let totalCommKnown = 0;   // exact + inferred only
+    let unknownCount = 0;
+
     customJobs.forEach((job) => {
       const g = calcTotal(job.nominal, job.pembayaran);
-      const c = calcEmployerFee(g, job.feeRate ?? DEFAULT_FEE_RATE);
+      const { rate, certainty } = resolveJobFee(job);
+      const c = calcEmployerFee(g, rate);
       totalGross += g;
-      totalComm += c;
+      if (certainty === "unknown") {
+        unknownCount += 1;
+      } else {
+        totalCommKnown += c;
+      }
     });
 
     const workerRatings = ratings.filter((r) => r.raterType === "company");
@@ -34,19 +65,19 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
       : 0;
 
     const agencies = customJobs.filter((j) => j.isAgency).length;
+    const hasUnknown = unknownCount > 0;
 
-    return { totalGross, totalComm, avgRating, agencies };
+    return { totalGross, totalCommKnown, avgRating, agencies, unknownCount, hasUnknown };
   }, [customJobs, ratings]);
 
   // ── Per-job breakdown ────────────────────────────────────────────
   const jobBreakdowns = useMemo(() =>
     customJobs.map((job) => {
       const gross = calcTotal(job.nominal, job.pembayaran);
-      const jobFeeRate = job.feeRate ?? DEFAULT_FEE_RATE;
-      const comm = calcEmployerFee(gross, jobFeeRate);
+      const { rate, certainty } = resolveJobFee(job);
+      const comm = calcEmployerFee(gross, rate);
       const workerPay = gross;
-      const rate = jobFeeRate;
-      return { job, gross, comm, workerPay, rate };
+      return { job, gross, comm, workerPay, rate, certainty };
     }),
   [customJobs]);
 
@@ -61,10 +92,24 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
         <div className="pt-2">
           <div className="flex items-center gap-2">
             <BarChart2 className="w-5 h-5 text-emerald-400" />
-            <h2 className="text-lg font-black text-white tracking-tight">Analitik Keuangan & Performa</h2>
+            <h2 className="text-lg font-black text-white tracking-tight">Analitik Keuangan &amp; Performa</h2>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">Real-time · Auto-refresh setiap transaksi baru</p>
         </div>
+
+        {/* Warning banner for legacy gigs with unknown fee rates */}
+        {metrics.hasUnknown && (
+          <div
+            className="flex items-start gap-3 rounded-xl px-4 py-3"
+            style={{ background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.35)" }}
+          >
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-amber-300 leading-relaxed">
+              <span className="font-bold">{metrics.unknownCount} lowongan lama</span> tidak menyimpan kategori pekerjaan sehingga komisi pastinya tidak diketahui.
+              Baris tersebut ditandai <span className="font-bold">「?」</span> — nilai yang ditampilkan menggunakan tarif bawaan 5% dan <span className="font-bold">tidak dihitung</span> dalam Total Komisi.
+            </p>
+          </div>
+        )}
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 gap-3">
@@ -78,9 +123,16 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
           <MetricCard
             icon={<TrendingUp className="w-4 h-4" />}
             label="Total Komisi"
-            value={fmt(metrics.totalComm)}
-            sub={customJobs.length ? `${((metrics.totalComm / metrics.totalGross) * 100 || 0).toFixed(1)}% dari pengeluaran` : "—"}
+            value={fmt(metrics.totalCommKnown)}
+            sub={
+              metrics.hasUnknown
+                ? `Dari ${customJobs.length - metrics.unknownCount} lowongan (${metrics.unknownCount} dikecualikan)`
+                : customJobs.length
+                  ? `${((metrics.totalCommKnown / metrics.totalGross) * 100 || 0).toFixed(1)}% dari pengeluaran`
+                  : "—"
+            }
             accent="blue"
+            dimmed={metrics.hasUnknown}
           />
           <MetricCard
             icon={<Star className="w-4 h-4 fill-amber-400 text-amber-400" />}
@@ -165,10 +217,12 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
             </div>
           ) : (
             <div className="divide-y" style={{ borderColor: "#334155" }}>
-              {jobBreakdowns.map(({ job, gross, comm, workerPay, rate }) => {
+              {jobBreakdowns.map(({ job, gross, comm, workerPay, rate, certainty }) => {
                 const durasiLabel = durasiKontrakOptions.find((o) => o.value === (job.durasiKontrak ?? "harian"))?.label?.split(" ")[0] ?? "Harian";
+                const isUnknown = certainty === "unknown";
+                const isInferred = certainty === "inferred";
                 return (
-                  <div key={job.id} className="px-4 py-3.5">
+                  <div key={job.id} className="px-4 py-3.5" style={isUnknown ? { opacity: 0.75 } : undefined}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -181,35 +235,80 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
                               AGENCY JOB
                             </span>
                           )}
+                          {isUnknown && (
+                            <span
+                              className="text-[9px] font-black px-1.5 py-0.5 rounded"
+                              style={{ background: "rgba(234,179,8,0.15)", color: "#FCD34D", border: "1px solid rgba(234,179,8,0.4)" }}
+                              title="Kategori pekerjaan tidak tersimpan — tarif komisi tidak diketahui"
+                            >
+                              ? DATA LAMA
+                            </span>
+                          )}
+                          {isInferred && (
+                            <span
+                              className="text-[9px] font-black px-1.5 py-0.5 rounded"
+                              style={{ background: "rgba(148,163,184,0.12)", color: "#94A3B8", border: "1px solid rgba(148,163,184,0.25)" }}
+                              title="Tarif diturunkan dari kategori — bukan nilai yang tersimpan"
+                            >
+                              ~ estimasi
+                            </span>
+                          )}
                         </div>
                         <p className="text-[10px] text-slate-500 mt-0.5">
-                          {durasiLabel} · {job.kuota} org · {(rate * 100).toFixed(1)}% komisi
+                          {durasiLabel} · {job.kuota} org ·{" "}
+                          {isUnknown
+                            ? <span style={{ color: "#F59E0B" }}>komisi tidak diketahui</span>
+                            : <>{(rate * 100).toFixed(1)}% komisi{isInferred ? " (perkiraan)" : ""}</>
+                          }
                         </p>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-sm font-bold text-white">{fmt(gross)}</p>
-                        <p className="text-[10px]" style={{ color: "#EF4444" }}>−{fmt(comm)} komisi</p>
+                        {isUnknown ? (
+                          <p className="text-[10px]" style={{ color: "#F59E0B" }}>komisi tidak pasti</p>
+                        ) : (
+                          <p className="text-[10px]" style={{ color: "#EF4444" }}>−{fmt(comm)} komisi{isInferred ? "*" : ""}</p>
+                        )}
                       </div>
                     </div>
 
                     {/* Mini bar */}
-                    <div className="mt-2 flex gap-0.5 h-1.5 rounded-full overflow-hidden">
-                      <div
-                        className="rounded-full"
-                        style={{ width: `${((workerPay / gross) * 100).toFixed(0)}%`, background: "#10B981" }}
-                      />
-                      <div
-                        className="flex-1 rounded-full"
-                        style={{ background: "#EF4444", opacity: 0.7 }}
-                      />
-                    </div>
-                    <div className="flex justify-between mt-1">
-                      <span className="text-[9px] text-emerald-500">Pekerja: {fmt(workerPay)}</span>
-                      <span className="text-[9px]" style={{ color: "#F87171" }}>Platform: {fmt(comm)}</span>
-                    </div>
+                    {!isUnknown && (
+                      <>
+                        <div className="mt-2 flex gap-0.5 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className="rounded-full"
+                            style={{ width: `${((workerPay / gross) * 100).toFixed(0)}%`, background: "#10B981" }}
+                          />
+                          <div
+                            className="flex-1 rounded-full"
+                            style={{ background: "#EF4444", opacity: 0.7 }}
+                          />
+                        </div>
+                        <div className="flex justify-between mt-1">
+                          <span className="text-[9px] text-emerald-500">Pekerja: {fmt(workerPay)}</span>
+                          <span className="text-[9px]" style={{ color: "#F87171" }}>Platform: {fmt(comm)}{isInferred ? "*" : ""}</span>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Unknown placeholder bar */}
+                    {isUnknown && (
+                      <div className="mt-2 h-1.5 rounded-full" style={{ background: "rgba(234,179,8,0.2)" }} />
+                    )}
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Inferred footnote */}
+          {jobBreakdowns.some(b => b.certainty === "inferred") && (
+            <div className="px-4 py-2.5 border-t" style={{ borderColor: "#334155" }}>
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                * Tarif diturunkan dari kategori yang tersimpan, bukan nilai yang dicatat saat posting.
+                Jumlahnya akurat kecuali tarif berubah di antara dua waktu tersebut.
+              </p>
             </div>
           )}
         </div>
@@ -265,8 +364,8 @@ const ACCENTS: Record<string, { bg: string; text: string; icon: string }> = {
   violet:  { bg: "rgba(139,92,246,0.1)",  text: "#A78BFA", icon: "rgba(139,92,246,0.2)" },
 };
 
-function MetricCard({ icon, label, value, sub, accent }: {
-  icon: React.ReactNode; label: string; value: string; sub: string; accent: string;
+function MetricCard({ icon, label, value, sub, accent, dimmed }: {
+  icon: React.ReactNode; label: string; value: string; sub: string; accent: string; dimmed?: boolean;
 }) {
   const a = ACCENTS[accent] ?? ACCENTS.emerald;
   return (
@@ -280,7 +379,12 @@ function MetricCard({ icon, label, value, sub, accent }: {
           <span style={{ color: a.text }}>{icon}</span>
         </div>
       </div>
-      <p className="text-lg font-black leading-tight" style={{ color: a.text }}>{value}</p>
+      <div className="flex items-baseline gap-1.5">
+        <p className="text-lg font-black leading-tight" style={{ color: dimmed ? "#94A3B8" : a.text }}>{value}</p>
+        {dimmed && (
+          <span className="text-[9px] font-bold text-amber-400 uppercase tracking-wide">sebagian</span>
+        )}
+      </div>
       <p className="text-[10px] text-slate-500">{sub}</p>
     </div>
   );
