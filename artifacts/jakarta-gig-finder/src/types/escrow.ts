@@ -132,12 +132,18 @@ export function calcEmployerDeposit(baseWage: number, feeRate = DEFAULT_FEE_RATE
  * verified daily QR check-out releases exactly one day's share: the worker's net
  * (`netToWorker`) plus the corporate fee (`platformFee`). `grossFraction` is
  * the day's gross before the fee.
+ *
+ * Uses Math.floor (not Math.round) so that k × netToWorker ≤ floor(baseWage × k / days)
+ * strictly for all k ≤ days — guaranteeing the cumulative payout for any partial
+ * completion never exceeds the proportional share of the base wage. Any residual
+ * (totalDeposit − grossFraction × days) stays in escrow and is refunded to the
+ * employer at contract close.
  */
 export function calcDailyFraction(totalDeposit: number, jumlahHari: number, feeRate = DEFAULT_FEE_RATE) {
   const days = Math.max(1, jumlahHari);
   const { workerNet, platformCut } = calcSplit(totalDeposit, feeRate);
-  const netToWorker = Math.round(workerNet / days);
-  const platformFee = Math.round(platformCut / days);
+  const netToWorker = Math.floor(workerNet / days);
+  const platformFee = Math.floor(platformCut / days);
   const grossFraction = netToWorker + platformFee;
   return { grossFraction, platformFee, netToWorker };
 }

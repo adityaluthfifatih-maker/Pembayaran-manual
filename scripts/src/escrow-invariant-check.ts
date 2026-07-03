@@ -23,6 +23,7 @@ import {
   calcEmployerDeposit,
   calcSplit,
   calcEscrowAmount,
+  calcDailyFraction,
   getFeeRate,
   type JobCategory,
 } from "../../artifacts/jakarta-gig-finder/src/types/escrow";
@@ -247,6 +248,133 @@ function checkFullLifecycleLama(
   assert(`workerNet + platformCut == escrowAmount (${fmt(gig.escrowAmount)})`,  workerNet + platformCut, gig.escrowAmount);
 }
 
+// ── Daily-fraction partial-completion lifecycle ───────────────────────────────
+//
+// Models the lama "borongan harian" flow where each verified daily QR check-out
+// releases exactly one day's share via calcDailyFraction:
+//
+//   LOCK:  totalDeposit = calcEmployerDeposit(baseWage, feeRate)
+//   DAY k: { netToWorker } = calcDailyFraction(totalDeposit, jumlahHari, feeRate)
+//          cumulative += netToWorker   (simulates k sequential daily releases)
+//
+// Strict invariants per k:
+//
+//   1. Proportional non-overpay (exact floor — no slack):
+//      cumulative  ≤  floor(baseWage × k / days)
+//
+//      Proof: calcDailyFraction uses Math.floor, so netToWorker = floor(baseWage/days).
+//      By the floor sub-additivity lemma: floor(a/b) * k ≤ floor(a*k/b) for all
+//      positive integers. Therefore cumulative = k × floor(baseWage/days) ≤
+//      floor(baseWage×k/days). No epsilon needed.
+//
+//   2. Proportional equality within a single floor-step:
+//      | cumulative − floor(baseWage × k / days) | ≤ days − 1
+//
+//      The gap is at most (days-1) because each day under-counts by less than 1.
+//      For partial k < days the gap is smaller: max gap = (k/days) * (days-1) < k.
+//
+//   3. No-overpay sentinel:  cumulative must never reach floor(baseWage×k/days)+1
+//      (catches any future regression back to Math.round or a rounding-up formula).
+//
+//   Plus: residual = totalDeposit − grossFraction × days ≥ 0 (no money created).
+
+function checkDailyFractionLifecycle(
+  label: string,
+  baseWage: number,
+  jumlahHari: number,
+  category: JobCategory,
+): void {
+  const feeRate      = getFeeRate(category);
+  const totalDeposit = calcEmployerDeposit(baseWage, feeRate);
+
+  // Compute the per-day slice once (calcDailyFraction is pure/stateless).
+  const { netToWorker, platformFee, grossFraction } = calcDailyFraction(totalDeposit, jumlahHari, feeRate);
+
+  console.log(
+    `\n[daily-fraction] ${label}  baseWage=Rp${fmt(baseWage)}  days=${jumlahHari}` +
+    `  category=${category}  rate=${feeRate * 100}%` +
+    `  netToWorker/day=${fmt(netToWorker)}  platformFee/day=${fmt(platformFee)}` +
+    `  gross/day=${fmt(grossFraction)}`,
+  );
+
+  // Sequential day-by-day accumulation — explicitly models k individual releases.
+  let cumulativeNet = 0;
+  for (let k = 1; k <= jumlahHari; k++) {
+    // Each iteration is one verified QR check-out release.
+    const { netToWorker: dayNet } = calcDailyFraction(totalDeposit, jumlahHari, feeRate);
+    cumulativeNet += dayNet;
+
+    // ── 1. Strict proportional non-overpay (no slack) ─────────────────────
+    // cumulative ≤ floor(baseWage * k / days) is proven for Math.floor-based
+    // calcDailyFraction. Any regression to Math.round will break this assertion.
+    const proportionalCap = Math.floor((baseWage * k) / jumlahHari);
+
+    if (cumulativeNet <= proportionalCap) {
+      passed++;
+      console.log(
+        `  ✓ k=${k}/${jumlahHari}: cumulative=${fmt(cumulativeNet)} ≤ floor(baseWage×k/days)=${fmt(proportionalCap)}`,
+      );
+    } else {
+      failed++;
+      const msg =
+        `  ✗ k=${k}/${jumlahHari}: cumulative=${fmt(cumulativeNet)} EXCEEDS floor(${fmt(proportionalCap)}) by ${cumulativeNet - proportionalCap} Rp — OVER-PAYS proportional share`;
+      failures.push(msg);
+      console.error(msg);
+    }
+
+    // ── 2. Equality within (days − 1) Rp of proportional floor ───────────
+    // Gap is non-negative (cumulative ≤ proportionalCap proven above) and
+    // at most (days − 1) because each of the days days can under-count by < 1.
+    const gap       = proportionalCap - cumulativeNet; // ≥ 0
+    const gapBound  = jumlahHari - 1;
+
+    if (gap <= gapBound) {
+      passed++;
+      console.log(
+        `  ✓ k=${k}/${jumlahHari}: gap=${gap} ≤ (days−1)=${gapBound}  (cumulative within rounding floor of proportional)`,
+      );
+    } else {
+      failed++;
+      const msg =
+        `  ✗ k=${k}/${jumlahHari}: gap=${gap} EXCEEDS (days−1)=${gapBound} — under-pays proportional share by too much`;
+      failures.push(msg);
+      console.error(msg);
+    }
+  }
+
+  // ── 3. Residual is non-negative ────────────────────────────────────────────
+  // grossFraction × days ≤ totalDeposit ensures Math.floor never creates money.
+  // The residual (remaining after all day releases) should be ≥ 0 and ≤ (2×days)
+  // since both workerNet and platformCut each lose at most (days−1) Rp to floor.
+  const reconstructed = grossFraction * jumlahHari;
+  const residual      = totalDeposit - reconstructed;
+
+  if (residual >= 0) {
+    passed++;
+    console.log(
+      `  ✓ residual=${fmt(residual)} ≥ 0  (totalDeposit=${fmt(totalDeposit)}, grossFraction×days=${fmt(reconstructed)})`,
+    );
+  } else {
+    failed++;
+    const msg =
+      `  ✗ residual=${residual} < 0 — grossFraction×days EXCEEDS totalDeposit by ${-residual} Rp (money created)`;
+    failures.push(msg);
+    console.error(msg);
+  }
+
+  const residualCap = 2 * jumlahHari; // each of the two floor divisions loses < 1 per day
+  if (residual <= residualCap) {
+    passed++;
+    console.log(`  ✓ residual=${fmt(residual)} ≤ 2×days=${residualCap}  (bounded rounding gap, refundable to employer)`);
+  } else {
+    failed++;
+    const msg =
+      `  ✗ residual=${fmt(residual)} EXCEEDS 2×days=${residualCap} — floor rounding loses more than expected`;
+    failures.push(msg);
+    console.error(msg);
+  }
+}
+
 // ── Run all checks ───────────────────────────────────────────────────────────
 
 console.log("═".repeat(64));
@@ -312,6 +440,27 @@ checkFullLifecycleLama("profesional per_hari standard", 500_000, "profesional", 
 checkFullLifecycleLama("profesional multi-day",         600_000, "profesional",  "per_hari",  5, 1);
 checkFullLifecycleLama("profesional per_projek",        900_000, "profesional",  "per_projek",1, 1);
 
+console.log("\n── Daily-fraction partial-completion lifecycle ───────────────");
+console.log("  Verifies k × netToWorker never exceeds baseWage for partial releases");
+console.log("  Covers umum (3%), terampil (5%), profesional (8%) — multiple durations");
+
+// umum 3% — short contracts
+checkDailyFractionLifecycle("umum 3d",         150_000,  3, "umum");
+checkDailyFractionLifecycle("umum 5d",         200_000,  5, "umum");
+checkDailyFractionLifecycle("umum 7d awkward", 350_000,  7, "umum");
+
+// terampil 5% — default tier, medium contracts
+checkDailyFractionLifecycle("terampil 3d",          350_000,  3, "terampil");
+checkDailyFractionLifecycle("terampil 5d",          200_000,  5, "terampil");
+checkDailyFractionLifecycle("terampil 10d",         500_000, 10, "terampil");
+checkDailyFractionLifecycle("terampil 22d (1-bln)", 300_000, 22, "terampil");
+
+// profesional 8% — longer contracts, higher stakes
+checkDailyFractionLifecycle("profesional 3d",        500_000,  3, "profesional");
+checkDailyFractionLifecycle("profesional 5d",        600_000,  5, "profesional");
+checkDailyFractionLifecycle("profesional 22d (1-bln)", 1_000_000, 22, "profesional");
+checkDailyFractionLifecycle("profesional 66d (3-bln)", 800_000, 66, "profesional");
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 
 console.log("\n" + "═".repeat(64));
@@ -327,5 +476,11 @@ if (failed > 0) {
   );
   process.exit(1);
 } else {
-  console.log("\n✅ All escrow invariants hold. Workers receive exactly the base wage.");
+  console.log(
+    "\n✅ All escrow invariants hold.\n" +
+    "   • Cepat/lama single-release: workers receive exactly the base wage.\n" +
+    "   • Daily-fraction (borongan harian): each day's payout is floor(baseWage/days)\n" +
+    "     — cumulative k-day payout never exceeds floor(baseWage×k/days) for any k.\n" +
+    "     Any rounding residual (≤ 2×days Rp) stays in escrow for employer refund.",
+  );
 }
