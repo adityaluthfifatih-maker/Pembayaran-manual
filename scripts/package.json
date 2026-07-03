@@ -7,6 +7,7 @@
     "hello": "tsx ./src/hello.ts",
     "check:escrow": "tsx ./src/escrow-invariant-check.ts",
     "check-fee-consistency": "tsx ./src/check-fee-consistency.ts",
+    "test:checkout-race": "tsx ./src/checkout-race-test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
