@@ -4,7 +4,7 @@ import {
   CustomJob, PaymentType, calcTotal, paymentLabels,
   DurasiKontrak, TipeAkun, durasiKontrakOptions, detectFraud,
 } from "@/types/custom-job";
-import { calcEscrowAmount, DURATION_DAYS, PLATFORM_FEE_CEPAT, calcSplit, calcEmployerDeposit, calcEmployerFee } from "@/types/escrow";
+import { calcEscrowAmount, DURATION_DAYS, DEFAULT_FEE_RATE, calcSplit, calcEmployerDeposit, calcEmployerFee } from "@/types/escrow";
 
 interface JobPostingModalProps {
   onSubmit: (job: Omit<CustomJob, "id" | "type" | "lat" | "lng" | "postedAt">) => void;
@@ -182,7 +182,7 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
                     <div>
                       <p className="text-xs font-bold text-emerald-700">Perekrutan Massal Agensi</p>
                       <p className="text-[11px] text-emerald-600 mt-0.5">
-                        Setiap pekerja menerima <strong>100% upah</strong> — biaya platform {(PLATFORM_FEE_CEPAT * 100).toFixed(0)}% ditanggung penuh oleh perusahaan.
+                        Setiap pekerja menerima <strong>100% upah</strong> — biaya platform {(DEFAULT_FEE_RATE * 100).toFixed(0)}% ditanggung penuh oleh perusahaan.
                       </p>
                     </div>
                   </div>
@@ -296,7 +296,7 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
                 <p className="text-[11px] text-gray-500">
                   Biaya platform:{" "}
                   <span className="font-bold text-primary">
-                    {(PLATFORM_FEE_CEPAT * 100).toFixed(0)}% (beban perusahaan, pekerja terima 100%)
+                    {(DEFAULT_FEE_RATE * 100).toFixed(0)}% (beban perusahaan, pekerja terima 100%)
                   </span>
                 </p>
               </div>
@@ -335,7 +335,7 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
                       <span className="font-bold text-primary">{formatRupiah(total)}</span>
                     </div>
                     <div className="flex justify-between text-xs border-t border-primary/10 pt-2">
-                      <span className="text-gray-600">Biaya platform ({(PLATFORM_FEE_CEPAT * 100).toFixed(0)}%, beban perusahaan)</span>
+                      <span className="text-gray-600">Biaya platform ({(DEFAULT_FEE_RATE * 100).toFixed(0)}%, beban perusahaan)</span>
                       <span className="font-semibold text-gray-700">{formatRupiah(calcEmployerFee(total))}</span>
                     </div>
                     <div className="flex justify-between text-xs border-t border-primary/10 pt-2">
@@ -460,7 +460,7 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
                         <span className="font-semibold text-gray-900">Rp {escrowGross.toLocaleString("id-ID")}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Biaya platform ({(PLATFORM_FEE_CEPAT * 100).toFixed(0)}%, beban perusahaan)</span>
+                        <span className="text-gray-600">Biaya platform ({(DEFAULT_FEE_RATE * 100).toFixed(0)}%, beban perusahaan)</span>
                         <span className="font-semibold text-gray-700">Rp {escrowSplit.platformCut.toLocaleString("id-ID")}</span>
                       </div>
                       <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2.5">
@@ -477,7 +477,7 @@ export default function JobPostingModal({ onSubmit }: JobPostingModalProps) {
                     </div>
                     <div className="px-4 py-3 space-y-2.5">
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Biaya Platform Rekhastha ({(PLATFORM_FEE_CEPAT * 100).toFixed(0)}% Beban Perusahaan)</span>
+                        <span className="text-gray-600">Biaya Platform Rekhastha ({(DEFAULT_FEE_RATE * 100).toFixed(0)}% Beban Perusahaan)</span>
                         <span className="font-semibold text-gray-700">Rp {escrowSplit.platformCut.toLocaleString("id-ID")}</span>
                       </div>
                       <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2.5">

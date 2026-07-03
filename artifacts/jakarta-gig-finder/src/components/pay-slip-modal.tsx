@@ -1,6 +1,6 @@
 import { X, Download, Printer } from "lucide-react";
 import { CustomJob, calcTotal, paymentLabels, paymentUnits } from "@/types/custom-job";
-import { calcEmployerFee } from "@/types/escrow";
+import { calcEmployerFee, DEFAULT_FEE_RATE } from "@/types/escrow";
 import { WorkerProfile } from "@/types/worker-profile";
 
 interface PaySlipModalProps {
@@ -21,7 +21,7 @@ function formatDate(d: Date) {
 
 export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedOutAt, onClose }: PaySlipModalProps) {
   const gross = calcTotal(job.nominal, job.pembayaran);
-  const commission = calcEmployerFee(gross);
+  const commission = calcEmployerFee(gross, job.feeRate ?? DEFAULT_FEE_RATE);
   const net = gross;
 
   const durationHours = clockedInAt && clockedOutAt
@@ -127,7 +127,7 @@ export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedO
             <div className="py-3 border-b border-dashed border-gray-300 space-y-1">
               <p className="font-bold text-[10px] text-gray-700 mb-1.5">POTONGAN</p>
               <Row label="Potongan Pekerja" value={`- ${formatRp(0)}`} />
-              <Row label="Biaya Platform 15% (Beban Perusahaan)" value={`${formatRp(commission)}`} />
+              <Row label={`Biaya Platform ${Math.round((job.feeRate ?? DEFAULT_FEE_RATE) * 100)}% (Beban Perusahaan)`} value={`${formatRp(commission)}`} />
             </div>
 
             {/* Net */}

@@ -3,7 +3,7 @@ import {
   X, Send, ShieldCheck, Lock, AlertTriangle, Briefcase, ChevronRight,
   CheckCircle2, RefreshCw, Zap, BadgeDollarSign, Loader2,
 } from "lucide-react";
-import { calcEmployerFee, calcEmployerDeposit, MAX_BYPASS_STRIKES } from "@/types/escrow";
+import { calcEmployerFee, calcEmployerDeposit, DEFAULT_FEE_RATE, MAX_BYPASS_STRIKES } from "@/types/escrow";
 import { subscribeChatMessage, type ChatMessageEvent } from "@/lib/central-server";
 
 // ── Bypass detection (RegEx + keyword) ─────────────────────────────
@@ -32,6 +32,8 @@ export interface ChatModalProps {
   workerName: string;
   currentRole: "company" | "worker";
   hiringMode?: "cepat" | "lama";
+  /** Platform fee rate stored at posting time (e.g. 0.03 / 0.05 / 0.08). */
+  feeRate?: number;
   /** Numeric gig ID. Messages are persisted in Postgres and synced in real-time. */
   jobId: number;
   /** Worker user-id — scopes the conversation to one (jobId, workerId) thread. */
@@ -99,7 +101,7 @@ function BuyOutModal({ jobTitle, nominal, onClose }: { jobTitle: string; nominal
 // ── Main Component ───────────────────────────────────────────────────
 export default function ChatModal({
   jobTitle, nominal, companyName, workerName,
-  currentRole, hiringMode = "lama", jobId, workerId, onClose, onNominalUpdate,
+  currentRole, hiringMode = "lama", feeRate = DEFAULT_FEE_RATE, jobId, workerId, onClose, onNominalUpdate,
 }: ChatModalProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(!!jobId);
@@ -124,8 +126,8 @@ export default function ChatModal({
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const currentNominal = lockedNominal ?? nominal;
-  const systemFee = calcEmployerFee(currentNominal);
-  const totalEscrow = calcEmployerDeposit(currentNominal);
+  const systemFee = calcEmployerFee(currentNominal, feeRate);
+  const totalEscrow = calcEmployerDeposit(currentNominal, feeRate);
   const dealLocked = lockedNominal !== null;
   const canNegotiate = hiringMode !== "cepat" && !dealLocked;
   const isOtherPartyOffer = pendingOffer && pendingOffer.from !== currentRole;
@@ -396,7 +398,7 @@ export default function ChatModal({
                 <p className="text-xs font-bold text-emerald-800">✅ Kesepakatan Upah Terkunci</p>
                 <p className="text-[10px] text-emerald-700 flex flex-wrap gap-x-2">
                   <span>Upah Pokok: <b>Rp {lockedNominal!.toLocaleString("id-ID")}</b></span>
-                  <span>· Biaya Sistem (15%): Rp {systemFee.toLocaleString("id-ID")}</span>
+                  <span>· Biaya Sistem ({Math.round(feeRate * 100)}%): Rp {systemFee.toLocaleString("id-ID")}</span>
                   <span>· Total Escrow: <b>Rp {totalEscrow.toLocaleString("id-ID")}</b></span>
                 </p>
               </div>

@@ -17,7 +17,8 @@
  */
 
 import {
-  PLATFORM_FEE_CEPAT,
+  DEFAULT_FEE_RATE,
+  PLATFORM_FEE_RATES,
   calcEmployerFee,
   calcEmployerDeposit,
   calcSplit,
@@ -44,20 +45,30 @@ function assert(description: string, actual: number, expected: number): void {
   }
 }
 
-// ── Sentinel: confirm the rate constant itself is exactly 0.15 ───────────────
-// If PLATFORM_FEE_CEPAT is changed in escrow.ts this fires immediately, before
-// any other check runs.
-
+// ── Sentinel: confirm tier constants are exactly as designed ─────────────────
 function checkRateConstant() {
   console.log("\n── Rate constant guard ───────────────────────────────────");
-  if (PLATFORM_FEE_CEPAT !== 0.15) {
+  const expected: Record<string, number> = { umum: 0.03, terampil: 0.05, profesional: 0.08 };
+  for (const [cat, rate] of Object.entries(expected)) {
+    const actual = PLATFORM_FEE_RATES[cat as keyof typeof PLATFORM_FEE_RATES];
+    if (actual !== rate) {
+      failed++;
+      const msg = `  ✗ PLATFORM_FEE_RATES.${cat} must be ${rate} — got ${actual}`;
+      failures.push(msg);
+      console.error(msg);
+    } else {
+      passed++;
+      console.log(`  ✓ PLATFORM_FEE_RATES.${cat} == ${rate}`);
+    }
+  }
+  if (DEFAULT_FEE_RATE !== 0.05) {
     failed++;
-    const msg = `  ✗ PLATFORM_FEE_CEPAT must be 0.15 — got ${PLATFORM_FEE_CEPAT}`;
+    const msg = `  ✗ DEFAULT_FEE_RATE must be 0.05 — got ${DEFAULT_FEE_RATE}`;
     failures.push(msg);
     console.error(msg);
   } else {
     passed++;
-    console.log(`  ✓ PLATFORM_FEE_CEPAT == 0.15`);
+    console.log(`  ✓ DEFAULT_FEE_RATE == 0.05`);
   }
 }
 
@@ -65,15 +76,15 @@ function checkRateConstant() {
 // Replicates the cepat lock path:  escrowAmount = calcEmployerDeposit(nominal)
 // and the release path:            { workerNet, platformCut } = calcSplit(escrowAmount)
 
-function checkCepatWage(baseWage: number): void {
-  console.log(`\n[cepat] base wage = Rp ${fmt(baseWage)}`);
+function checkCepatWage(baseWage: number, feeRate = DEFAULT_FEE_RATE): void {
+  console.log(`\n[cepat] base wage = Rp ${fmt(baseWage)}  rate=${feeRate * 100}%`);
 
-  const deposit  = calcEmployerDeposit(baseWage);           // lock step
-  const { workerNet, platformCut } = calcSplit(deposit);    // release step
+  const deposit  = calcEmployerDeposit(baseWage, feeRate);           // lock step
+  const { workerNet, platformCut } = calcSplit(deposit, feeRate);    // release step
 
-  assert("employer deposit == baseWage + calcEmployerFee(baseWage)", deposit, baseWage + calcEmployerFee(baseWage));
+  assert("employer deposit == baseWage + calcEmployerFee(baseWage)", deposit, baseWage + calcEmployerFee(baseWage, feeRate));
   assert("worker net  == base wage",                                  workerNet, baseWage);
-  assert("platform cut == calcEmployerFee(baseWage)",                 platformCut, calcEmployerFee(baseWage));
+  assert("platform cut == calcEmployerFee(baseWage)",                 platformCut, calcEmployerFee(baseWage, feeRate));
   assert("workerNet + platformCut == deposit",                        workerNet + platformCut, deposit);
 }
 
@@ -90,20 +101,21 @@ function checkLamaFlow(
   pembayaran: Pembayaran = "per_hari",
   jumlahHari: number = 1,
   kuota: number = 1,
+  feeRate = DEFAULT_FEE_RATE,
 ): void {
-  console.log(`\n[${label}] Rp ${fmt(originalWage)} → negotiated Rp ${fmt(negotiatedWage)}`);
+  console.log(`\n[${label}] Rp ${fmt(originalWage)} → negotiated Rp ${fmt(negotiatedWage)}  rate=${feeRate * 100}%`);
 
   // ── chat-modal.tsx: employer sees fee/total using the locked (accepted) wage
-  const chatFee   = calcEmployerFee(negotiatedWage);
-  const chatTotal = calcEmployerDeposit(negotiatedWage);
+  const chatFee   = calcEmployerFee(negotiatedWage, feeRate);
+  const chatTotal = calcEmployerDeposit(negotiatedWage, feeRate);
   console.log(`  chat-modal fee=${fmt(chatFee)}  escrow=${fmt(chatTotal)}`);
 
-  // ── home.tsx L931: onNominalUpdate fires, locking the new escrowAmount
+  // ── home.tsx: onNominalUpdate fires, locking the new escrowAmount
   const baseAmount  = calcEscrowAmount(negotiatedWage, pembayaran, jumlahHari, kuota);
-  const lockedEscrow = calcEmployerDeposit(baseAmount);    // what gets stored in job.escrowAmount
+  const lockedEscrow = calcEmployerDeposit(baseAmount, feeRate);    // what gets stored in job.escrowAmount
 
-  // ── home.tsx L470/L612/L995: release splits the locked deposit
-  const { workerNet, platformCut } = calcSplit(lockedEscrow);
+  // ── home.tsx: release splits the locked deposit
+  const { workerNet, platformCut } = calcSplit(lockedEscrow, feeRate);
 
   // Escrow stored should match what chat-modal showed (for single-worker harian base case)
   if (pembayaran === "per_hari" && jumlahHari === 1 && kuota === 1) {
@@ -111,7 +123,7 @@ function checkLamaFlow(
   }
 
   assert("worker net  == negotiated base amount",         workerNet, baseAmount);
-  assert("platform cut == calcEmployerFee(baseAmount)",   platformCut, calcEmployerFee(baseAmount));
+  assert("platform cut == calcEmployerFee(baseAmount)",   platformCut, calcEmployerFee(baseAmount, feeRate));
   assert("workerNet + platformCut == lockedEscrow",       workerNet + platformCut, lockedEscrow);
 
   // Guard: if negotiation changed the wage, original wage must NOT be paid out
@@ -129,25 +141,25 @@ function checkLamaFlow(
 }
 
 // ── Stale-rate sentinel ───────────────────────────────────────────────────────
-// Simulates the old bug: deposit computed at 7% but release split at 15%.
-// This test must PASS (i.e. the fix is in place) — it fails if we ever
-// accidentally reintroduce a mismatched rate anywhere in the pipeline.
+// Simulates a mismatch bug: deposit computed at one rate, release split at another.
+// These must PASS — if they don't, the pipeline is hiding mismatched rates.
 
 function checkStalerateRegression(baseWage: number): void {
-  const STALE_RATE = 0.07;
-  const depositAtStaleRate  = baseWage + Math.round(baseWage * STALE_RATE);  // old bug: 7%
-  const { workerNet }        = calcSplit(depositAtStaleRate);                 // release uses real 15%
+  // Deposit at umum (3%), release at profesional (8%) — should clearly mismatch
+  const DEPOSIT_RATE = PLATFORM_FEE_RATES.umum;        // 0.03
+  const RELEASE_RATE = PLATFORM_FEE_RATES.profesional;  // 0.08
+  const depositAtWrongRate = baseWage + Math.round(baseWage * DEPOSIT_RATE);
+  const { workerNet } = calcSplit(depositAtWrongRate, RELEASE_RATE);
 
-  // With mismatched rates, workerNet ≠ baseWage — confirm we detect this
   const mismatch = workerNet !== baseWage;
   if (!mismatch) {
     failed++;
-    const msg = `  ✗ stale-rate sentinel did not fire for wage Rp ${fmt(baseWage)} — the bug would be invisible`;
+    const msg = `  ✗ stale-rate sentinel did not fire for wage Rp ${fmt(baseWage)} — bug would be invisible`;
     failures.push(msg);
     console.error(msg);
   } else {
     passed++;
-    console.log(`  ✓ stale-rate sentinel: 7% deposit / 15% split mismatch detected (workerNet=${fmt(workerNet)} ≠ baseWage=${fmt(baseWage)})`);
+    console.log(`  ✓ stale-rate sentinel: 3% deposit / 8% split mismatch detected (workerNet=${fmt(workerNet)} ≠ baseWage=${fmt(baseWage)})`);
   }
 }
 
@@ -159,12 +171,15 @@ console.log("═".repeat(64));
 
 checkRateConstant();
 
-console.log("\n── Cepat (instant gig, no negotiation) ──────────────────────");
-for (const wage of [150_000, 200_000, 350_000, 1_000_000, 5_000_000]) {
-  checkCepatWage(wage);
+console.log("\n── Cepat (instant gig) — all 3 tiers ────────────────────────");
+for (const [cat, rate] of Object.entries(PLATFORM_FEE_RATES) as [string, number][]) {
+  console.log(`\n  [${cat} ${rate * 100}%]`);
+  for (const wage of [150_000, 350_000, 1_000_000]) {
+    checkCepatWage(wage, rate);
+  }
 }
 
-console.log("\n── Lama (negotiated / chat-modal flow) ──────────────────────");
+console.log("\n── Lama (negotiated / chat-modal flow) — default rate ────────");
 checkLamaFlow("no change",                      200_000, 200_000);
 checkLamaFlow("worker negotiates down",         350_000, 300_000);
 checkLamaFlow("employer negotiates down",       500_000, 420_000);
@@ -173,6 +188,13 @@ checkLamaFlow("multi-round final",              250_000, 230_000);
 checkLamaFlow("near minimum",                   10_000,  10_000);
 checkLamaFlow("per_shift multi-worker",         200_000, 180_000, "per_shift", 1, 5);
 checkLamaFlow("per_projek borongan",            800_000, 750_000, "per_projek", 1, 3);
+
+console.log("\n── Lama — profesional rate (8%) ──────────────────────────────");
+checkLamaFlow("profesional no change",          500_000, 500_000, "per_hari", 1, 1, PLATFORM_FEE_RATES.profesional);
+checkLamaFlow("profesional negotiated",         600_000, 550_000, "per_hari", 1, 1, PLATFORM_FEE_RATES.profesional);
+
+console.log("\n── Lama — umum rate (3%) ─────────────────────────────────────");
+checkLamaFlow("umum warehouse",                 150_000, 150_000, "per_shift", 1, 4, PLATFORM_FEE_RATES.umum);
 
 console.log("\n── Stale-rate regression sentinels ──────────────────────────");
 console.log("  (these confirm a deposit/release rate mismatch is VISIBLE)");

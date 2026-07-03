@@ -45,6 +45,12 @@ export const gigsTable = pgTable("gigs", {
   jumlahHari: integer("jumlah_hari"),
   employerId: text("employer_id"),
   employerName: text("employer_name"),
+  // ── Kategori & biaya platform ───────────────────────────────────
+  // jobCategory drives the tiered employer-borne fee (umum=3%, terampil=5%, profesional=8%).
+  // feeRate stores the exact decimal rate locked in at posting time so pay-slips and
+  // analytics always reflect the charged rate — never a recomputed constant.
+  jobCategory: text("job_category"),
+  feeRate: doublePrecision("fee_rate"),
   // ── Borongan workflows ──────────────────────────────────────────
   // "remote" = milestone proof-of-work; "onsite" = daily QR fractional payout.
   boronganType: text("borongan_type"),

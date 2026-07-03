@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { CustomJob, PaymentType, HiringMode, paymentLabels, paymentInputLabels, paymentUnits } from "@/types/custom-job";
 import { ApplicationNotification, ApplicationStatus, maskName } from "@/types/notification";
-import { PLATFORM_FEE_CEPAT, CANCELLATION_FEE_1HR } from "@/types/escrow";
+import { JobCategory, PLATFORM_FEE_RATES, getFeeRate, DEFAULT_FEE_RATE, CANCELLATION_FEE_1HR } from "@/types/escrow";
 import { AuthUser } from "@/types/auth";
 
 interface HiringModePanelProps {
@@ -146,6 +146,7 @@ export default function HiringModePanel({
   const [kuota, setKuota] = useState("1");
   const [namaPerusahaan, setNamaPerusahaan] = useState(currentUser.name || "");
   const [dresscode, setDresscode] = useState("Bebas rapi");
+  const [jobCategory, setJobCategory] = useState<JobCategory>("terampil");
 
   // ── Posting Reguler (scheduled) extra fields ──────────────────
   const todayStr = new Date().toISOString().split("T")[0];
@@ -180,8 +181,7 @@ export default function HiringModePanel({
   // ── Derived calc ──────────────────────────────────────────────
   const nominalNum = parseInt(nominalRaw.replace(/\D/g, "")) || 0;
   const kuotaNum = Math.max(1, parseInt(kuota) || 1);
-  // Unified 15% platform mark-up billing presentation across BOTH tabs.
-  const feeRate = PLATFORM_FEE_CEPAT;
+  const feeRate = getFeeRate(jobCategory);
   const upahPokok = nominalNum * kuotaNum;
   const biayaSistem = Math.round(upahPokok * feeRate);
   const totalEscrow = upahPokok + biayaSistem;
@@ -234,6 +234,8 @@ export default function HiringModePanel({
         escrowAmount: totalEscrow,
         durasiKontrak: "harian",
         jobDate: new Date(), // AUTOMATED DATE — always today for instant broadcasts
+        jobCategory,
+        feeRate,
       });
 
       setTimeout(() => {
@@ -266,6 +268,8 @@ export default function HiringModePanel({
       jamKerja: jamKerja.trim(),
       alamat: pickerAddress.trim(),
       ...(pickerLat !== null && pickerLng !== null ? { lat: pickerLat, lng: pickerLng } : {}),
+      jobCategory,
+      feeRate,
     });
     resetForm();
     setFormOpen(false);
@@ -273,6 +277,7 @@ export default function HiringModePanel({
 
   const resetForm = () => {
     setPosisi(""); setDeskripsi(""); setNominalRaw(""); setKuota("1");
+    setJobCategory("terampil");
     setTanggalMulai(""); setJamKerja(""); setPickerAddress(""); setPickerLat(null); setPickerLng(null);
   };
 
@@ -280,7 +285,8 @@ export default function HiringModePanel({
   const handleConfirmEscrow = (jobId: number) => {
     const job = customJobs.find(j => j.id === jobId);
     if (!job) return;
-    const amount = Math.round(job.nominal * job.kuota * (1 + PLATFORM_FEE_CEPAT));
+    const jobFeeRate = job.feeRate ?? DEFAULT_FEE_RATE;
+    const amount = Math.round(job.nominal * job.kuota * (1 + jobFeeRate));
     onLockEscrow(jobId, amount);
     setLockedJobIds(prev => new Set([...prev, jobId]));
     setLockedAtMap(prev => ({ ...prev, [jobId]: new Date() }));
@@ -409,8 +415,8 @@ export default function HiringModePanel({
             : "bg-emerald-50/60 text-emerald-800 border-emerald-200"
         }`}>
           {hiringMode === "cepat"
-            ? "🚨 Untuk kebutuhan mendesak. Sistem broadcast ke semua pekerja aktif dalam radius 5km. Escrow HARUS dikunci terlebih dahulu (biaya sistem 15%)."
-            : "📅 Untuk kontrak terencana & terjadwal. Lowongan masuk ke Daftar Lowongan Kerja Terjadwal untuk dilihat pekerja — tanpa alarm broadcast (biaya sistem 15%)."}
+            ? `🚨 Untuk kebutuhan mendesak. Sistem broadcast ke semua pekerja aktif dalam radius 5km. Escrow HARUS dikunci terlebih dahulu (biaya sistem ${Math.round(feeRate * 100)}% beban perusahaan).`
+            : `📅 Untuk kontrak terencana & terjadwal. Lowongan masuk ke Daftar Lowongan Kerja Terjadwal untuk dilihat pekerja — tanpa alarm broadcast (biaya sistem ${Math.round(feeRate * 100)}% beban perusahaan).`}
         </div>
       </div>
 
@@ -485,6 +491,38 @@ export default function HiringModePanel({
                       placeholder="cth: Barista, Warehouse Helper, Event Crew"
                       className={inputCls} />
                   </div>
+
+                  {/* ── Kategori Pekerjaan ── */}
+                  <div>
+                    <label className={labelCls}>Kategori Pekerjaan *</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(Object.entries(PLATFORM_FEE_RATES) as [JobCategory, number][]).map(([cat, rate]) => {
+                        const labels: Record<JobCategory, { name: string; desc: string }> = {
+                          umum:        { name: "Umum / Manual",       desc: "Pindahan, bersih, packing" },
+                          terampil:    { name: "Terampil / Teknis",   desc: "Listrik, sopir, katering" },
+                          profesional: { name: "Profesional",         desc: "IT, akuntansi, medis" },
+                        };
+                        const active = jobCategory === cat;
+                        return (
+                          <button
+                            key={cat} type="button"
+                            onClick={() => setJobCategory(cat)}
+                            className={`p-2 rounded-xl border text-left transition-all ${
+                              active
+                                ? "bg-primary text-white border-primary shadow-sm"
+                                : "bg-white text-gray-700 border-gray-200 hover:border-primary/40"
+                            }`}
+                          >
+                            <p className={`text-[10px] font-bold leading-tight ${active ? "text-white" : ""}`}>{labels[cat].name}</p>
+                            <p className={`text-[9px] mt-0.5 leading-tight ${active ? "text-white/70" : "text-gray-400"}`}>{labels[cat].desc}</p>
+                            <p className={`text-xs font-black mt-1 ${active ? "text-amber-300" : "text-primary"}`}>{Math.round(rate * 100)}%</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1">Biaya platform beban perusahaan · pekerja terima 100% upah</p>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className={labelCls}>Tipe Pembayaran</label>
@@ -588,7 +626,7 @@ export default function HiringModePanel({
                     <span className={`ml-auto text-[10px] font-black px-2 py-0.5 rounded-full ${
                       hiringMode === "cepat" ? "bg-orange-200 text-orange-800" : "bg-blue-200 text-blue-800"
                     }`}>
-                      {hiringMode === "cepat" ? "15% TERKUNCI" : "15% MARK-UP"}
+                      {Math.round(feeRate * 100)}% {hiringMode === "cepat" ? "TERKUNCI" : "MARK-UP"}
                     </span>
                   </div>
                   <div className="space-y-1.5 text-xs">
@@ -607,7 +645,7 @@ export default function HiringModePanel({
                       <span>{formatRp(totalEscrow)}</span>
                     </div>
                     <p className="text-[10px] text-emerald-700/80 leading-relaxed pt-0.5">
-                      🟢 Pekerja menerima 100% upah utuh — biaya platform 15% sepenuhnya ditanggung perusahaan.
+                      🟢 Pekerja menerima 100% upah utuh — biaya platform {Math.round(feeRate * 100)}% sepenuhnya ditanggung perusahaan.
                     </p>
                   </div>
                   {/* Status badge */}
@@ -848,12 +886,12 @@ export default function HiringModePanel({
                         <span className="font-semibold">{formatRp(job.nominal * job.kuota)}</span>
                       </div>
                       <div className="flex justify-between text-gray-600">
-                        <span>Biaya Sistem Platform (15%)</span>
-                        <span className="font-semibold">{formatRp(job.nominal * job.kuota * PLATFORM_FEE_CEPAT)}</span>
+                        <span>Biaya Sistem Platform ({Math.round((job.feeRate ?? DEFAULT_FEE_RATE) * 100)}%)</span>
+                        <span className="font-semibold">{formatRp(job.nominal * job.kuota * (job.feeRate ?? DEFAULT_FEE_RATE))}</span>
                       </div>
                       <div className="flex justify-between font-bold text-blue-900 border-t border-blue-200 pt-1.5">
                         <span>Total Dikunci Escrow</span>
-                        <span>{formatRp(job.nominal * job.kuota * (1 + PLATFORM_FEE_CEPAT))}</span>
+                        <span>{formatRp(job.nominal * job.kuota * (1 + (job.feeRate ?? DEFAULT_FEE_RATE)))}</span>
                       </div>
                     </div>
                     <div className="flex gap-2">

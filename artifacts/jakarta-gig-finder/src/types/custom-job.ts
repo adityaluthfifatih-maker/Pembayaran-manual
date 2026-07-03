@@ -1,5 +1,6 @@
-import type { EscrowStatus } from "./escrow";
+import type { EscrowStatus, JobCategory } from "./escrow";
 
+export type { JobCategory };
 export type PaymentType = "per_shift" | "per_hari" | "per_projek" | "per_bulan";
 export type DurasiKontrak = "harian" | "1_bulan" | "3_bulan" | "6_bulan";
 export type TipeAkun = "perusahaan" | "agensi";
@@ -44,6 +45,9 @@ export interface CustomJob {
   // ── Poster identity (for blacklist filtering) ────────
   employerId?: string;     // real account id of the employer who posted
   employerName?: string;   // display name of the poster
+  // ── Kategori & biaya platform ────────────────────────
+  jobCategory?: JobCategory;   // "umum" | "terampil" | "profesional"
+  feeRate?: number;            // stored rate at posting time (e.g. 0.03 / 0.05 / 0.08)
   // ── Borongan (project contract) workflows ────────────
   boronganType?: BoronganType;   // "remote" (milestone) | "onsite" (daily QR)
   proofUrl?: string;             // remote milestone proof-of-work URL

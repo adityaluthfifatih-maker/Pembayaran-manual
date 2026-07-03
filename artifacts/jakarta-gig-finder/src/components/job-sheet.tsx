@@ -3,7 +3,7 @@ import {
   CustomJob, calcTotal, paymentLabels,
   durasiKontrakOptions,
 } from "@/types/custom-job";
-import { calcEmployerFee } from "@/types/escrow";
+import { calcEmployerFee, DEFAULT_FEE_RATE } from "@/types/escrow";
 import { WorkerProfile, isVerified } from "@/types/worker-profile";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -35,9 +35,9 @@ export default function JobSheet({
   if (!job) return null;
 
   const total = calcTotal(job.nominal, job.pembayaran);
-  // Platform fee is a flat 15% mark-up borne by the employer; the worker always
-  // receives 100% of the base wage (matches the escrow release payout).
-  const commission = calcEmployerFee(total);
+  // Platform fee is a tiered employer-borne mark-up (3%/5%/8%); the worker
+  // always receives 100% of the base wage (matches the escrow release payout).
+  const commission = calcEmployerFee(total, job.feeRate ?? DEFAULT_FEE_RATE);
   const workerGets = total;
   const verified = workerProfile ? isVerified(workerProfile) : false;
   const durasiLabel = durasiKontrakOptions.find((o) => o.value === (job.durasiKontrak ?? "harian"))?.label ?? "Harian";

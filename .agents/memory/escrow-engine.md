@@ -4,16 +4,23 @@ description: Rekhastha escrow/e-wallet system — rates, status lifecycle, split
 ---
 
 ## Rates (src/types/escrow.ts)
-- Platform fee: FLAT 15% (`PLATFORM_FEE_CEPAT`), charged ONLY to the employer as a mark-up on top of the base wage. Worker always receives 100% of the base wage.
+- Platform fee: CATEGORY-TIERED, employer-borne mark-up, worker always receives 100%:
+  - `PLATFORM_FEE_RATES.umum = 0.03` (Umum/Manual: pindahan, bersih, packing)
+  - `PLATFORM_FEE_RATES.terampil = 0.05` (Terampil/Teknis: listrik, sopir, katering) — DEFAULT
+  - `PLATFORM_FEE_RATES.profesional = 0.08` (Profesional: IT, akuntansi, medis)
+  - `DEFAULT_FEE_RATE = 0.05` (terampil) — used when job has no category set
+  - `getFeeRate(cat?)` helper — always call this, never index PLATFORM_FEE_RATES directly in components
+- `JobCategory` type = "umum" | "terampil" | "profesional" (exported from escrow.ts + custom-job.ts)
+- `jobCategory` and `feeRate` stored on CustomJob and persisted in DB columns `job_category` / `fee_rate`
 - Tax-free: no PPh/PPN deductions anywhere.
 - Admin fee if company wins dispute: 5% of gross (`ADMIN_DISPUTE_FEE`)
-- Legacy constants `PLATFORM_RATE=0.10` and `PLATFORM_FEE_LAMA=0.07` still exist in escrow.ts but are DEAD — do not use for billing/split.
+- Legacy constants `PLATFORM_RATE=0.10`, `PLATFORM_FEE_LAMA=0.07`, `PLATFORM_FEE_CEPAT` are GONE — replaced by tiered system.
 
 ## EscrowStatus lifecycle
 `pending` → `locked` (on job post) → `released` (Selesai & Bayar) | `disputed` → `released` (worker wins) | `refunded` (company wins)
 
-## calcSplit(totalDeposit) returns
-`{ platformCut, workerNet }` where `workerNet = round(totalDeposit / 1.15)` and `platformCut = totalDeposit − workerNet`. Input is the TOTAL employer deposit (base × 1.15), the single source of truth. Helpers: `calcEmployerFee(baseWage)=round(baseWage×0.15)`, `calcEmployerDeposit(baseWage)=baseWage+fee`.
+## calcSplit(totalDeposit, feeRate?) returns
+`{ platformCut, workerNet }` where `workerNet = round(totalDeposit / (1 + feeRate))` and `platformCut = totalDeposit − workerNet`. Input is the TOTAL employer deposit. Helpers: `calcEmployerFee(baseWage, feeRate?)=round(baseWage×feeRate)`, `calcEmployerDeposit(baseWage, feeRate?)=baseWage+fee`. All three accept optional `feeRate` defaulting to `DEFAULT_FEE_RATE`.
 
 ## calcEscrowAmount(nominal, pembayaran, jumlahHari, kuota)
 - per_projek: nominal × kuota
@@ -50,15 +57,14 @@ The **grace timer** follows the same rule: use a `graceJob` snapshot (set when t
 ## Tax-free escrow (no PPh/PPN)
 The app is TAX-FREE per the Rekhastha spec: `calcSplit(gross)` returns only `{ platformCut, workerNet }` (workerNet = gross − platformCut), no PPh. `pph21Rate` and the `PPH_*` constants were removed. NPWP stays as a collected/verification field only. The only intentional tax mention left is `terms-modal.tsx` Pasal "Kepatuhan Pajak Independen" (tax is each party's own responsibility). **Why:** user explicitly chose tax-free. Don't reintroduce PPh deductions in any UI.
 
-## Dual-recruitment: BOTH hiring modes bill 15% (Broadcast Instan + Posting Reguler)
-The employer panel is split into two tabs — "⚡ Broadcast Instan" (cepat, instant broadcast) and "📅 Posting Reguler" (lama, scheduled marketplace). Per spec BOTH now use the 15% platform mark-up (`PLATFORM_FEE_CEPAT`). `PLATFORM_FEE_LAMA=0.07` still exists in escrow.ts but must NOT be used for billing anymore — it is effectively dead for the panel/negotiation flow.
-**Why:** user unified billing to a single 15% mark-up across both engines.
-**How to apply:** the 15% multiplier is duplicated across paths that write `escrowAmount` — `hiring-mode-panel.tsx` (handleConfirmEscrow + inline invoice preview) and `home.tsx handleNominalUpdate` (chat negotiation). If the rate changes, update ALL of them via the `PLATFORM_FEE_CEPAT` constant (no hardcoded `1.07`/`1.15`). Watch for stale copy: event-note strings and calc badges also state the percentage literally.
+## Dual-recruitment: BOTH hiring modes bill the category-tiered rate
+The employer panel is split into "⚡ Broadcast Instan" (cepat) and "📅 Posting Reguler" (lama). Both tabs share the same `jobCategory` picker → `getFeeRate(jobCategory)` → `feeRate` on the job. The rate varies per job, not per mode.
+**Why:** tiered pricing replaced the old flat 15% to incentivise professional gig posting.
+**How to apply:** always derive `feeRate` via `getFeeRate(job.feeRate ? undefined : "terampil")` or read `job.feeRate ?? DEFAULT_FEE_RATE`. Never hardcode `0.15`/`1.15`. Pass `feeRate` to all escrow helpers (`calcEmployerFee`, `calcEmployerDeposit`, `calcSplit`). The category picker UI lives in `hiring-mode-panel.tsx` (after the posisi input).
 
-## Escrow fee model is now UNIFIED (single source of truth)
-`escrowAmount` on a gig ALWAYS means the TOTAL employer deposit = base wage × 1.15. Every write path derives it via `calcEmployerDeposit(calcEscrowAmount(...))` — job-posting-modal, hiring-mode-panel, ping/demo seeding in home.tsx, AND `handleNominalUpdate` (chat negotiation must pass the job's `pembayaran`/`jumlahHari`/`kuota`, not a bare `nominal×kuota×1.15`). Release-time `calcSplit(escrowAmount)` then recovers worker 100% + 15% platform cut.
-**Why:** unified the old triple system (PLATFORM_RATE 10% release vs 15% locked vs `effectiveCommissionRate` variable tiers). The variable-commission UI (duration "Komisi X%" labels, agency 7% "volume discount") was removed from job-posting-modal — all copy now states flat 15% employer-borne, worker 100%.
-**How to apply:** never hardcode `1.15`/`1.07`/`1.10`; use `PLATFORM_FEE_CEPAT`/`calcEmployerFee`/`calcEmployerDeposit`. `effectiveCommissionRate`/`calcCommission` in custom-job.ts are now unused legacy — don't reintroduce them into escrow-facing UI.
+## Escrow fee model: tiered, single source of truth
+`escrowAmount` on a gig = base wage × (1 + feeRate). Every write path derives it via `calcEmployerDeposit(nominal, feeRate)` — `hiring-mode-panel.tsx` handleConfirmEscrow + handleCepatSubmit/handleLamaSubmit, and `home.tsx handleNominalUpdate` for chat negotiation. Release-time `calcSplit(escrowAmount, feeRate)` recovers worker 100%.
+**How to apply:** never hardcode multipliers; use `calcEmployerFee`/`calcEmployerDeposit`/`calcSplit` with the job's `feeRate`. `effectiveCommissionRate`/`calcCommission` in custom-job.ts are legacy — don't reintroduce.
 
 ## Admin control plane + suspension enforcement
 Gated admin portal at `/admin` (client `pages/admin.tsx`, `lib/admin-client.ts`) over a SEPARATE httpOnly admin session cookie (server `lib/admin.ts`: in-mem sessions, 8h TTL, per-IP throttle 5/5min, credentials read from env `ADMIN_ID`/`ADMIN_TOKEN`). NOTE: `lib/admin.ts` ships insecure hardcoded fallback credentials when those env vars are unset — set both env vars for any real deployment. Endpoints in `routes/admin.ts` (ledger/force-release/users/suspend/academy). Ratings persist via `routes/ratings.ts` (stars→score, comment→note).

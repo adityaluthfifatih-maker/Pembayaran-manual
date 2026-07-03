@@ -29,13 +29,26 @@ export interface WalletTransaction {
   note?: string;
 }
 
-// ── Platform rates (Rekhastha) ─────────────────────────
-// The platform fee is a single flat 15% employer-borne mark-up. All escrow /
-// fee math funnels through PLATFORM_FEE_CEPAT + calcEmployerFee /
-// calcEmployerDeposit / calcSplit so the amount charged always equals the
-// amount paid out (worker net == base wage).
-export const PLATFORM_FEE_CEPAT = 0.15;   // 15% biaya sistem — beban perusahaan
-export const ADMIN_DISPUTE_FEE = 0.05;     // 5% biaya admin sengketa
+// ── Platform rates (Rekhastha) ─────────────────────────────────────
+// Category-tiered platform fee. The fee is an EMPLOYER-only mark-up on top of
+// the base wage — workers always receive 100% of the advertised nominal.
+export type JobCategory = "umum" | "terampil" | "profesional";
+
+export const PLATFORM_FEE_RATES: Record<JobCategory, number> = {
+  umum:        0.03,   // 3%  — Umum / Tenaga Manual (pindah, bersih, packing)
+  terampil:    0.05,   // 5%  — Terampil / Teknis (listrik, plumbing, sopir, katering)
+  profesional: 0.08,   // 8%  — Profesional / Spesialis (akuntansi, legal, IT, medis)
+};
+
+/** Middle tier used as default for jobs that pre-date the tiered system. */
+export const DEFAULT_FEE_RATE = PLATFORM_FEE_RATES.terampil;
+
+/** Resolve the numeric fee rate for a given category (or the default if absent). */
+export function getFeeRate(category?: JobCategory | null): number {
+  return category ? (PLATFORM_FEE_RATES[category] ?? DEFAULT_FEE_RATE) : DEFAULT_FEE_RATE;
+}
+
+export const ADMIN_DISPUTE_FEE = 0.05;     // 5% biaya admin sengketa (unchanged)
 export const CANCELLATION_FEE_1HR = 20_000; // Rp 20.000 potongan jika pemberi kerja batal <1 jam
 
 // ── Kedisiplinan & jendela sengketa ───────────────────
@@ -64,27 +77,27 @@ export function calcEscrowAmount(
 
 /**
  * Split an employer's total escrow deposit into the worker's net wage and the
- * platform's fee. The 15% platform fee is an EMPLOYER-only mark-up already baked
- * into the deposit (deposit = wage + 0.15·wage = wage × 1.15), so the worker
- * always receives 100% of the base wage and the platform keeps the 15%.
+ * platform's fee. The fee is an EMPLOYER-only mark-up already baked into the
+ * deposit (deposit = wage + feeRate·wage = wage × (1 + feeRate)), so the worker
+ * always receives 100% of the base wage.
  *
- * `totalDeposit` is the single source of truth (base wage × 1.15) that every
- * posting / negotiation / release path now agrees on.
+ * Pass the stored `feeRate` from the gig row so payouts always agree with the
+ * rate that was charged at posting time — not a recomputed constant.
  */
-export function calcSplit(totalDeposit: number) {
-  const workerNet = Math.round(totalDeposit / (1 + PLATFORM_FEE_CEPAT));
+export function calcSplit(totalDeposit: number, feeRate = DEFAULT_FEE_RATE) {
+  const workerNet = Math.round(totalDeposit / (1 + feeRate));
   const platformCut = totalDeposit - workerNet;
   return { platformCut, workerNet };
 }
 
-/** The 15% platform fee added on top of the base wage, borne by the employer. */
-export function calcEmployerFee(baseWage: number): number {
-  return Math.round(baseWage * PLATFORM_FEE_CEPAT);
+/** The employer-borne platform fee added on top of the base wage. */
+export function calcEmployerFee(baseWage: number, feeRate = DEFAULT_FEE_RATE): number {
+  return Math.round(baseWage * feeRate);
 }
 
-/** Total the employer funds into escrow: base wage + 15% employer-borne fee. */
-export function calcEmployerDeposit(baseWage: number): number {
-  return baseWage + calcEmployerFee(baseWage);
+/** Total the employer funds into escrow: base wage + employer-borne fee. */
+export function calcEmployerDeposit(baseWage: number, feeRate = DEFAULT_FEE_RATE): number {
+  return baseWage + calcEmployerFee(baseWage, feeRate);
 }
 
 /**
@@ -92,12 +105,12 @@ export function calcEmployerDeposit(baseWage: number): number {
  *
  * Splits the TOTAL escrow deposit evenly across the contract duration so each
  * verified daily QR check-out releases exactly one day's share: the worker's net
- * (`netToWorker`) plus the 15% corporate fee (`platformFee`). `grossFraction` is
- * the day's gross before the fee (TotalContractValue / DurationDays basis).
+ * (`netToWorker`) plus the corporate fee (`platformFee`). `grossFraction` is
+ * the day's gross before the fee.
  */
-export function calcDailyFraction(totalDeposit: number, jumlahHari: number) {
+export function calcDailyFraction(totalDeposit: number, jumlahHari: number, feeRate = DEFAULT_FEE_RATE) {
   const days = Math.max(1, jumlahHari);
-  const { workerNet, platformCut } = calcSplit(totalDeposit);
+  const { workerNet, platformCut } = calcSplit(totalDeposit, feeRate);
   const netToWorker = Math.round(workerNet / days);
   const platformFee = Math.round(platformCut / days);
   const grossFraction = netToWorker + platformFee;

@@ -4,7 +4,7 @@ import {
   ArrowUpRight, Shield, Users,
 } from "lucide-react";
 import { CustomJob, calcTotal, durasiKontrakOptions } from "@/types/custom-job";
-import { calcEmployerFee, PLATFORM_FEE_CEPAT } from "@/types/escrow";
+import { calcEmployerFee, DEFAULT_FEE_RATE, PLATFORM_FEE_RATES } from "@/types/escrow";
 import { RatingPayload } from "@/components/rating-modal";
 
 interface AnalyticsDashboardProps {
@@ -23,7 +23,7 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
     let totalComm = 0;
     customJobs.forEach((job) => {
       const g = calcTotal(job.nominal, job.pembayaran);
-      const c = calcEmployerFee(g);
+      const c = calcEmployerFee(g, job.feeRate ?? DEFAULT_FEE_RATE);
       totalGross += g;
       totalComm += c;
     });
@@ -42,9 +42,10 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
   const jobBreakdowns = useMemo(() =>
     customJobs.map((job) => {
       const gross = calcTotal(job.nominal, job.pembayaran);
-      const comm = calcEmployerFee(gross);
+      const jobFeeRate = job.feeRate ?? DEFAULT_FEE_RATE;
+      const comm = calcEmployerFee(gross, jobFeeRate);
       const workerPay = gross;
-      const rate = comm / gross;
+      const rate = jobFeeRate;
       return { job, gross, comm, workerPay, rate };
     }),
   [customJobs]);
@@ -112,19 +113,21 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
           <div className="px-4 py-5 space-y-4">
             {/* Flat-rate callout */}
             <div
-              className="rounded-xl px-4 py-4 flex items-center justify-between"
+              className="rounded-xl px-4 py-4 space-y-3"
               style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)" }}
             >
               <div>
-                <p className="text-xs text-slate-400">Biaya Sistem Rekhastha</p>
-                <p className="text-2xl font-black text-emerald-400 mt-0.5">{(PLATFORM_FEE_CEPAT * 100).toFixed(0)}%</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">dari nominal gaji · beban perusahaan</p>
+                <p className="text-xs text-slate-400 mb-2">Biaya Sistem Rekhastha (per Kategori)</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(Object.entries(PLATFORM_FEE_RATES) as [string, number][]).map(([cat, rate]) => (
+                    <div key={cat} className="rounded-lg px-2 py-2 text-center" style={{ background: "rgba(16,185,129,0.12)" }}>
+                      <p className="text-[10px] text-slate-400 capitalize">{cat}</p>
+                      <p className="text-lg font-black text-emerald-400">{(rate * 100).toFixed(0)}%</p>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-[10px] text-slate-400">Contoh: Rp 500.000 / shift</p>
-                <p className="text-sm font-bold text-white mt-0.5">{fmt(500_000 * PLATFORM_FEE_CEPAT)}</p>
-                <p className="text-[10px] text-slate-500">biaya per shift</p>
-              </div>
+              <p className="text-[10px] text-slate-500 leading-relaxed">Beban perusahaan · pekerja terima 100% upah</p>
             </div>
 
             {/* What the fee covers */}

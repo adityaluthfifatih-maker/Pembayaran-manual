@@ -233,6 +233,7 @@ export default function Home() {
     jobTitle: string; nominal: number; companyName: string;
     workerName: string; currentRole: "company" | "worker";
     hiringMode?: "cepat" | "lama"; jobId: number; workerId: string;
+    feeRate?: number;
   } | null>(null);
 
   // ── Notifications ───────────────────────────────────────────────
@@ -1084,13 +1085,13 @@ export default function Home() {
 
   // ── Chat ────────────────────────────────────────────────────────
   const handleOpenChatFromJob = useCallback((job: CustomJob) => {
-    setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "" });
+    setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "", feeRate: job.feeRate });
   }, [workerProfile, currentUser]);
 
   const handleOpenChatFromNotif = useCallback((notif: ApplicationNotification) => {
     const job = customJobs.find((j) => j.id === notif.jobId);
     if (!job) return;
-    setChatContext({ jobTitle: notif.jobTitle, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan Anda", workerName: notif.applicantName, currentRole: "company", hiringMode: job.hiringMode, jobId: job.id, workerId: notif.workerId });
+    setChatContext({ jobTitle: notif.jobTitle, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan Anda", workerName: notif.applicantName, currentRole: "company", hiringMode: job.hiringMode, jobId: job.id, workerId: notif.workerId, feeRate: job.feeRate });
   }, [customJobs]);
 
   const handleNominalUpdate = useCallback((newNominal: number) => {
@@ -1386,6 +1387,7 @@ export default function Home() {
         <ChatModal jobTitle={chatContext.jobTitle} nominal={chatContext.nominal}
           companyName={chatContext.companyName} workerName={chatContext.workerName}
           currentRole={chatContext.currentRole} hiringMode={chatContext.hiringMode}
+          feeRate={chatContext.feeRate}
           jobId={chatContext.jobId} workerId={chatContext.workerId}
           onNominalUpdate={handleNominalUpdate}
           onClose={() => setChatContext(null)} />
@@ -1428,7 +1430,7 @@ export default function Home() {
                       </div>
                       {isAccepted ? (
                         <button
-                          onClick={() => setChatContext({ jobTitle: activeJob.posisi, nominal: activeJob.nominal, companyName: activeJob.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker", hiringMode: activeJob.hiringMode, jobId: activeJob.id, workerId: currentUser?.id ?? "" })}
+                          onClick={() => setChatContext({ jobTitle: activeJob.posisi, nominal: activeJob.nominal, companyName: activeJob.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker", hiringMode: activeJob.hiringMode, jobId: activeJob.id, workerId: currentUser?.id ?? "", feeRate: activeJob.feeRate })}
                           className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-xl shrink-0">
                           <MessageSquare className="w-3.5 h-3.5" /> Chat
                         </button>
@@ -1459,7 +1461,7 @@ export default function Home() {
                       </div>
                       {isAccepted ? (
                         <button
-                          onClick={() => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "" })}
+                          onClick={() => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "", feeRate: job.feeRate })}
                           className="flex items-center gap-1.5 bg-gray-100 text-gray-700 text-xs font-bold px-3 py-2 rounded-xl shrink-0 hover:bg-primary/10 hover:text-primary transition-colors">
                           <MessageSquare className="w-3.5 h-3.5" /> Chat
                         </button>
@@ -1513,7 +1515,7 @@ export default function Home() {
                           )}
                           {job && (
                             <button
-                              onClick={() => setChatContext({ jobTitle: n.jobTitle, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan Anda", workerName: n.applicantName, currentRole: "company", hiringMode: job.hiringMode, jobId: job.id, workerId: n.workerId })}
+                              onClick={() => setChatContext({ jobTitle: n.jobTitle, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan Anda", workerName: n.applicantName, currentRole: "company", hiringMode: job.hiringMode, jobId: job.id, workerId: n.workerId, feeRate: job.feeRate })}
                               className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-primary/90 transition-colors">
                               <MessageSquare className="w-3.5 h-3.5" /> Chat
                             </button>
@@ -1752,7 +1754,7 @@ export default function Home() {
                       {jobStatus === "completed" ? (
                         <>
                           <button onClick={() => setShowPaySlip(true)} className="text-[10px] font-bold bg-primary text-white px-2.5 py-1.5 rounded-lg">Slip Gaji</button>
-                          <button onClick={() => setChatContext({ jobTitle: activeJob.posisi, nominal: activeJob.nominal, companyName: activeJob.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: activeJob.hiringMode, jobId: activeJob.id, workerId: currentUser?.id ?? "" })}
+                          <button onClick={() => setChatContext({ jobTitle: activeJob.posisi, nominal: activeJob.nominal, companyName: activeJob.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: activeJob.hiringMode, jobId: activeJob.id, workerId: currentUser?.id ?? "", feeRate: activeJob.feeRate })}
                             className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-1.5 rounded-lg flex items-center">
                             <MessageSquare className="w-3 h-3" />
                           </button>
@@ -1892,7 +1894,7 @@ export default function Home() {
                   jobs={scheduledGigs}
                   suspended={isSuspended}
                   onSelect={(job) => setSelectedJob(job)}
-                  onChat={(job) => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "" })}
+                  onChat={(job) => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "", feeRate: job.feeRate })}
                 />
                 <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile}
                   onApply={isSuspended ? undefined : handleApply} onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect} />
@@ -1979,7 +1981,7 @@ export default function Home() {
                           onClick={() => !isSuspended && setSelectedJob(job)}>
                           {isSuspended ? "Ditangguhkan" : "Detail & Lamar"}
                         </Button>
-                        <button onClick={() => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "" })}
+                        <button onClick={() => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "", feeRate: job.feeRate })}
                           className="px-3 py-2 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors flex items-center justify-center">
                           <MessageSquare className="w-4 h-4" />
                         </button>
