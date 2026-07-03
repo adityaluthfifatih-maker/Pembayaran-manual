@@ -16,6 +16,10 @@ export interface ApplicationNotification {
   rekening: string;
   timestamp: Date;
   status: ApplicationStatus;
+  /** Worker-facing breakdown fields — only present for completed gig entries. */
+  nominal?: number;
+  jumlahHari?: number;
+  hiringMode?: "cepat" | "lama";
 }
 
 export function maskName(name: string): string {

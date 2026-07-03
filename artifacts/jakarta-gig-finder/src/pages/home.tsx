@@ -1289,6 +1289,9 @@ export default function Home() {
         hasNpwp: !(workerProfile?.belumPunyaNpwp ?? true),
         bank: workerProfile?.namaBank ?? "", rekening: workerProfile?.nomorRekening ?? "",
         timestamp: now, status: "diterima",
+        nominal: activeJob.nominal,
+        jumlahHari: activeJob.jumlahHari,
+        hiringMode: activeJob.hiringMode,
       }]);
       setPendingRating({ raterType: "worker", targetName: activeJob.namaPerusahaan || "Perusahaan Pengiklan", job: activeJob });
     }

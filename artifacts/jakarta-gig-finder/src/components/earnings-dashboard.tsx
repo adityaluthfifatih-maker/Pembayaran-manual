@@ -143,20 +143,29 @@ export default function EarningsDashboard({
                 <Star className="w-4 h-4 text-amber-400 fill-amber-400" /> Riwayat Pekerjaan ({completedJobs.length})
               </p>
               <div className="space-y-2">
-                {completedJobs.slice(0, 3).map((n) => (
-                  <div key={n.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <FileText className="w-4 h-4 text-primary" />
+                {completedJobs.slice(0, 3).map((n) => {
+                  const isMultiDay = n.hiringMode === "lama" && n.jumlahHari != null && n.jumlahHari > 1;
+                  return (
+                    <div key={n.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <FileText className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-gray-900 truncate">{n.jobTitle}</p>
+                        {isMultiDay && n.nominal != null ? (
+                          <p className="text-[10px] text-primary/70 font-medium">
+                            {formatRp(n.nominal)}/hari × {n.jumlahHari} hari
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-gray-500">{n.timestamp.toLocaleDateString("id-ID")}</p>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-semibold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                        {n.status === "diterima" ? "Selesai" : "Diproses"}
+                      </span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-gray-900 truncate">{n.jobTitle}</p>
-                      <p className="text-[10px] text-gray-500">{n.timestamp.toLocaleDateString("id-ID")}</p>
-                    </div>
-                    <span className="text-[10px] font-semibold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                      {n.status === "diterima" ? "Selesai" : "Diproses"}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
