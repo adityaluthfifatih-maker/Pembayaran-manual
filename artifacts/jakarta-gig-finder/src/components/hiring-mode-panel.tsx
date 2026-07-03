@@ -287,7 +287,8 @@ export default function HiringModePanel({
     const job = customJobs.find(j => j.id === jobId);
     if (!job) return;
     const jobFeeRate = job.feeRate ?? DEFAULT_FEE_RATE;
-    const amount = Math.round(job.nominal * job.kuota * (1 + jobFeeRate));
+    const jumlahHari = job.jumlahHari ?? 1;
+    const amount = Math.round(job.nominal * jumlahHari * job.kuota * (1 + jobFeeRate));
     onLockEscrow(jobId, amount);
     setLockedJobIds(prev => new Set([...prev, jobId]));
     setLockedAtMap(prev => ({ ...prev, [jobId]: new Date() }));
@@ -935,7 +936,8 @@ export default function HiringModePanel({
                 {/* Bisa Lama: escrow confirmation inline */}
                 {confirmingEscrow && !isJobLocked && (() => {
                   const confirmFeeRate = job.feeRate ?? DEFAULT_FEE_RATE;
-                  const confirmBase    = job.nominal * job.kuota;
+                  const confirmDays    = job.jumlahHari ?? 1;
+                  const confirmBase    = job.nominal * confirmDays * job.kuota;
                   const confirmFee     = Math.round(confirmBase * confirmFeeRate);
                   const confirmTotal   = confirmBase + confirmFee;
                   return (
@@ -949,7 +951,7 @@ export default function HiringModePanel({
                       </div>
                       <div className="space-y-1.5 text-[11px]">
                         <div className="flex justify-between text-gray-700">
-                          <span>Upah Bersih Pekerja ({job.kuota} orang)</span>
+                          <span>Upah Bersih Pekerja ({job.kuota} orang{confirmDays > 1 ? ` × ${confirmDays} hari` : ""})</span>
                           <span className="font-semibold text-emerald-700">{formatRp(confirmBase)}</span>
                         </div>
                         <div className="flex justify-between text-gray-600">
