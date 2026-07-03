@@ -976,10 +976,14 @@ export default function Home() {
   }, [customJobs, mode, activePing]);
 
   // ── Job posting ─────────────────────────────────────────────────
-  const handleJobPosted = useCallback((data: Omit<CustomJob, "id" | "type" | "lat" | "lng" | "postedAt">) => {
+  const [workerMapFlyTarget, setWorkerMapFlyTarget] = useState<[number, number] | null>(null);
+
+  const handleJobPosted = useCallback((data: Omit<CustomJob, "id" | "type" | "lat" | "lng" | "postedAt"> & { lat?: number; lng?: number }) => {
     // Instant broadcasts (Butuh Cepat / escrow locked) are geofenced within 5 km of Jakarta centre.
     const isBroadcast = data.hiringMode === "cepat" || data.broadcastActive === true || data.escrowStatus === "locked";
-    const coords = isBroadcast ? randomGeofenceCoords(5) : randomJakartaCoords();
+    const coords = (data.lat && data.lng)
+      ? { lat: data.lat, lng: data.lng }
+      : isBroadcast ? randomGeofenceCoords(5) : randomJakartaCoords();
     const newId = nextJobId++;
     const now = new Date();
     const newJob: CustomJob = {
@@ -1815,7 +1819,32 @@ export default function Home() {
 
             ) : workerView === "map" ? (
               <div className="flex-1 relative">
-                <WorkerMap userLat={userLocation.lat} userLng={userLocation.lng} customJobs={mapPurpleJobs} broadcastGigs={radarOn ? instantGigs : []} radarActive={radarOn} selectedJob={selectedJob} onJobClick={(j) => setSelectedJob(j)} />
+                <WorkerMap userLat={userLocation.lat} userLng={userLocation.lng} customJobs={mapPurpleJobs} broadcastGigs={radarOn ? instantGigs : []} radarActive={radarOn} selectedJob={selectedJob} onJobClick={(j) => setSelectedJob(j)} flyTarget={workerMapFlyTarget} />
+                <button
+                  type="button"
+                  title="Kembali ke lokasi saya"
+                  onClick={() => {
+                    if (!navigator.geolocation) return;
+                    navigator.geolocation.getCurrentPosition(
+                      (p) => {
+                        const t: [number, number] = [p.coords.latitude, p.coords.longitude];
+                        setUserLocation({ lat: t[0], lng: t[1] });
+                        setWorkerMapFlyTarget(t);
+                        setTimeout(() => setWorkerMapFlyTarget(null), 1500);
+                      },
+                      () => {
+                        const t: [number, number] = [userLocation.lat, userLocation.lng];
+                        setWorkerMapFlyTarget(t);
+                        setTimeout(() => setWorkerMapFlyTarget(null), 1500);
+                      },
+                      { enableHighAccuracy: true, timeout: 6000 },
+                    );
+                  }}
+                  className="absolute bottom-6 right-4 z-[10] w-12 h-12 rounded-full bg-primary text-white shadow-xl flex items-center justify-center hover:bg-primary/90 active:scale-95 transition-all"
+                  style={{ boxShadow: "0 4px 16px rgba(6,95,70,0.5)" }}
+                >
+                  <MapPin className="w-5 h-5" />
+                </button>
                 {!radarOn && (
                   <div className="absolute inset-0 z-[5] bg-gray-900/45 backdrop-grayscale flex items-start justify-center pt-16 pointer-events-none">
                     <span className="bg-gray-900/85 text-white text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5">

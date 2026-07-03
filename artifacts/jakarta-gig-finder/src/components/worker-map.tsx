@@ -1,7 +1,16 @@
+import { useEffect } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { MapContainer, TileLayer, Marker, Polyline, Tooltip } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Polyline, Tooltip, useMap } from "react-leaflet";
 import { CustomJob, paymentUnits } from "@/types/custom-job";
+
+function MapFlyController({ target }: { target: [number, number] | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (target) map.flyTo(target, 15, { duration: 1.2 });
+  }, [target, map]);
+  return null;
+}
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -78,6 +87,7 @@ interface WorkerMapProps {
   selectedJob: CustomJob | null;
   onJobClick: (job: CustomJob) => void;
   radarActive?: boolean;
+  flyTarget?: [number, number] | null;
 }
 
 export default function WorkerMap({
@@ -88,6 +98,7 @@ export default function WorkerMap({
   selectedJob,
   onJobClick,
   radarActive = true,
+  flyTarget = null,
 }: WorkerMapProps) {
   const distanceKm = selectedJob
     ? haversineKm(userLat, userLng, selectedJob.lat, selectedJob.lng)
@@ -111,6 +122,7 @@ export default function WorkerMap({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         />
+        <MapFlyController target={flyTarget} />
 
         {/* User location (pulsing) */}
         <Marker position={[userLat, userLng]} icon={createUserIcon(radarActive)}>

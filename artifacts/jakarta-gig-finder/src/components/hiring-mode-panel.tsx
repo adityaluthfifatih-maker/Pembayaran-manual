@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
+import LocationPickerSection from "@/components/location-picker-section";
 import {
   Zap, CalendarDays, Lock, LockOpen, Radio, Users, Banknote,
   CheckCircle2, AlertTriangle, ChevronDown, ChevronUp, Star,
@@ -14,7 +15,7 @@ interface HiringModePanelProps {
   currentUser: AuthUser;
   customJobs: CustomJob[];
   notifications: ApplicationNotification[];
-  onJobPosted: (data: Omit<CustomJob, "id" | "type" | "lat" | "lng" | "postedAt">) => void;
+  onJobPosted: (data: Omit<CustomJob, "id" | "type" | "lat" | "lng" | "postedAt"> & { lat?: number; lng?: number }) => void;
   onLockEscrow: (jobId: number, escrowAmount: number) => void;
   onDispute: (jobId: number) => void;
   onStatusChange: (notifId: number, status: ApplicationStatus) => void;
@@ -150,7 +151,15 @@ export default function HiringModePanel({
   const todayStr = new Date().toISOString().split("T")[0];
   const [tanggalMulai, setTanggalMulai] = useState("");
   const [jamKerja, setJamKerja] = useState("");
-  const [alamat, setAlamat] = useState("");
+  const [pickerAddress, setPickerAddress] = useState("");
+  const [pickerLat, setPickerLat] = useState<number | null>(null);
+  const [pickerLng, setPickerLng] = useState<number | null>(null);
+
+  const handleLocationChange = useCallback((lat: number, lng: number, address: string) => {
+    setPickerLat(lat);
+    setPickerLng(lng);
+    setPickerAddress(address);
+  }, []);
 
   // ── Butuh Cepat state ─────────────────────────────────────────
   const [broadcastState, setBroadcastState] = useState<BroadcastState>("idle");
@@ -182,7 +191,7 @@ export default function HiringModePanel({
   const formValid =
     hiringMode === "cepat"
       ? baseValid && catatanValid
-      : baseValid && catatanValid && tanggalMulai !== "" && jamKerja.trim() !== "" && alamat.trim() !== "";
+      : baseValid && catatanValid && tanggalMulai !== "" && jamKerja.trim() !== "" && pickerAddress.trim() !== "";
 
   // ── Mode-filtered job lists ───────────────────────────────────
   const cepatJobs = useMemo(() => customJobs.filter(j => j.hiringMode === "cepat"), [customJobs]);
@@ -255,7 +264,8 @@ export default function HiringModePanel({
       durasiKontrak: "harian",
       jobDate: tanggalMulai ? new Date(tanggalMulai) : undefined,
       jamKerja: jamKerja.trim(),
-      alamat: alamat.trim(),
+      alamat: pickerAddress.trim(),
+      ...(pickerLat !== null && pickerLng !== null ? { lat: pickerLat, lng: pickerLng } : {}),
     });
     resetForm();
     setFormOpen(false);
@@ -263,7 +273,7 @@ export default function HiringModePanel({
 
   const resetForm = () => {
     setPosisi(""); setDeskripsi(""); setNominalRaw(""); setKuota("1");
-    setTanggalMulai(""); setJamKerja(""); setAlamat("");
+    setTanggalMulai(""); setJamKerja(""); setPickerAddress(""); setPickerLat(null); setPickerLng(null);
   };
 
   // ── Lock escrow for Bisa Lama after candidate selection ────────
@@ -549,15 +559,11 @@ export default function HiringModePanel({
                             className={inputCls} />
                         </div>
                       </div>
-                      <div>
-                        <label className={labelCls}>Alamat Penempatan Spesifik *</label>
-                        <div className="relative">
-                          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                          <input value={alamat} onChange={e => setAlamat(e.target.value)}
-                            placeholder="cth: Jl. Sudirman No. 52, Gedung Menara BCA Lt. 8, Jakarta Pusat"
-                            className={`${inputCls} pl-9`} />
-                        </div>
-                      </div>
+                      <LocationPickerSection
+                        inputCls={inputCls}
+                        labelCls={labelCls}
+                        onLocationChange={handleLocationChange}
+                      />
                       <div>
                         <label className={labelCls}>Deskripsi Pekerjaan &amp; Kualifikasi Lengkap *</label>
                         <textarea value={deskripsi} onChange={e => setDeskripsi(e.target.value)}
