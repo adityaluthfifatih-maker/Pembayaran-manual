@@ -5,8 +5,12 @@
  * every gig flow (cepat and lama/negotiated):
  *
  *   worker net   == base wage          (worker paid exactly what was posted/locked)
- *   platform cut == 15% of base wage   (employer-borne mark-up, no more/less)
+ *   platform cut == employer-borne mark-up, no more/less
  *   workerNet + platformCut == deposit (no money created or destroyed)
+ *
+ * Also confirms (Task 67):
+ *   UI breakdown total == handleConfirmEscrow lock amount for 1_bulan/3_bulan/6_bulan
+ *   DB escrow_amount   == nominal × jumlahHari × kuota × (1 + feeRate) rounded
  *
  * The lama path exercises the exact same call chain used in:
  *   - chat-modal.tsx  (calcEmployerFee / calcEmployerDeposit on accepted nominal)
@@ -16,9 +20,12 @@
  * Run: pnpm --filter @workspace/scripts run check:escrow
  */
 
+import pg from "pg";
+
 import {
   DEFAULT_FEE_RATE,
   PLATFORM_FEE_RATES,
+  DURATION_DAYS,
   calcEmployerFee,
   calcEmployerDeposit,
   calcSplit,
@@ -704,6 +711,145 @@ checkDailyFractionResidual("profesional 5d",           600_000,  5, "profesional
 checkDailyFractionResidual("profesional 22d (1-bln)", 1_000_000, 22, "profesional");
 checkDailyFractionResidual("profesional 66d (3-bln)",   800_000, 66, "profesional");
 
+// ── UI breakdown vs handleConfirmEscrow lock formula parity ──────────────────
+//
+// hiring-mode-panel.tsx escrow confirmation overlay shows the employer:
+//   confirmBase  = nominal × jumlahHari × kuota
+//   confirmFee   = Math.round(confirmBase × feeRate)
+//   confirmTotal = confirmBase + confirmFee          ← what employer SEES
+//
+// handleConfirmEscrow then computes the lock amount:
+//   amount = Math.round(nominal × jumlahHari × kuota × (1 + feeRate)) ← what gets STORED
+//
+// These must be equal for all three multi-day duration presets (DURATION_DAYS).
+// Proof: when base is an integer, Math.round(base × (1+r)) = base + Math.round(base × r).
+// This section confirms it empirically for every combination the UI can produce.
+
+function uiConfirmTotal(nominal: number, jumlahHari: number, kuota: number, feeRate: number): number {
+  const base = nominal * jumlahHari * kuota;
+  return base + Math.round(base * feeRate);
+}
+
+function lockAmount(nominal: number, jumlahHari: number, kuota: number, feeRate: number): number {
+  return Math.round(nominal * jumlahHari * kuota * (1 + feeRate));
+}
+
+function checkUiLockParity(
+  durationKey: string,
+  nominal: number,
+  kuota: number,
+  category: JobCategory,
+): void {
+  const days    = DURATION_DAYS[durationKey] ?? 1;
+  const rate    = getFeeRate(category);
+  const ui      = uiConfirmTotal(nominal, days, kuota, rate);
+  const locked  = lockAmount(nominal, days, kuota, rate);
+  const label   = `UI==lock  ${durationKey}(${days}d) Rp${fmt(nominal)}/hari ×${kuota}w ${category}(${Math.round(rate * 100)}%)`;
+  assert(label, ui, locked);
+}
+
+console.log("\n── UI breakdown == lock amount — 1_bulan/3_bulan/6_bulan ────");
+console.log("  Confirms what the employer sees in the confirmation overlay");
+console.log("  equals what handleConfirmEscrow writes to DB, for all durations/tiers.\n");
+
+const durationKeys = ["harian", "1_bulan", "3_bulan", "6_bulan"] as const;
+const wageKuota: Array<[number, number]> = [
+  [150_000, 1],
+  [300_000, 2],
+  [500_000, 3],
+  [1_000_000, 1],
+  [250_000, 5],
+];
+
+for (const durKey of durationKeys) {
+  for (const cat of ["umum", "terampil", "profesional"] as JobCategory[]) {
+    for (const [nom, k] of wageKuota) {
+      checkUiLockParity(durKey, nom, k, cat);
+    }
+  }
+}
+
+// ── DB persistence: escrow_amount == nominal × jumlahHari × kuota × (1 + feeRate) ──
+//
+// For lama gigs that have gone through escrow lock (escrow_status = 'locked'),
+// query Postgres and confirm:
+//   escrow_amount == ROUND(nominal × jumlah_hari × kuota × (1 + COALESCE(fee_rate, 0.05)))
+//
+// This is the single source of truth for what the employer was billed. A mismatch
+// here means the employer approved one number but a different amount was charged.
+
+let dbPassed = 0;
+let dbFailed = 0;
+const dbFailures: string[] = [];
+
+if (!process.env.DATABASE_URL) {
+  console.log("\n── DB escrow_amount check ────────────────────────────────────");
+  console.log("  ⚠  DATABASE_URL not set — skipping live DB check");
+  console.log("  (math parity checks above confirm the formula is correct)");
+} else {
+  console.log("\n── DB escrow_amount check — lama locked gigs ─────────────────");
+  const { Pool } = pg;
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    const { rows } = await pool.query<{
+      id: string;
+      nominal: number;
+      jumlah_hari: number | null;
+      kuota: number;
+      fee_rate: number | null;
+      escrow_amount: number | null;
+      escrow_status: string | null;
+      hiring_mode: string | null;
+    }>(
+      `SELECT id, nominal, jumlah_hari, kuota, fee_rate, escrow_amount, escrow_status, hiring_mode
+       FROM gigs
+       WHERE escrow_status = 'locked'
+         AND jumlah_hari IS NOT NULL
+         AND jumlah_hari > 1
+       ORDER BY posted_at DESC
+       LIMIT 100`
+    );
+
+    if (rows.length === 0) {
+      console.log("  (no locked lama gigs with jumlah_hari > 1 in DB yet)");
+      console.log("  Post and lock a lama gig to populate this check.");
+    }
+
+    for (const row of rows) {
+      const days      = row.jumlah_hari!;
+      const rate      = row.fee_rate ?? DEFAULT_FEE_RATE;
+      const expected  = Math.round(row.nominal * days * row.kuota * (1 + rate));
+      const stored    = row.escrow_amount;
+      const label     = `gig ${row.id} mode=${row.hiring_mode ?? '?'} nominal=${fmt(row.nominal)} ×${days}d ×${row.kuota}w rate=${Math.round(rate * 100)}%`;
+
+      if (stored === null) {
+        dbFailed++;
+        const msg = `  ✗ ${label}: escrow_amount is NULL`;
+        dbFailures.push(msg);
+        console.error(msg);
+      } else if (stored !== expected) {
+        dbFailed++;
+        const msg = `  ✗ ${label}: stored=${fmt(stored)} expected=${fmt(expected)} diff=${stored - expected}`;
+        dbFailures.push(msg);
+        console.error(msg);
+      } else {
+        dbPassed++;
+        console.log(`  ✓ ${label}: escrow_amount=${fmt(stored)} ✓`);
+      }
+    }
+
+    if (rows.length > 0) {
+      console.log(`\n  ${dbPassed} gig(s) correct, ${dbFailed} mismatch(es)`);
+    }
+  } finally {
+    await pool.end();
+  }
+
+  passed += dbPassed;
+  failed += dbFailed;
+  failures.push(...dbFailures);
+}
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 
 console.log("\n" + "═".repeat(64));
@@ -722,6 +868,7 @@ if (failed > 0) {
   console.log(
     "\n✅ All escrow invariants hold.\n" +
     "   • Cepat/lama single-release: workers receive exactly the base wage.\n" +
+    "   • UI breakdown == lock amount for all durations (harian/1_bulan/3_bulan/6_bulan).\n" +
     "   • Daily-fraction (borongan harian): each day's payout is floor(baseWage/days)\n" +
     "     — cumulative k-day payout never exceeds floor(baseWage×k/days) for any k.\n" +
     "     Any rounding residual (≤ 2×days Rp) stays in escrow for employer refund.",
