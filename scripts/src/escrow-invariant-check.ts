@@ -23,6 +23,8 @@ import {
   calcEmployerDeposit,
   calcSplit,
   calcEscrowAmount,
+  getFeeRate,
+  type JobCategory,
 } from "../../artifacts/jakarta-gig-finder/src/types/escrow";
 
 // ── Test infrastructure ──────────────────────────────────────────────────────
@@ -163,6 +165,88 @@ function checkStalerateRegression(baseWage: number): void {
   }
 }
 
+// ── End-to-end lifecycle simulation ──────────────────────────────────────────
+//
+// Models the exact sequence in home.tsx handleSplitPayment:
+//
+//   POST:     employer picks category → feeRate = getFeeRate(category)
+//   LOCK:     escrowAmount = calcEmployerDeposit(baseWage, feeRate)   ← stored on gig record
+//             (lama: baseWage = calcEscrowAmount(negotiated, pembayaran, jumlahHari, kuota))
+//   COMPLETE: job = { escrowAmount, feeRate }   ← handleSplitPayment reads ONLY these stored fields
+//             { workerNet } = calcSplit(job.escrowAmount, job.feeRate)
+//   ASSERT:   workerNet == nominal (base wage posted by employer)
+//
+// This catches any regression where the stored feeRate diverges from the split
+// rate (e.g. a default is used on release instead of the stored per-category rate).
+
+interface GigRecord {
+  id: string;
+  category: JobCategory;
+  feeRate: number;        // stored at lock time — must be used at release time
+  escrowAmount: number;   // total employer deposit stored on the gig
+  baseWage: number;       // the wage workers expect to receive
+}
+
+function postAndLockCepat(
+  label: string,
+  baseWage: number,
+  category: JobCategory,
+): GigRecord {
+  const feeRate = getFeeRate(category);
+  const escrowAmount = calcEmployerDeposit(baseWage, feeRate);
+  return { id: label, category, feeRate, escrowAmount, baseWage };
+}
+
+function postAndLockLama(
+  label: string,
+  negotiatedWage: number,
+  category: JobCategory,
+  pembayaran: Pembayaran = "per_hari",
+  jumlahHari = 1,
+  kuota = 1,
+): GigRecord {
+  const feeRate = getFeeRate(category);
+  const baseWage = calcEscrowAmount(negotiatedWage, pembayaran, jumlahHari, kuota);
+  const escrowAmount = calcEmployerDeposit(baseWage, feeRate);
+  return { id: label, category, feeRate, escrowAmount, baseWage };
+}
+
+// Replicates handleSplitPayment: reads stored escrowAmount + feeRate only
+function releaseEscrow(gig: GigRecord): { workerNet: number; platformCut: number } {
+  return calcSplit(gig.escrowAmount, gig.feeRate);
+}
+
+function checkFullLifecycleCepat(
+  label: string,
+  baseWage: number,
+  category: JobCategory,
+): void {
+  const gig = postAndLockCepat(label, baseWage, category);
+  const { workerNet, platformCut } = releaseEscrow(gig);
+
+  console.log(`\n[lifecycle/cepat] ${label}  Rp ${fmt(baseWage)}  category=${category}  rate=${gig.feeRate * 100}%`);
+  assert(`workerNet == baseWage (${fmt(baseWage)})`,                        workerNet,   baseWage);
+  assert(`platformCut == calcEmployerFee(baseWage, ${category})`,           platformCut, calcEmployerFee(baseWage, gig.feeRate));
+  assert(`workerNet + platformCut == escrowAmount (${fmt(gig.escrowAmount)})`, workerNet + platformCut, gig.escrowAmount);
+}
+
+function checkFullLifecycleLama(
+  label: string,
+  negotiatedWage: number,
+  category: JobCategory,
+  pembayaran: Pembayaran = "per_hari",
+  jumlahHari = 1,
+  kuota = 1,
+): void {
+  const gig = postAndLockLama(label, negotiatedWage, category, pembayaran, jumlahHari, kuota);
+  const { workerNet, platformCut } = releaseEscrow(gig);
+
+  console.log(`\n[lifecycle/lama] ${label}  Rp ${fmt(negotiatedWage)}/unit  ${pembayaran}×${jumlahHari}d×${kuota}w  category=${category}  rate=${gig.feeRate * 100}%`);
+  assert(`workerNet == baseWage (${fmt(gig.baseWage)})`,                        workerNet,   gig.baseWage);
+  assert(`platformCut == calcEmployerFee(baseWage, ${category})`,               platformCut, calcEmployerFee(gig.baseWage, gig.feeRate));
+  assert(`workerNet + platformCut == escrowAmount (${fmt(gig.escrowAmount)})`,  workerNet + platformCut, gig.escrowAmount);
+}
+
 // ── Run all checks ───────────────────────────────────────────────────────────
 
 console.log("═".repeat(64));
@@ -201,6 +285,32 @@ console.log("  (these confirm a deposit/release rate mismatch is VISIBLE)");
 for (const wage of [150_000, 200_000, 350_000]) {
   checkStalerateRegression(wage);
 }
+
+console.log("\n── End-to-end lifecycle: cepat — all 3 category tiers ───────");
+console.log("  post → lock (store escrowAmount+feeRate) → complete (split) → assert workerNet == nominal");
+for (const category of (["umum", "terampil", "profesional"] as JobCategory[])) {
+  for (const wage of [150_000, 350_000, 1_000_000]) {
+    checkFullLifecycleCepat(`${category} Rp${fmt(wage)}`, wage, category);
+  }
+}
+
+console.log("\n── End-to-end lifecycle: lama — all 3 category tiers ────────");
+console.log("  post → negotiate → lock (store) → complete (split) → assert workerNet == baseWage");
+
+// umum 3% — warehouse labour, per_shift, multi-worker
+checkFullLifecycleLama("umum per_shift 4 workers",     150_000, "umum",         "per_shift", 1, 4);
+checkFullLifecycleLama("umum per_hari standard",        200_000, "umum",         "per_hari",  1, 1);
+checkFullLifecycleLama("umum per_projek borongan",      800_000, "umum",         "per_projek",1, 3);
+
+// terampil 5% — default tier, skilled/technical roles
+checkFullLifecycleLama("terampil per_hari no change",   350_000, "terampil",     "per_hari",  1, 1);
+checkFullLifecycleLama("terampil per_shift multi-day",  200_000, "terampil",     "per_shift", 3, 2);
+checkFullLifecycleLama("terampil per_projek borongan",  500_000, "terampil",     "per_projek",1, 2);
+
+// profesional 8% — specialist roles (accounting, legal, IT, medical)
+checkFullLifecycleLama("profesional per_hari standard", 500_000, "profesional",  "per_hari",  1, 1);
+checkFullLifecycleLama("profesional multi-day",         600_000, "profesional",  "per_hari",  5, 1);
+checkFullLifecycleLama("profesional per_projek",        900_000, "profesional",  "per_projek",1, 1);
 
 // ── Summary ──────────────────────────────────────────────────────────────────
 
