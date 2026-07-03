@@ -155,15 +155,17 @@ export function broadcastApplication(
 }
 
 /**
- * Push an application status change (employer reviewed/accepted/rejected) so
- * the worker device can update its own notification panel in real time.
+ * Push an application status change (employer reviewed/accepted/rejected) only
+ * to the worker who submitted the application.  No other client receives this
+ * frame — privacy and efficiency improvement over the previous broadcast().
  */
 export function broadcastApplicationStatus(
   id: number,
   status: string,
   jobId: number,
+  workerId: string,
 ): void {
-  broadcast({ type: "application_status", id, status, jobId });
+  sendToUser(workerId, JSON.stringify({ type: "application_status", id, status, jobId }));
 }
 
 /**

@@ -154,7 +154,7 @@ router.patch("/applications/:id/status", async (req, res): Promise<void> => {
     return;
   }
 
-  broadcastApplicationStatus(row.id, row.status, row.jobId);
+  broadcastApplicationStatus(row.id, row.status, row.jobId, row.workerId);
   req.log.info(
     { applicationId: row.id, status: row.status },
     "Application status updated",
