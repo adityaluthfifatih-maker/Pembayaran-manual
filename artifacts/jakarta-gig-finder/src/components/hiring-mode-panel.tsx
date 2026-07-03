@@ -930,6 +930,13 @@ export default function HiringModePanel({
                   )}
                 </div>
 
+                {/* Lama fee breakdown sub-line */}
+                {isJobLocked && !isCepatJob && job.jumlahHari && job.jumlahHari > 1 && (
+                  <div className="flex items-center gap-1 text-[10px] text-gray-400 pl-0.5 border-l-2 border-emerald-200 ml-0.5">
+                    <span>{formatRp(job.nominal)}/hari × {job.jumlahHari} hari × {job.kuota} orang</span>
+                  </div>
+                )}
+
                 {/* Applicants row */}
                 <button
                   onClick={() => setExpandedJobId(jobExpanded ? null : job.id)}
