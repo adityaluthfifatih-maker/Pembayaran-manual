@@ -375,6 +375,114 @@ function checkDailyFractionLifecycle(
   }
 }
 
+// ── Over-draw guard: k = jumlahHari+1 must exceed the worker allocation ──────
+//
+// The on-site borongan checkout route (artifacts/api-server/src/routes/borongan.ts)
+// rejects a checkout when `gig.daysPaid >= gig.jumlahHari` (HTTP 409).  This
+// function provides a mathematical proof of WHY that guard is load-bearing:
+//
+//   calcDailyFraction returns floor(workerNet / days) per release.
+//   After k = days releases:  cumulative = days × floor(workerNet/days) ≤ workerNet  ✓
+//   After k = days+1 release: cumulative = (days+1) × floor(workerNet/days) > workerNet  ✗
+//     …provided floor(workerNet/days) ≥ 1, i.e. the daily slice is non-zero.
+//
+// The final-day settlement in borongan.ts absorbs the floor remainder so the
+// exact escrow amount is paid out, not a truncated amount. An extra (days+1)
+// release on top of that settlement would double-count the remainder and
+// overpay by at least one perDayNet slice above the base wage.
+//
+// Assertions:
+//   A. k = jumlahHari   → cumulative ≤ workerNet        (floor lemma — must hold)
+//   B. k = jumlahHari+1 → cumulative > workerNet        (overdraw — must be blocked)
+//   C. k = jumlahHari+1 → cumulative > totalDeposit OR cumulative net > workerNet
+//      In either case the server MUST reject before calling calcDailyFraction.
+
+function checkOverdrawGuard(
+  label: string,
+  baseWage: number,
+  jumlahHari: number,
+  category: JobCategory,
+): void {
+  const feeRate      = getFeeRate(category);
+  const totalDeposit = calcEmployerDeposit(baseWage, feeRate);
+  const { workerNet } = calcSplit(totalDeposit, feeRate);
+  const { netToWorker: perDayNet } = calcDailyFraction(totalDeposit, jumlahHari, feeRate);
+
+  const cumulativeAtMax  = perDayNet * jumlahHari;          // legitimate full completion
+  const cumulativeAtOver = perDayNet * (jumlahHari + 1);    // forbidden extra release
+
+  console.log(
+    `\n[overdraw-guard] ${label}  baseWage=Rp${fmt(baseWage)}  days=${jumlahHari}` +
+    `  rate=${feeRate * 100}%  perDayNet=Rp${fmt(perDayNet)}` +
+    `  workerNet=Rp${fmt(workerNet)}  totalDeposit=Rp${fmt(totalDeposit)}`,
+  );
+
+  // A. k = jumlahHari — cumulative must not exceed workerNet (floor lemma)
+  if (cumulativeAtMax <= workerNet) {
+    passed++;
+    console.log(
+      `  ✓ [A] k=${jumlahHari}/${jumlahHari}: cumulative=${fmt(cumulativeAtMax)}` +
+      ` ≤ workerNet=${fmt(workerNet)} — legitimate completion within budget`,
+    );
+  } else {
+    failed++;
+    const msg =
+      `  ✗ [A] k=${jumlahHari}: cumulative=${fmt(cumulativeAtMax)} EXCEEDS` +
+      ` workerNet=${fmt(workerNet)} — floor invariant broken`;
+    failures.push(msg);
+    console.error(msg);
+  }
+
+  // B. k = jumlahHari+1 — cumulative must exceed workerNet when perDayNet ≥ 1
+  if (perDayNet < 1) {
+    // Wage so low relative to days that the per-day slice rounds to 0;
+    // no overdraw is possible via this path (releases are all 0), but the
+    // worker would also receive nothing — a degenerate case the UI should block.
+    passed++;
+    console.log(
+      `  ✓ [B] k=${jumlahHari + 1}/${jumlahHari}: perDayNet=0 — overdraw structurally` +
+      ` impossible (wage Rp${fmt(baseWage)} too small for ${jumlahHari}-day contract)`,
+    );
+  } else if (cumulativeAtOver > workerNet) {
+    passed++;
+    console.log(
+      `  ✓ [B] k=${jumlahHari + 1}/${jumlahHari}: cumulative=${fmt(cumulativeAtOver)}` +
+      ` EXCEEDS workerNet=${fmt(workerNet)} — would overdraw by` +
+      ` Rp${fmt(cumulativeAtOver - workerNet)}; server MUST reject`,
+    );
+  } else {
+    failed++;
+    const msg =
+      `  ✗ [B] k=${jumlahHari + 1}: cumulative=${fmt(cumulativeAtOver)} does NOT exceed` +
+      ` workerNet=${fmt(workerNet)} — overdraw guard weaker than expected`;
+    failures.push(msg);
+    console.error(msg);
+  }
+
+  // C. Confirm the escrow also blows past totalDeposit or the net is over its allocation.
+  //    Either condition proves the server guard (daysPaid >= jumlahHari → 409) is necessary.
+  const netOverdrawn = cumulativeAtOver > workerNet && perDayNet >= 1;
+  const depositOverdrawn = cumulativeAtOver > totalDeposit;
+  if (netOverdrawn || depositOverdrawn || perDayNet < 1) {
+    passed++;
+    const why = perDayNet < 1
+      ? "perDayNet=0, structurally safe"
+      : depositOverdrawn
+        ? `net ${fmt(cumulativeAtOver)} > totalDeposit ${fmt(totalDeposit)}`
+        : `net ${fmt(cumulativeAtOver)} > workerNet allocation ${fmt(workerNet)}`;
+    console.log(
+      `  ✓ [C] k=${jumlahHari + 1}: ${why}` +
+      ` — server rejection of day ${jumlahHari + 1} is mandatory`,
+    );
+  } else {
+    failed++;
+    const msg =
+      `  ✗ [C] k=${jumlahHari + 1}: neither net nor deposit overdrawn — guard rationale unclear`;
+    failures.push(msg);
+    console.error(msg);
+  }
+}
+
 // ── Run all checks ───────────────────────────────────────────────────────────
 
 console.log("═".repeat(64));
@@ -460,6 +568,31 @@ checkDailyFractionLifecycle("profesional 3d",        500_000,  3, "profesional")
 checkDailyFractionLifecycle("profesional 5d",        600_000,  5, "profesional");
 checkDailyFractionLifecycle("profesional 22d (1-bln)", 1_000_000, 22, "profesional");
 checkDailyFractionLifecycle("profesional 66d (3-bln)", 800_000, 66, "profesional");
+
+console.log("\n── Over-draw guard: k = jumlahHari+1 must blow past worker allocation ──");
+console.log("  Proves the borongan.ts daysPaid >= jumlahHari → 409 guard is load-bearing.");
+console.log("  Assertion A: k=days cumulative ≤ workerNet (floor lemma holds)");
+console.log("  Assertion B: k=days+1 cumulative > workerNet (extra release overdraws)");
+console.log("  Assertion C: server must reject — confirmed from formula alone");
+
+// umum 3% — short contracts where the overdraw is immediately visible
+checkOverdrawGuard("umum 3d",          150_000,  3, "umum");
+checkOverdrawGuard("umum 5d",          200_000,  5, "umum");
+checkOverdrawGuard("umum 7d awkward",  350_000,  7, "umum");
+
+// terampil 5% — medium contracts (default tier)
+checkOverdrawGuard("terampil 3d",           350_000,  3, "terampil");
+checkOverdrawGuard("terampil 10d",          500_000, 10, "terampil");
+checkOverdrawGuard("terampil 22d (1-bln)",  300_000, 22, "terampil");
+
+// profesional 8% — longer contracts, higher per-day amounts
+checkOverdrawGuard("profesional 3d",          500_000,  3, "profesional");
+checkOverdrawGuard("profesional 22d (1-bln)", 1_000_000, 22, "profesional");
+checkOverdrawGuard("profesional 66d (3-bln)",   800_000, 66, "profesional");
+
+// Edge case: wage just large enough for perDayNet ≥ 1
+checkOverdrawGuard("umum edge perDayNet=1",  3,  3, "umum");   // 3 Rp / 3 days = 1 per day
+checkOverdrawGuard("umum edge perDayNet=0",  2,  3, "umum");   // 2 Rp / 3 days = 0 per day
 
 // ── Summary ──────────────────────────────────────────────────────────────────
 

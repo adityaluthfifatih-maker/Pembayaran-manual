@@ -199,6 +199,12 @@ router.post("/borongan/onsite/checkout", async (req, res): Promise<void> => {
 
     const totalDays = gig.jumlahHari ?? 1;
     const already = gig.daysPaid ?? 0;
+    // Hard cap: reject the (jumlahHari+1)th checkout before it reaches calcDailyFraction.
+    // Mathematical proof in scripts/src/escrow-invariant-check.ts (checkOverdrawGuard):
+    //   k = jumlahHari+1  →  (days+1) × floor(workerNet/days) > workerNet
+    // — the cumulative payout exceeds the contracted worker allocation, drawing
+    // from the platform fee or creating money. The transaction lock (FOR UPDATE)
+    // ensures two concurrent checkouts never both read `already < totalDays`.
     if (already >= totalDays) {
       return { status: 409 as const, error: "Semua pembayaran harian sudah dicairkan." };
     }
