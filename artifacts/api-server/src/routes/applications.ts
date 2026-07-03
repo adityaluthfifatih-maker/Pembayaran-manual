@@ -28,6 +28,10 @@ const applyBody = z.object({
   hasNpwp: z.boolean().default(false),
   bank: z.string().default(""),
   rekening: z.string().default(""),
+  /** Optional link to the worker's CV / resume. */
+  cvLink: z.string().optional(),
+  /** Optional link to the worker's portfolio. */
+  portfolioLink: z.string().optional(),
 });
 
 router.post("/applications", async (req, res): Promise<void> => {
@@ -56,11 +60,25 @@ router.post("/applications", async (req, res): Promise<void> => {
 
   const [row] = await db
     .insert(applicationsTable)
-    .values({ ...parsed.data, workerId: user.id, employerId })
+    .values({ ...parsed.data, workerId: user.id, employerId, status: "baru" })
     .returning();
-  broadcastApplication(row, employerId);
+
+  if (!row) {
+    res.status(500).json({ error: "Gagal menyimpan lamaran. Silakan coba lagi." });
+    return;
+  }
+
+  if (!employerId) {
+    req.log.warn(
+      { jobId: parsed.data.jobId },
+      "Application saved but employerId is empty — real-time notification skipped",
+    );
+  } else {
+    broadcastApplication(row, employerId);
+  }
+
   req.log.info(
-    { applicationId: row.id, jobId: row.jobId, workerId: row.workerId },
+    { applicationId: row.id, jobId: row.jobId, workerId: row.workerId, employerId },
     "New job application submitted",
   );
   res.status(201).json(row);

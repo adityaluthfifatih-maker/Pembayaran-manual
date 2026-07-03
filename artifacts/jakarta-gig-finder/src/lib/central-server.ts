@@ -49,6 +49,9 @@ export interface ApplicationEvent {
   hasNpwp: boolean;
   bank: string;
   rekening: string;
+  /** Optional CV / portfolio links — present when the worker provided them. */
+  cvLink?: string | null;
+  portfolioLink?: string | null;
   status: string;
   createdAt: string;
 }
@@ -340,6 +343,9 @@ export async function postApplication(data: {
   hasNpwp: boolean;
   bank: string;
   rekening: string;
+  /** Optional CV / portfolio links — only sent when the worker filled them in. */
+  cvLink?: string;
+  portfolioLink?: string;
 }): Promise<ApplicationEvent | null> {
   try {
     const res = await fetch(`${API_BASE}/applications`, {

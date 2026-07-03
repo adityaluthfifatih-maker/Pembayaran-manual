@@ -32,7 +32,10 @@ export const applicationsTable = pgTable("applications", {
   hasNpwp: boolean("has_npwp").notNull().default(false),
   bank: text("bank").notNull().default(""),
   rekening: text("rekening").notNull().default(""),
-  /** "baru" | "ditinjau" | "diterima" | "ditolak" | "selesai" */
+  /** Optional CV / portfolio links submitted by the worker. Nullable — many workers won't have them. */
+  cvLink: text("cv_link"),
+  portfolioLink: text("portfolio_link"),
+  /** "baru" (pending) | "ditinjau" | "diterima" | "ditolak" | "selesai" */
   status: text("status").notNull().default("baru"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
