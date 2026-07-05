@@ -68,6 +68,10 @@ export interface ChatMessageEvent {
   senderRole: string;
   text: string;
   sentAt: string;
+  /** Optional attachment — server-relative path served via /api/uploads/chat/:filename */
+  attachmentUrl?: string | null;
+  attachmentType?: string | null;
+  fileSize?: number | null;
 }
 export type ChatMessageSubscriber = (event: ChatMessageEvent) => void;
 

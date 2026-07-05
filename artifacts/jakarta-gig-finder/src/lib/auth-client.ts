@@ -83,3 +83,28 @@ export async function fetchMe(): Promise<AuthUser | null> {
   if (!res.ok) return null;
   return (await res.json()) as AuthUser;
 }
+
+/**
+ * Submit KYC documents (KTP photo and/or selfie-with-KTP). Either or both
+ * files may be provided; the server resets verificationStatus to "pending".
+ */
+export async function submitKyc(files: {
+  ktpPhoto?: File;
+  selfieWithKtp?: File;
+}): Promise<AuthUser> {
+  const form = new FormData();
+  if (files.ktpPhoto) form.append("ktpPhoto", files.ktpPhoto);
+  if (files.selfieWithKtp) form.append("selfieWithKtp", files.selfieWithKtp);
+
+  const res = await fetch(`${API_BASE}/auth/kyc`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new AuthError((data as { error?: string }).error ?? "Gagal mengunggah dokumen.", res.status);
+  }
+  return data as AuthUser;
+}

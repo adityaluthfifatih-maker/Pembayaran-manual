@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   X, Send, ShieldCheck, Lock, AlertTriangle, Briefcase, ChevronRight,
-  CheckCircle2, RefreshCw, Zap, BadgeDollarSign, Loader2,
+  CheckCircle2, RefreshCw, Zap, BadgeDollarSign, Loader2, Paperclip, FileText, Download,
 } from "lucide-react";
 import { calcEmployerFee, calcEmployerDeposit, DEFAULT_FEE_RATE, MAX_BYPASS_STRIKES } from "@/types/escrow";
 import { subscribeChatMessage, type ChatMessageEvent } from "@/lib/central-server";
@@ -23,6 +23,17 @@ interface ChatMessage {
   isOfferMsg?: boolean;
   offerAmount?: number;
   offerStatus?: "pending" | "accepted" | "countered";
+  attachmentUrl?: string | null;
+  attachmentType?: string | null;
+  fileSize?: number | null;
+}
+
+const ALLOWED_ATTACHMENT_TYPES = [".jpg", ".jpeg", ".png", ".pdf"];
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
 }
 
 export interface ChatModalProps {
@@ -54,6 +65,9 @@ function rowToMsg(
     sender: row.senderRole === "perusahaan" ? "company" : "worker",
     text: row.text,
     time: new Date(row.sentAt),
+    attachmentUrl: "attachmentUrl" in row ? row.attachmentUrl : undefined,
+    attachmentType: "attachmentType" in row ? row.attachmentType : undefined,
+    fileSize: "fileSize" in row ? row.fileSize : undefined,
   };
 }
 
@@ -111,6 +125,9 @@ export default function ChatModal({
   const [bypassStrikes, setBypassStrikes] = useState(0);
   const [blacklisted, setBlacklisted] = useState(false);
   const [showBuyOut, setShowBuyOut] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Negotiation state ─────────────────────────────────────────────
   const [lockedNominal, setLockedNominal] = useState<number | null>(null);
@@ -212,6 +229,56 @@ export default function ChatModal({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); }
+  };
+
+  // ── Attach a file (KTP revision, work proof, dispute photo) ────────
+  const handleAttachFile = useCallback(async (file: File) => {
+    setAttachError(null);
+    const ext = "." + (file.name.split(".").pop()?.toLowerCase() ?? "");
+    if (!ALLOWED_ATTACHMENT_TYPES.includes(ext)) {
+      setAttachError("Format tidak didukung. Gunakan JPG, PNG, atau PDF.");
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setAttachError("Ukuran berkas melebihi 5MB.");
+      return;
+    }
+    if (blacklisted) return;
+
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const uploadRes = await fetch(`/api/chat/${jobId}/${workerId}/upload`, {
+        method: "POST",
+        body: form,
+      });
+      if (!uploadRes.ok) {
+        const body = await uploadRes.json().catch(() => null);
+        setAttachError(body?.error ?? "Gagal mengunggah berkas.");
+        return;
+      }
+      const { attachmentUrl, attachmentType, fileSize } = (await uploadRes.json()) as {
+        attachmentUrl: string; attachmentType: string; fileSize: number;
+      };
+
+      await fetch(`/api/chat/${jobId}/${workerId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "", attachmentUrl, attachmentType, fileSize }),
+      });
+      // WS broadcast delivers the message to both participants, same as text.
+    } catch {
+      setAttachError("Gagal mengunggah berkas. Periksa koneksi Anda.");
+    } finally {
+      setUploading(false);
+    }
+  }, [jobId, workerId, blacklisted]);
+
+  const handleFilePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) void handleAttachFile(file);
   };
 
   // ── Send wage offer (local-only UI — offer state not persisted) ───
@@ -454,7 +521,35 @@ export default function ChatModal({
                               {msg.offerStatus === "countered" && <span className="text-[10px] text-gray-400">⚡ Di-counter</span>}
                             </div>
                           )}
-                          <p className="text-sm leading-relaxed">{msg.text}</p>
+                          {msg.attachmentUrl && (
+                            msg.attachmentType?.startsWith("image/") ? (
+                              <a href={msg.attachmentUrl} target="_blank" rel="noreferrer" className="block mb-1.5">
+                                <img
+                                  src={msg.attachmentUrl}
+                                  alt="Lampiran"
+                                  className="max-w-[220px] max-h-[220px] rounded-xl border border-black/5 object-cover"
+                                />
+                              </a>
+                            ) : (
+                              <a
+                                href={msg.attachmentUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                download
+                                className={`flex items-center gap-2 rounded-xl px-3 py-2 mb-1.5 ${isMine ? "bg-white/15" : "bg-gray-50 border border-gray-100"}`}
+                              >
+                                <FileText className={`w-6 h-6 shrink-0 ${isMine ? "text-white" : "text-primary"}`} />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-semibold truncate">Dokumen PDF</p>
+                                  {msg.fileSize != null && (
+                                    <p className={`text-[10px] ${isMine ? "text-white/70" : "text-gray-400"}`}>{formatFileSize(msg.fileSize)}</p>
+                                  )}
+                                </div>
+                                <Download className={`w-4 h-4 shrink-0 ${isMine ? "text-white/80" : "text-gray-400"}`} />
+                              </a>
+                            )
+                          )}
+                          {msg.text && <p className="text-sm leading-relaxed">{msg.text}</p>}
                           <p className={`text-[10px] mt-1 text-right ${
                             msg.isOfferMsg ? "opacity-50" : isMine ? "text-white/60" : "text-gray-400"
                           }`}>{formatTime(msg.time)}</p>
@@ -532,7 +627,27 @@ export default function ChatModal({
               </button>
             )}
 
+            {attachError && (
+              <p className="text-[10px] font-semibold text-red-500 mb-1.5 px-1">{attachError}</p>
+            )}
+
             <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                onChange={handleFilePicked}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading || blacklisted}
+                className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 transition-all ${uploading ? "bg-gray-100" : "bg-gray-100 hover:bg-gray-200 active:scale-95"}`}>
+                {uploading
+                  ? <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                  : <Paperclip className="w-4.5 h-4.5 text-gray-500" />
+                }
+              </button>
               <div className="flex-1 bg-gray-100 rounded-2xl px-4 py-2.5 flex items-center">
                 <input
                   ref={inputRef}

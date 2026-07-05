@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { db, chatMessagesTable, gigsTable, applicationsTable } from "@workspace/db";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
 import { broadcastChatMessage } from "../lib/realtime";
+import { chatUpload } from "../lib/upload";
 
 const router = Router();
 
@@ -105,9 +106,16 @@ router.get("/chat/:jobId/:workerId", async (req: Request, res: Response): Promis
   res.json(rows);
 });
 
-const messageBody = z.object({
-  text: z.string().min(1).max(2000),
-});
+const messageBody = z
+  .object({
+    text: z.string().max(2000).default(""),
+    attachmentUrl: z.string().max(500).optional(),
+    attachmentType: z.string().max(100).optional(),
+    fileSize: z.coerce.number().int().positive().optional(),
+  })
+  .refine((v) => v.text.trim().length > 0 || !!v.attachmentUrl, {
+    message: "Pesan atau lampiran wajib diisi.",
+  });
 
 /**
  * Post a new message to a specific (jobId, workerId) conversation thread.
@@ -142,6 +150,9 @@ router.post("/chat/:jobId/:workerId", async (req: Request, res: Response): Promi
       senderId: ctx.user.id,
       senderRole: ctx.user.role,
       text: parsed.data.text,
+      attachmentUrl: parsed.data.attachmentUrl ?? null,
+      attachmentType: parsed.data.attachmentType ?? null,
+      fileSize: parsed.data.fileSize ?? null,
     })
     .returning();
 
@@ -153,5 +164,48 @@ router.post("/chat/:jobId/:workerId", async (req: Request, res: Response): Promi
   );
   res.status(201).json(row);
 });
+
+/**
+ * Upload a chat attachment (KTP revision, work proof, dispute photo).
+ * Access is scoped identically to posting a message in the thread: only the
+ * employer who owns the gig or the accepted worker may upload.
+ *
+ * Returns the server-relative URL to embed in a subsequent POST /chat/:jobId/:workerId.
+ * The file itself is not linked to any message until that POST succeeds, so an
+ * upload with no follow-up POST is simply an orphaned file (best-effort — not
+ * cleaned up automatically, consistent with the KYC upload path).
+ */
+router.post(
+  "/chat/:jobId/:workerId/upload",
+  chatUpload.single("file"),
+  async (req: Request, res: Response): Promise<void> => {
+    const jobId = Number(req.params.jobId);
+    const workerId = String(req.params.workerId ?? "");
+
+    if (!jobId || isNaN(jobId) || !workerId) {
+      res.status(400).json({ error: "Parameter tidak valid." });
+      return;
+    }
+
+    const ctx = await resolveParticipant(req, res, jobId, workerId);
+    if (!ctx) return;
+
+    if (!req.file) {
+      res.status(400).json({ error: "Berkas tidak ditemukan atau format tidak didukung (JPG, PNG, PDF, maks 5MB)." });
+      return;
+    }
+
+    const url = `/api/uploads/chat/${req.file.filename}`;
+    req.log.info(
+      { jobId, workerId, senderId: ctx.user.id, mimetype: req.file.mimetype, size: req.file.size },
+      "Chat attachment uploaded",
+    );
+    res.status(201).json({
+      attachmentUrl: url,
+      attachmentType: req.file.mimetype,
+      fileSize: req.file.size,
+    });
+  },
+);
 
 export default router;

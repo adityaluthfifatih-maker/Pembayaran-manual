@@ -320,3 +320,27 @@ export interface AdminLogRow {
 export function fetchAdminLogs(): Promise<AdminLogRow[]> {
   return request("/admin/logs", "GET");
 }
+
+// ── KYC verification queue ────────────────────────────────────────
+
+export type KycStatus = "unverified" | "pending" | "verified" | "rejected";
+
+export interface KycRow {
+  id: string;
+  name: string;
+  email: string;
+  ktpPhotoUrl: string | null;
+  selfieWithKtpUrl: string | null;
+  verificationStatus: KycStatus;
+}
+
+export function fetchKycQueue(): Promise<KycRow[]> {
+  return request("/admin/kyc", "GET");
+}
+
+export function verifyKyc(
+  userId: string,
+  status: "verified" | "rejected" | "pending",
+): Promise<{ id: string; verificationStatus: KycStatus }> {
+  return request("/admin/kyc/verify", "POST", { userId, status });
+}

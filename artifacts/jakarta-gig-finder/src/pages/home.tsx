@@ -1603,6 +1603,7 @@ export default function Home() {
               onDemoInject={handleDemoInject}
               onEditProfile={() => setShowOnboarding(true)}
               onWithdraw={handleWithdraw}
+              onKycUpdated={setCurrentUser}
             />
           ) : (
             <CompanyProfilePage

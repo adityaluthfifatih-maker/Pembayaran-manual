@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { UPLOAD_ROOT } from "./lib/upload";
 
 const app: Express = express();
 
@@ -30,6 +31,12 @@ app.use(cors());
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve uploaded chat attachments and KYC documents. Files are stored under
+// random-hex filenames (see lib/upload.ts) so this directory listing carries
+// no guessable path; still gated behind the API base path only, not auth —
+// KYC docs are only ever linked from authenticated admin/owner responses.
+app.use("/api/uploads", express.static(UPLOAD_ROOT));
 
 app.use("/api", router);
 

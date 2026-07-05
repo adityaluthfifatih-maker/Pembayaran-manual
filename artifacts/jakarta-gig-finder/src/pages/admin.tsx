@@ -5,6 +5,7 @@ import {
   Scale, HardHat, ExternalLink, Gavel, Building2,
   XCircle, Award, RotateCcw, Trophy,
   Plus, Pencil, Trash2, Save, Settings2, Briefcase, FileText, X,
+  ShieldCheck, IdCard,
 } from "lucide-react";
 import {
   adminLogin, adminLogout, adminMe, fetchLedger, forceRelease,
@@ -15,11 +16,13 @@ import {
   deleteAcademyQuestion, updateAcademySettings,
   fetchAdminJobs, deleteAdminJob, refundAdminJob, forcePayoutAdminJob,
   fetchAdminLogs,
+  fetchKycQueue, verifyKyc,
   type LedgerRow, type AdminUserRow,
   type DisputeRow, type OnsiteData,
   type AcademyQuestion, type AcademyCompletion, type AcademyResult,
   type AdminAcademyQuestion, type QuestionInput,
   type JobManagementRow, type AdminLogRow,
+  type KycRow,
 } from "@/lib/admin-client";
 import { EmergencyAlarm } from "@/components/emergency-alarm";
 
@@ -30,7 +33,7 @@ function formatRp(v: number): string {
   return "Rp " + Math.round(v).toLocaleString("id-ID");
 }
 
-type Tab = "escrow" | "resolution" | "onsite" | "users" | "academy" | "jobs" | "logs";
+type Tab = "escrow" | "resolution" | "onsite" | "users" | "kyc" | "academy" | "jobs" | "logs";
 
 // ── Login gateway ─────────────────────────────────────────────────
 function LoginGate({ onSuccess }: { onSuccess: () => void }) {
@@ -404,6 +407,112 @@ function UsersTab() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── KYC verification queue ─────────────────────────────────────────
+function KycTab() {
+  const [rows, setRows] = useState<KycRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setRows(await fetchKycQueue());
+    } catch {
+      /* keep last known rows */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const handleDecision = async (userId: string, status: "verified" | "rejected") => {
+    setBusyId(userId);
+    try {
+      const res = await verifyKyc(userId, status);
+      setRows((prev) => prev.map((r) => (r.id === userId ? { ...r, verificationStatus: res.verificationStatus } : r)));
+    } catch {
+      /* ignore */
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const statusBadge = (s: KycRow["verificationStatus"]) => {
+    const map: Record<KycRow["verificationStatus"], string> = {
+      pending: "bg-amber-100 text-amber-700",
+      verified: "bg-emerald-100 text-emerald-700",
+      rejected: "bg-red-100 text-red-700",
+      unverified: "bg-gray-100 text-gray-500",
+    };
+    const label: Record<KycRow["verificationStatus"], string> = {
+      pending: "Menunggu",
+      verified: "Terverifikasi",
+      rejected: "Ditolak",
+      unverified: "Belum Diajukan",
+    };
+    return <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${map[s]}`}>{label[s]}</span>;
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+      <div className="px-5 py-3.5 border-b border-gray-100">
+        <h3 className="font-black text-gray-900 flex items-center gap-2">
+          <IdCard className="w-4 h-4 text-emerald-700" /> Verifikasi Identitas (KYC)
+        </h3>
+      </div>
+      {loading ? (
+        <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-emerald-600" /></div>
+      ) : rows.length === 0 ? (
+        <div className="py-16 text-center text-sm text-gray-400">Belum ada pengajuan verifikasi.</div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {rows.map((u) => (
+            <div key={u.id} data-testid={`kyc-row-${u.id}`} className="px-5 py-4 flex flex-col md:flex-row md:items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-900 text-sm">{u.name}</p>
+                <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                <div className="mt-1">{statusBadge(u.verificationStatus)}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                {u.ktpPhotoUrl && (
+                  <a href={u.ktpPhotoUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-2.5 py-1.5 text-[11px] font-bold text-gray-600 hover:bg-gray-100">
+                    <ExternalLink className="w-3 h-3" /> Foto KTP
+                  </a>
+                )}
+                {u.selfieWithKtpUrl && (
+                  <a href={u.selfieWithKtpUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-2.5 py-1.5 text-[11px] font-bold text-gray-600 hover:bg-gray-100">
+                    <ExternalLink className="w-3 h-3" /> Selfie+KTP
+                  </a>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  data-testid={`button-kyc-verify-${u.id}`}
+                  onClick={() => void handleDecision(u.id, "verified")}
+                  disabled={busyId === u.id || u.verificationStatus === "verified"}
+                  className="inline-flex items-center gap-1.5 rounded-lg text-[11px] font-bold px-2.5 py-1.5 disabled:opacity-40 bg-emerald-700 text-white hover:bg-emerald-600"
+                >
+                  {busyId === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+                  Verifikasi
+                </button>
+                <button
+                  data-testid={`button-kyc-reject-${u.id}`}
+                  onClick={() => void handleDecision(u.id, "rejected")}
+                  disabled={busyId === u.id || u.verificationStatus === "rejected"}
+                  className="inline-flex items-center gap-1.5 rounded-lg text-[11px] font-bold px-2.5 py-1.5 disabled:opacity-40 bg-red-600 text-white hover:bg-red-500"
+                >
+                  {busyId === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3" />}
+                  Tolak
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -1782,6 +1891,7 @@ function CommandCenter({
     { id: "resolution", label: "⚖️ Pusat Resolusi", icon: <Gavel className="w-4 h-4" /> },
     { id: "onsite", label: "👷 Monitoring Proyek Fisik", icon: <HardHat className="w-4 h-4" /> },
     { id: "users", label: "🚫 Pengguna & Blacklist", icon: <Users className="w-4 h-4" /> },
+    { id: "kyc", label: "🪪 Verifikasi KYC", icon: <IdCard className="w-4 h-4" /> },
     { id: "academy", label: "🎓 Kurasi Akademi", icon: <GraduationCap className="w-4 h-4" /> },
     { id: "logs", label: "📝 Log Audit", icon: <FileText className="w-4 h-4" /> },
   ];
@@ -1867,6 +1977,7 @@ function CommandCenter({
         {tab === "resolution" && <ResolutionTab />}
         {tab === "onsite" && <OnsiteTab />}
         {tab === "users" && <UsersTab />}
+        {tab === "kyc" && <KycTab />}
         {tab === "academy" && <AcademyTab onTrainingPassed={onTrainingPassed} />}
         {tab === "logs" && <LogsTab />}
       </main>

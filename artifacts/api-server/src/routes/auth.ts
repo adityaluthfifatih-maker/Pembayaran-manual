@@ -12,6 +12,7 @@ import {
   sessionCookieOptions,
   toAuthUser,
 } from "../lib/auth";
+import { kycUpload } from "../lib/upload";
 
 const router: IRouter = Router();
 
@@ -206,5 +207,53 @@ router.get("/auth/me", async (req, res): Promise<void> => {
   }
   res.json(toAuthUser(user));
 });
+
+/**
+ * KYC Identity Upload — worker submits a KTP photo and a selfie-holding-KTP
+ * photo. Any resubmission (e.g. after a rejection) resets verificationStatus
+ * back to "pending" so it re-enters the admin moderation queue.
+ */
+router.post(
+  "/auth/kyc",
+  kycUpload.fields([
+    { name: "ktpPhoto", maxCount: 1 },
+    { name: "selfieWithKtp", maxCount: 1 },
+  ]),
+  async (req, res): Promise<void> => {
+    const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
+    if (!user) {
+      res.status(401).json({ error: "Tidak terautentikasi." });
+      return;
+    }
+
+    const files = req.files as
+      | Record<string, Express.Multer.File[] | undefined>
+      | undefined;
+    const ktpFile = files?.["ktpPhoto"]?.[0];
+    const selfieFile = files?.["selfieWithKtp"]?.[0];
+
+    if (!ktpFile && !selfieFile) {
+      res.status(400).json({
+        error: "Unggah minimal satu dokumen (Foto KTP atau Selfie dengan KTP). Format JPG/PNG, maks 5MB.",
+      });
+      return;
+    }
+
+    const updates: Partial<typeof usersTable.$inferInsert> = {
+      verificationStatus: "pending",
+    };
+    if (ktpFile) updates.ktpPhotoUrl = `/api/uploads/kyc/${ktpFile.filename}`;
+    if (selfieFile) updates.selfieWithKtpUrl = `/api/uploads/kyc/${selfieFile.filename}`;
+
+    const [updated] = await db
+      .update(usersTable)
+      .set(updates)
+      .where(eq(usersTable.id, user.id))
+      .returning();
+
+    req.log.info({ userId: user.id }, "Worker submitted KYC documents");
+    res.json(toAuthUser(updated));
+  },
+);
 
 export default router;

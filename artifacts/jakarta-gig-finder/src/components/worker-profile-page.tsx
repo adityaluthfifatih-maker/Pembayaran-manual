@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ShieldCheck, AlertCircle, Star, LogOut, Zap, TrendingUp, Clock, Banknote, Award, Play, Wallet } from "lucide-react";
+import { useRef, useState } from "react";
+import { ShieldCheck, AlertCircle, Star, LogOut, Zap, TrendingUp, Clock, Banknote, Award, Play, Wallet, IdCard, Camera, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { AuthUser } from "@/types/auth";
 import { WorkerProfile } from "@/types/worker-profile";
 import { RatingPayload } from "@/components/rating-modal";
@@ -7,6 +7,7 @@ import { ApplicationNotification } from "@/types/notification";
 import { WalletTransaction, EscrowEvent } from "@/types/escrow";
 import EscrowWalletPanel from "@/components/escrow-wallet-panel";
 import EscrowTimeline from "@/components/escrow-timeline";
+import { submitKyc } from "@/lib/auth-client";
 
 interface WorkerProfilePageProps {
   currentUser: AuthUser;
@@ -26,6 +27,7 @@ interface WorkerProfilePageProps {
   onDemoInject: () => void;
   onEditProfile: () => void;
   onWithdraw: (method: string, account: string) => void;
+  onKycUpdated: (user: AuthUser) => void;
 }
 
 type ProfileTab = "data" | "analitik" | "wallet";
@@ -37,9 +39,27 @@ function maskNpwp(npwp: string) { return npwp.length >= 4 ? "••••••"
 export default function WorkerProfilePage({
   currentUser, workerProfile, reputationPoints, ratings,
   completedJobs, totalEarned, walletBalance, walletTransactions,
-  isWithdrawLocked, escrowEvents, workerJobIds, onLogout, onDemoInject, onEditProfile, onWithdraw,
+  isWithdrawLocked, escrowEvents, workerJobIds, onLogout, onDemoInject, onEditProfile, onWithdraw, onKycUpdated,
 }: WorkerProfilePageProps) {
   const [tab, setTab] = useState<ProfileTab>("data");
+  const ktpInputRef = useRef<HTMLInputElement>(null);
+  const selfieInputRef = useRef<HTMLInputElement>(null);
+  const [kycUploading, setKycUploading] = useState<"ktp" | "selfie" | null>(null);
+  const [kycError, setKycError] = useState<string | null>(null);
+
+  const handleKycPick = async (kind: "ktp" | "selfie", file: File | undefined) => {
+    if (!file) return;
+    setKycError(null);
+    setKycUploading(kind);
+    try {
+      const updated = await submitKyc(kind === "ktp" ? { ktpPhoto: file } : { selfieWithKtp: file });
+      onKycUpdated(updated);
+    } catch (e) {
+      setKycError(e instanceof Error ? e.message : "Gagal mengunggah dokumen.");
+    } finally {
+      setKycUploading(null);
+    }
+  };
 
   const hasNpwp = currentUser.hasNpwp || (workerProfile && !workerProfile.belumPunyaNpwp && workerProfile.npwp.length >= 15);
   const workerRatings = ratings.filter((r) => r.raterType === "company");
@@ -140,6 +160,54 @@ export default function WorkerProfilePage({
                 <span className="bg-emerald-600 text-white text-xs font-bold px-4 py-2 rounded-full">Lengkapi Sekarang</span>
               </button>
             )}
+
+            {/* ── KYC verification ─────────────────────────────── */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+                <p className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><IdCard className="w-4 h-4 text-emerald-600" /> Verifikasi Identitas (KYC)</p>
+                {currentUser.verificationStatus === "verified" ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700"><CheckCircle2 className="w-3 h-3" /> Terverifikasi</span>
+                ) : currentUser.verificationStatus === "pending" ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Menunggu Review</span>
+                ) : currentUser.verificationStatus === "rejected" ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700"><XCircle className="w-3 h-3" /> Ditolak</span>
+                ) : (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Belum Diajukan</span>
+                )}
+              </div>
+              <div className="p-4 space-y-3">
+                {kycError && <p className="text-xs font-semibold text-red-500">{kycError}</p>}
+                <div className="grid grid-cols-2 gap-3">
+                  <input ref={ktpInputRef} type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" capture="environment"
+                    className="hidden" onChange={(e) => void handleKycPick("ktp", e.target.files?.[0])} />
+                  <button onClick={() => ktpInputRef.current?.click()} disabled={kycUploading !== null}
+                    className="flex flex-col items-center gap-2 border-2 border-dashed border-emerald-200 rounded-xl py-4 hover:bg-emerald-50 transition-colors disabled:opacity-60">
+                    {currentUser.ktpPhotoUrl ? (
+                      <img src={currentUser.ktpPhotoUrl} alt="Foto KTP" className="w-12 h-12 rounded-lg object-cover" />
+                    ) : kycUploading === "ktp" ? (
+                      <Loader2 className="w-6 h-6 text-emerald-500 animate-spin" />
+                    ) : (
+                      <Camera className="w-6 h-6 text-emerald-400" />
+                    )}
+                    <span className="text-[11px] font-bold text-gray-600">{currentUser.ktpPhotoUrl ? "Ganti Foto KTP" : "Unggah Foto KTP"}</span>
+                  </button>
+                  <input ref={selfieInputRef} type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" capture="user"
+                    className="hidden" onChange={(e) => void handleKycPick("selfie", e.target.files?.[0])} />
+                  <button onClick={() => selfieInputRef.current?.click()} disabled={kycUploading !== null}
+                    className="flex flex-col items-center gap-2 border-2 border-dashed border-emerald-200 rounded-xl py-4 hover:bg-emerald-50 transition-colors disabled:opacity-60">
+                    {currentUser.selfieWithKtpUrl ? (
+                      <img src={currentUser.selfieWithKtpUrl} alt="Selfie dengan KTP" className="w-12 h-12 rounded-lg object-cover" />
+                    ) : kycUploading === "selfie" ? (
+                      <Loader2 className="w-6 h-6 text-emerald-500 animate-spin" />
+                    ) : (
+                      <Camera className="w-6 h-6 text-emerald-400" />
+                    )}
+                    <span className="text-[11px] font-bold text-gray-600">{currentUser.selfieWithKtpUrl ? "Ganti Selfie+KTP" : "Unggah Selfie+KTP"}</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-400 leading-relaxed">Wajib untuk keamanan platform. Format JPG/PNG, maks 5MB. Tim kami akan meninjau dalam 1x24 jam.</p>
+              </div>
+            </div>
 
             {workerProfile && (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

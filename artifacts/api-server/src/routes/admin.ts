@@ -9,6 +9,7 @@ import {
   ratingsTable,
   academyCompletionsTable,
   academyQuestionsTable,
+  adminLogsTable,
 } from "@workspace/db";
 import {
   ADMIN_COOKIE,
@@ -307,6 +308,83 @@ router.post("/admin/users/suspend", async (req, res): Promise<void> => {
     "Admin toggled user suspension",
   );
   res.json({ id: user.id, suspended: user.suspended });
+});
+
+// ── KYC verification queue ────────────────────────────────────────
+
+/**
+ * List workers who have submitted at least one KYC document, most recently
+ * submitted first (using createdAt as a stable proxy — there's no separate
+ * submittedAt column). Used to populate the admin moderation queue.
+ */
+router.get("/admin/kyc", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req))) {
+    res.status(401).json({ error: "Sesi admin tidak valid." });
+    return;
+  }
+
+  const users = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.role, "pekerja"))
+    .orderBy(desc(usersTable.createdAt));
+
+  const rows = users
+    .filter((u) => u.ktpPhotoUrl || u.selfieWithKtpUrl)
+    .map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      ktpPhotoUrl: u.ktpPhotoUrl,
+      selfieWithKtpUrl: u.selfieWithKtpUrl,
+      verificationStatus: u.verificationStatus,
+    }));
+
+  res.json(rows);
+});
+
+const kycVerifyBody = z.object({
+  userId: z.string().min(1),
+  status: z.enum(["verified", "rejected", "pending"]),
+});
+
+/** Approve/reject a worker's KYC submission. Every decision is audit-logged. */
+router.post("/admin/kyc/verify", async (req, res): Promise<void> => {
+  const adminId = await adminSessionId(req.cookies?.[ADMIN_COOKIE]);
+  if (!adminId) {
+    res.status(401).json({ error: "Sesi admin tidak valid." });
+    return;
+  }
+
+  const parsed = kycVerifyBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Permintaan tidak valid." });
+    return;
+  }
+
+  const [user] = await db
+    .update(usersTable)
+    .set({ verificationStatus: parsed.data.status })
+    .where(eq(usersTable.id, parsed.data.userId))
+    .returning();
+
+  if (!user) {
+    res.status(404).json({ error: "Pengguna tidak ditemukan." });
+    return;
+  }
+
+  await db.insert(adminLogsTable).values({
+    adminId,
+    action: `KYC_${parsed.data.status.toUpperCase()}`,
+    targetId: user.id,
+    reason: null,
+  });
+
+  req.log.info(
+    { adminId, userId: user.id, status: parsed.data.status },
+    "Admin reviewed KYC submission",
+  );
+  res.json({ id: user.id, verificationStatus: user.verificationStatus });
 });
 
 // ── Academy (operator onboarding quiz) ───────────────────────────
