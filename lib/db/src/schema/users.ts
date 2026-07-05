@@ -24,6 +24,15 @@ export const usersTable = pgTable("users", {
   linkedWithGoogle: boolean("linked_with_google").notNull().default(false),
   suspended: boolean("suspended").notNull().default(false),
   profile: jsonb("profile").notNull().default({}),
+  /** Path to the KTP document photo uploaded during KYC onboarding. */
+  ktpPhotoUrl: text("ktp_photo_url"),
+  /** Path to the selfie+KTP photo uploaded during KYC onboarding. */
+  selfieWithKtpUrl: text("selfie_with_ktp_url"),
+  /**
+   * KYC verification status managed by admin operators.
+   * Values: "pending" | "verified" | "rejected"
+   */
+  verificationStatus: text("verification_status").notNull().default("pending"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

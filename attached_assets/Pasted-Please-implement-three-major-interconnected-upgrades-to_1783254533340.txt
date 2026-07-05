@@ -1,0 +1,20 @@
+Please implement three major interconnected upgrades to our application: Advanced Camera Controls, an MVP KYC Verification Flow, and an In-Chat File Attachment feature.
+
+1. SMART CAMERA CONTROLS (Front/Back Toggle & Contextual Mirroring):
+- Replace simple camera rendering with a dynamic toggle mechanism utilizing the MediaDevices API.
+- Allow users to switch video inputs dynamically using facingMode: "user" (front) and facingMode: "environment" (back).
+- Implement Contextual CSS Mirroring:
+  * When facingMode === "user" (Front), apply "transform: scaleX(-1)" to visually mirror the text/layout for natural human coordination.
+  * When facingMode === "environment" (Back), instantly remove any transformations ("transform: none"). This is crucial to ensure that QR codes scanned via the rear camera are readable and not horizontally reversed.
+
+2. CHAT ATTACHMENT SYSTEM (NEW FEATURE):
+- Update the existing Messaging/Chat architecture to support multi-media attachments.
+- Database Schema: Update the 'messages' table to include 'attachment_url' (TEXT), 'attachment_type' (VARCHAR), and 'file_size' (INT).
+- Backend Storage API: Create a secure POST `/api/chat/upload` endpoint using multer (or equivalent multipart-form parser) to store chat-uploaded documents (KTP revisions, work proofs, dispute photos) securely.
+- Frontend Input Interface: Inside the chat bar, insert an attachment clip button. When clicked, it triggers a native file selector restricted to specific formats (.jpg, .jpeg, .png, .pdf) up to 5MB.
+- Frontend Bubble Rendering: If a message contains an attachment, render a specialized preview item block inside the chat bubble (thumbnail for images, or file icon with a download handler for PDFs).
+
+3. KYC VERIFICATION FLOW & ADMIN MODERATION:
+- Database Schema: Add to the 'users' table: 'ktp_photo_url' (TEXT), 'selfie_with_ktp_url' (TEXT), and 'verification_status' (ENUM: 'pending', 'verified', 'rejected', default 'pending').
+- Frontend Form: Build a secure "KYC Identity Upload" tab inside the Worker profile settings.
+- Admin Panel Linkage: Link the submitted data to our central Admin Dashboard, allowing admins to manually inspect the high-res KTP documents, download files, and toggle validation parameters safely with audit logging.

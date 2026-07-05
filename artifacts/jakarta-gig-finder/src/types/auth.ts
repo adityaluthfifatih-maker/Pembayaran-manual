@@ -25,6 +25,10 @@ export interface AuthUser {
   nik?: string;
   npwp?: string;
   hasNpwp?: boolean;
+  // KYC verification
+  ktpPhotoUrl?: string;
+  selfieWithKtpUrl?: string;
+  verificationStatus?: "pending" | "verified" | "rejected";
 }
 
 export const DEMO_WORKER: AuthUser = {
