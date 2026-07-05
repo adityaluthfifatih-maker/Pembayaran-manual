@@ -1,0 +1,27 @@
+Please implement a comprehensive update to our application covering Advanced Camera Controls, an MVP KYC Verification Flow, an In-Chat File Attachment feature, and a CRITICAL fix to make our internal chat logic 100% real-time.
+
+1. FIX INTERNAL CHAT LOGIC (REAL-TIME WEBSOCKETS):
+- Problem: Internal web chat messages do not appear instantly on the recipient's screen unless the webpage is manually refreshed.
+- Backend Socket.io Fix: Verify that Socket.io is properly initialized on the server. Ensure that when a user opens a conversation, the client connection joins a specific room channel using `socket.join(roomId)`. Inside the message handling controller (where messages are stored), immediately broadcast the new message payload to that specific room channel using `io.to(roomId).emit('receive_message', newMessage)`.
+- Frontend Listener Fix: In both the Worker and Admin/Employer Chat Room components, ensure the client actively listens to the 'receive_message' event. Upon receiving data, immediately append it to the local message state array so the chat bubble renders instantly on screen without a manual page reload.
+
+2. SMART CAMERA CONTROLS (Front/Back Toggle & Contextual Mirroring):
+- Replace simple camera rendering with a dynamic toggle mechanism utilizing the MediaDevices API.
+- Allow users to switch video inputs dynamically using facingMode: "user" (front) and facingMode: "environment" (back).
+- Implement Contextual CSS Mirroring:
+  * When facingMode === "user" (Front), apply "transform: scaleX(-1)" to visually mirror the video layout for natural human coordination during face verification.
+  * When facingMode === "environment" (Back), instantly remove any transformations ("transform: none"). This is crucial to ensure that QR codes scanned via the rear camera are readable and not horizontally reversed.
+
+3. CHAT ATTACHMENT SYSTEM:
+- Update the Messaging/Chat architecture to support multi-media attachments seamlessly integrated with the real-time logic.
+- Database Schema: Update the 'messages' table to include 'attachment_url' (TEXT), 'attachment_type' (VARCHAR), and 'file_size' (INT).
+- Backend Storage API: Create a secure POST `/api/chat/upload` endpoint using multer (or equivalent multipart-form parser) to store chat-uploaded documents (KTP revisions, work proofs, dispute photos) securely.
+- Frontend Input Interface: Inside the chat bar, insert an attachment clip button. When clicked, it triggers a native file selector restricted to specific formats (.jpg, .jpeg, .png, .pdf) up to 5MB.
+- Frontend Bubble Rendering: If a message contains an attachment, render a specialized preview item block inside the chat bubble (thumbnail for images, or file icon with a download handler for PDFs).
+
+4. KYC VERIFICATION FLOW & ADMIN MODERATION:
+- Database Schema: Add to the 'users' table: 'ktp_photo_url' (TEXT), 'selfie_with_ktp_url' (TEXT), and 'verification_status' (ENUM: 'pending', 'verified', 'rejected', default 'pending').
+- Frontend Form: Build a secure "KYC Identity Upload" tab inside the Worker profile settings.
+- Admin Panel Linkage: Link the submitted data to our central Admin Dashboard, allowing admins to manually inspect the high-res KTP documents, download files, and toggle validation parameters safely with audit logging.
+
+Please execute these real-time synchronization, typography, camera, and database modifications safely across the repository.
