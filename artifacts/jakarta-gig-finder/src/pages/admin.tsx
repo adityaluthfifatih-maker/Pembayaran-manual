@@ -4,7 +4,7 @@ import {
   Ban, CheckCircle2, Lock, KeyRound, Loader2, AlertTriangle, ClipboardList,
   Scale, HardHat, ExternalLink, Gavel, Building2,
   XCircle, Award, RotateCcw, Trophy,
-  Plus, Pencil, Trash2, Save, Settings2,
+  Plus, Pencil, Trash2, Save, Settings2, Briefcase, FileText, X,
 } from "lucide-react";
 import {
   adminLogin, adminLogout, adminMe, fetchLedger, forceRelease,
@@ -13,10 +13,13 @@ import {
   fetchAcademy, submitAcademy,
   fetchAcademyQuestions, createAcademyQuestion, updateAcademyQuestion,
   deleteAcademyQuestion, updateAcademySettings,
+  fetchAdminJobs, deleteAdminJob, refundAdminJob, forcePayoutAdminJob,
+  fetchAdminLogs,
   type LedgerRow, type AdminUserRow,
   type DisputeRow, type OnsiteData,
   type AcademyQuestion, type AcademyCompletion, type AcademyResult,
   type AdminAcademyQuestion, type QuestionInput,
+  type JobManagementRow, type AdminLogRow,
 } from "@/lib/admin-client";
 import { EmergencyAlarm } from "@/components/emergency-alarm";
 
@@ -27,7 +30,7 @@ function formatRp(v: number): string {
   return "Rp " + Math.round(v).toLocaleString("id-ID");
 }
 
-type Tab = "escrow" | "resolution" | "onsite" | "users" | "academy";
+type Tab = "escrow" | "resolution" | "onsite" | "users" | "academy" | "jobs" | "logs";
 
 // ── Login gateway ─────────────────────────────────────────────────
 function LoginGate({ onSuccess }: { onSuccess: () => void }) {
@@ -1410,6 +1413,342 @@ function OnsiteTab() {
   );
 }
 
+// ── Confirmation Modal ────────────────────────────────────────────
+function ConfirmModal({
+  title,
+  description,
+  confirmLabel,
+  confirmColor,
+  onConfirm,
+  onClose,
+  busy,
+}: {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  confirmColor: string;
+  onConfirm: (reason: string) => void;
+  onClose: () => void;
+  busy: boolean;
+}) {
+  const [reason, setReason] = useState("");
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.55)" }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-black text-gray-900 text-base">{title}</h3>
+            <p className="text-sm text-gray-500 mt-0.5">{description}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 shrink-0">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div>
+          <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500 block mb-1">
+            Alasan / Catatan (wajib)
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            placeholder="Jelaskan alasan tindakan ini..."
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 resize-none"
+          />
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onClose}
+            disabled={busy}
+            className="px-4 py-2 rounded-xl text-sm font-bold text-gray-600 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Batal
+          </button>
+          <button
+            onClick={() => onConfirm(reason.trim())}
+            disabled={busy || !reason.trim()}
+            className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-50 flex items-center gap-1.5"
+            style={{ background: confirmColor }}
+          >
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Tab: Job Management ───────────────────────────────────────────
+type JobAction = { jobId: number; posisi: string; kind: "delete" | "refund" | "payout" } | null;
+
+function JobsTab() {
+  const [rows, setRows] = useState<JobManagementRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [action, setAction] = useState<JobAction>(null);
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setRows(await fetchAdminJobs());
+    } catch {
+      /* keep last rows */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleConfirm = async (reason: string) => {
+    if (!action) return;
+    setBusy(true);
+    try {
+      if (action.kind === "delete") await deleteAdminJob(action.jobId, reason);
+      else if (action.kind === "refund") await refundAdminJob(action.jobId, reason);
+      else await forcePayoutAdminJob(action.jobId, reason);
+
+      showToast(
+        action.kind === "delete"
+          ? "Job berhasil dihapus."
+          : action.kind === "refund"
+          ? "Escrow berhasil direfund ke pemberi kerja."
+          : "Pembayaran paksa ke pekerja berhasil.",
+      );
+      setAction(null);
+      await load();
+    } catch (err) {
+      showToast(err instanceof AdminError ? err.message : "Terjadi kesalahan.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const escrowStatusLabel = (s: string) => {
+    const map: Record<string, { label: string; cls: string }> = {
+      locked: { label: "Terkunci", cls: "bg-amber-100 text-amber-800 border-amber-200" },
+      released: { label: "Cair", cls: "bg-emerald-100 text-emerald-800 border-emerald-200" },
+      refunded: { label: "Direfund", cls: "bg-blue-100 text-blue-800 border-blue-200" },
+      disputed_active: { label: "Sengketa", cls: "bg-red-100 text-red-800 border-red-200" },
+    };
+    const d = map[s] ?? { label: s, cls: "bg-gray-100 text-gray-700 border-gray-200" };
+    return (
+      <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-bold border ${d.cls}`}>
+        {d.label}
+      </span>
+    );
+  };
+
+  const modalMeta = action
+    ? action.kind === "delete"
+      ? {
+          title: "Hapus Job Posting",
+          description: `Anda akan menghapus job "${action.posisi}" (ID: ${action.jobId}) secara permanen.`,
+          confirmLabel: "Hapus Job",
+          confirmColor: "#dc2626",
+        }
+      : action.kind === "refund"
+      ? {
+          title: "Refund Escrow ke Pemberi Kerja",
+          description: `Dana escrow job "${action.posisi}" (ID: ${action.jobId}) akan dikembalikan ke pemberi kerja.`,
+          confirmLabel: "Proses Refund",
+          confirmColor: "#2563eb",
+        }
+      : {
+          title: "Force Payout ke Pekerja",
+          description: `100% upah dari job "${action.posisi}" (ID: ${action.jobId}) akan langsung dicairkan ke pekerja.`,
+          confirmLabel: "Force Payout",
+          confirmColor: "#059669",
+        }
+    : null;
+
+  return (
+    <div className="space-y-4">
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 bg-gray-900 text-white text-sm font-semibold px-4 py-3 rounded-xl shadow-xl">
+          {toast}
+        </div>
+      )}
+
+      {action && modalMeta && (
+        <ConfirmModal
+          {...modalMeta}
+          onConfirm={handleConfirm}
+          onClose={() => setAction(null)}
+          busy={busy}
+        />
+      )}
+
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+          <h3 className="font-black text-gray-900 flex items-center gap-2">
+            <Briefcase className="w-4 h-4 text-emerald-700" /> Semua Job Posting ({rows.length})
+          </h3>
+          <button
+            onClick={() => void load()}
+            className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-900"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Segarkan
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-emerald-600" /></div>
+        ) : rows.length === 0 ? (
+          <div className="py-16 text-center text-sm text-gray-400">Belum ada job posting.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
+                  <th className="px-4 py-2.5 font-bold">ID</th>
+                  <th className="px-4 py-2.5 font-bold">Posisi</th>
+                  <th className="px-4 py-2.5 font-bold">Perusahaan</th>
+                  <th className="px-4 py-2.5 font-bold text-right">Escrow</th>
+                  <th className="px-4 py-2.5 font-bold">Status</th>
+                  <th className="px-4 py-2.5 font-bold text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {rows.map((r) => (
+                  <tr key={r.jobId} className="hover:bg-gray-50/60">
+                    <td className="px-4 py-3 font-mono text-[11px] text-gray-500">{r.jobId}</td>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-gray-900">{r.posisi}</p>
+                      {r.hiringMode && (
+                        <p className="text-[11px] text-gray-400 capitalize">{r.hiringMode}</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">{r.employerName}</td>
+                    <td className="px-4 py-3 text-right font-bold text-gray-800">{formatRp(r.escrowAmount)}</td>
+                    <td className="px-4 py-3">{escrowStatusLabel(r.escrowStatus)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5 justify-end flex-wrap">
+                        <button
+                          onClick={() => setAction({ jobId: r.jobId, posisi: r.posisi, kind: "delete" })}
+                          className="inline-flex items-center gap-1 rounded-lg bg-red-600 text-white text-[11px] font-bold px-2 py-1.5 hover:bg-red-500"
+                        >
+                          <Trash2 className="w-3 h-3" /> Hapus
+                        </button>
+                        <button
+                          onClick={() => setAction({ jobId: r.jobId, posisi: r.posisi, kind: "refund" })}
+                          disabled={r.escrowStatus === "refunded" || r.escrowStatus === "released"}
+                          className="inline-flex items-center gap-1 rounded-lg bg-blue-600 text-white text-[11px] font-bold px-2 py-1.5 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <RotateCcw className="w-3 h-3" /> Refund
+                        </button>
+                        <button
+                          onClick={() => setAction({ jobId: r.jobId, posisi: r.posisi, kind: "payout" })}
+                          disabled={r.escrowStatus === "released"}
+                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 text-white text-[11px] font-bold px-2 py-1.5 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Zap className="w-3 h-3" /> Force Payout
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Tab: Audit Logs ───────────────────────────────────────────────
+function LogsTab() {
+  const [logs, setLogs] = useState<AdminLogRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      setLogs(await fetchAdminLogs());
+    } catch {
+      /* keep last rows */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const actionBadge = (action: string) => {
+    const map: Record<string, { label: string; cls: string }> = {
+      DELETE_JOB: { label: "Hapus Job", cls: "bg-red-100 text-red-700 border-red-200" },
+      REFUND_JOB: { label: "Refund", cls: "bg-blue-100 text-blue-700 border-blue-200" },
+      FORCE_PAYOUT_JOB: { label: "Force Payout", cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+    };
+    const d = map[action] ?? { label: action, cls: "bg-gray-100 text-gray-600 border-gray-200" };
+    return (
+      <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-bold border ${d.cls}`}>
+        {d.label}
+      </span>
+    );
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+      <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+        <h3 className="font-black text-gray-900 flex items-center gap-2">
+          <FileText className="w-4 h-4 text-emerald-700" /> Log Audit Admin
+        </h3>
+        <button
+          onClick={() => void load()}
+          className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-900"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Segarkan
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-emerald-600" /></div>
+      ) : logs.length === 0 ? (
+        <div className="py-16 text-center text-sm text-gray-400">Belum ada aktivitas admin tercatat.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
+                <th className="px-4 py-2.5 font-bold">Waktu</th>
+                <th className="px-4 py-2.5 font-bold">Admin</th>
+                <th className="px-4 py-2.5 font-bold">Aksi</th>
+                <th className="px-4 py-2.5 font-bold">Target ID</th>
+                <th className="px-4 py-2.5 font-bold">Alasan</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {logs.map((l) => (
+                <tr key={l.id} className="hover:bg-gray-50/60">
+                  <td className="px-4 py-3 text-[11px] text-gray-500 whitespace-nowrap">
+                    {new Date(l.createdAt).toLocaleString("id-ID", {
+                      day: "2-digit", month: "short", year: "numeric",
+                      hour: "2-digit", minute: "2-digit",
+                    })}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-[11px] text-gray-600">{l.adminId}</td>
+                  <td className="px-4 py-3">{actionBadge(l.action)}</td>
+                  <td className="px-4 py-3 font-mono text-[11px] text-gray-500">{l.targetId ?? "—"}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700 max-w-xs truncate" title={l.reason ?? ""}>
+                    {l.reason ?? "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SummaryCard({ label, value, tone }: { label: string; value: string; tone: "amber" | "gold" | "emerald" }) {
   const tones = {
     amber: "from-amber-500 to-amber-600",
@@ -1439,10 +1778,12 @@ function CommandCenter({
   const [tab, setTab] = useState<Tab>("escrow");
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "escrow", label: "💰 Pengawasan Escrow", icon: <Wallet className="w-4 h-4" /> },
+    { id: "jobs", label: "📋 Manajemen Job", icon: <Briefcase className="w-4 h-4" /> },
     { id: "resolution", label: "⚖️ Pusat Resolusi", icon: <Gavel className="w-4 h-4" /> },
     { id: "onsite", label: "👷 Monitoring Proyek Fisik", icon: <HardHat className="w-4 h-4" /> },
     { id: "users", label: "🚫 Pengguna & Blacklist", icon: <Users className="w-4 h-4" /> },
     { id: "academy", label: "🎓 Kurasi Akademi", icon: <GraduationCap className="w-4 h-4" /> },
+    { id: "logs", label: "📝 Log Audit", icon: <FileText className="w-4 h-4" /> },
   ];
 
   return (
@@ -1522,10 +1863,12 @@ function CommandCenter({
           <p className="text-sm text-gray-500">Panel operator platform Rekhastha</p>
         </div>
         {tab === "escrow" && <EscrowTab trainingPassed={trainingPassed} requireAcademy={requireAcademy} />}
+        {tab === "jobs" && <JobsTab />}
         {tab === "resolution" && <ResolutionTab />}
         {tab === "onsite" && <OnsiteTab />}
         {tab === "users" && <UsersTab />}
         {tab === "academy" && <AcademyTab onTrainingPassed={onTrainingPassed} />}
+        {tab === "logs" && <LogsTab />}
       </main>
 
       {/* Full-screen worker SOS alarm — blocks everything when active */}

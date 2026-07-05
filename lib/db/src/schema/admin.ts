@@ -1,5 +1,6 @@
 import {
   pgTable,
+  serial,
   text,
   integer,
   timestamp,
@@ -32,5 +33,21 @@ export const adminLoginAttemptsTable = pgTable("admin_login_attempts", {
     .defaultNow(),
 });
 
+/**
+ * Immutable audit log for all admin actions (delete job, refund, force-payout,
+ * suspend user, etc.). Written once per action; never updated or deleted.
+ */
+export const adminLogsTable = pgTable("admin_logs", {
+  id: serial("id").primaryKey(),
+  adminId: text("admin_id").notNull(),
+  action: text("action").notNull(),
+  targetId: text("target_id"),
+  reason: text("reason"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export type AdminSession = typeof adminSessionsTable.$inferSelect;
 export type AdminLoginAttempt = typeof adminLoginAttemptsTable.$inferSelect;
+export type AdminLog = typeof adminLogsTable.$inferSelect;

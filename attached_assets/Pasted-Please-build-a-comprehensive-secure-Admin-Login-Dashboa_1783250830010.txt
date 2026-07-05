@@ -1,0 +1,24 @@
+Please build a comprehensive, secure Admin Login Dashboard and advanced Job/Escrow Management system for Rekhastha.
+
+1. DATABASE SCHEMA SETUP:
+- Create an 'admins' table: id (SERIAL), username (VARCHAR), email (VARCHAR, UNIQUE), password_hash (VARCHAR), role (VARCHAR, default 'superadmin'), created_at (TIMESTAMP). Ensure password storage uses bcrypt hashing.
+- Create an 'admin_logs' table to audit actions: id (SERIAL), admin_id (INT), action_taken (VARCHAR), target_id (VARCHAR), reason (TEXT), timestamp (TIMESTAMP).
+
+2. BACKEND AUTHENTICATION & MIDDLEWARE:
+- Create a POST `/api/admin/login` endpoint. Validate credentials using bcrypt. If valid, sign a secure JSON Web Token (JWT) with a 2-hour expiration and store it securely (HttpOnly Cookie preferred).
+- Implement a basic rate-limiter on this login route (max 5 attempts per 15 minutes per IP).
+- Create an 'adminAuth' middleware to protect all administrative endpoints below.
+
+3. ADMINISTRATIVE CORE ENDPOINTS (Protected by adminAuth):
+- DELETE `/api/admin/jobs/:id` -> Allows admins to delete inappropriate or fake job postings. Log the action.
+- POST `/api/admin/jobs/:id/refund` -> Trigger OY! Indonesia API to refund locked escrow funds back to the employer if a job is cancelled. Change job status to 'REFUNDED'. Log the action.
+- POST `/api/admin/jobs/:id/force-payout` -> Emergency bypass. Trigger OY! Indonesia API Disbursement to release 100% of the wage directly to the worker's account if QR/app failure occurs. Change job status to 'COMPLETED'. Log the action.
+
+4. FRONTEND INTERFACE LAYOUT:
+- Create a clean, minimalist Admin Login Page (separate from user views) containing Username/Email and Password fields with clear error handling.
+- Create the Main Admin Dashboard view (`/admin/dashboard`) accessible only after login. It must contain:
+  - An Escrow Overview panel showing total locked funds.
+  - A Job Management Table displaying active jobs with dedicated control buttons: "Delete Job", "Issue Refund", and "Force Payout".
+  - Each action button must trigger a confirmation modal asking for the admin's reason before executing the backend request.
+
+Implement this complete module safely within our existing repository architecture.

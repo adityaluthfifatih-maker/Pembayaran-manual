@@ -277,3 +277,46 @@ export function fetchEmergencies(): Promise<EmergencyIncident[]> {
 export function resolveEmergency(id: number): Promise<{ ok: true }> {
   return request("/emergency/resolve", "POST", { id });
 }
+
+// ── Job Management: delete, refund, force-payout ─────────────────────
+
+export interface JobManagementRow {
+  jobId: number;
+  posisi: string;
+  employerName: string;
+  escrowAmount: number;
+  escrowStatus: string;
+  hiringMode: string | null;
+  postedAt: string;
+}
+
+export function fetchAdminJobs(): Promise<JobManagementRow[]> {
+  return request("/admin/jobs", "GET");
+}
+
+export function deleteAdminJob(jobId: number, reason: string): Promise<{ ok: true }> {
+  return request(`/admin/jobs/${jobId}`, "DELETE", { reason });
+}
+
+export function refundAdminJob(jobId: number, reason: string): Promise<{ ok: true }> {
+  return request(`/admin/jobs/${jobId}/refund`, "POST", { reason });
+}
+
+export function forcePayoutAdminJob(jobId: number, reason: string): Promise<{ ok: true }> {
+  return request(`/admin/jobs/${jobId}/force-payout`, "POST", { reason });
+}
+
+// ── Audit Logs ───────────────────────────────────────────────────────
+
+export interface AdminLogRow {
+  id: number;
+  adminId: string;
+  action: string;
+  targetId: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+
+export function fetchAdminLogs(): Promise<AdminLogRow[]> {
+  return request("/admin/logs", "GET");
+}
