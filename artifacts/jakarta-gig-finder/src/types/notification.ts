@@ -20,6 +20,9 @@ export interface ApplicationNotification {
   nominal?: number;
   jumlahHari?: number;
   hiringMode?: "cepat" | "lama";
+  /** CV/Portfolio actually attached to this application — Regular jobs only. */
+  cvUrl?: string;
+  portfolioUrl?: string;
 }
 
 export function maskName(name: string): string {

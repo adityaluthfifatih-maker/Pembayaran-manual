@@ -406,6 +406,9 @@ export default function Home() {
         rekening: e.rekening,
         timestamp: new Date(e.createdAt),
         status: e.status as ApplicationStatus,
+        hiringMode: e.hiringMode ?? gig?.hiringMode,
+        cvUrl: e.submittedCvUrl ?? undefined,
+        portfolioUrl: e.submittedPortfolioUrl ?? undefined,
       };
       setNotifications((p) => [notif, ...p]);
       setApplicantToast(notif);
@@ -1061,7 +1064,7 @@ export default function Home() {
   }, [currentUser]);
 
   // ── Apply ───────────────────────────────────────────────────────
-  const handleApply = useCallback((job: CustomJob, profile: WorkerProfile) => {
+  const handleApply = useCallback((job: CustomJob, profile: WorkerProfile, docs?: { submittedCvUrl?: string; submittedPortfolioUrl?: string }) => {
     const workerName   = maskName(profile.namaLengkap);
     const workerNik    = maskNik(profile.nik);
     const workerNpwp   = profile.belumPunyaNpwp ? "Belum ada NPWP" : maskNpwp(profile.npwp);
@@ -1079,6 +1082,7 @@ export default function Home() {
       bank,
       rekening: rekening,
       timestamp: new Date(), status: "baru",
+      hiringMode: job.hiringMode,
     };
     setNotifications((p) => [notif, ...p]);
     // Persist to server — employer receives it via WebSocket; on success, back-fill
@@ -1093,6 +1097,8 @@ export default function Home() {
       hasNpwp,
       bank,
       rekening,
+      submittedCvUrl: docs?.submittedCvUrl,
+      submittedPortfolioUrl: docs?.submittedPortfolioUrl,
     }).then((result) => {
       if (result) {
         setNotifications((prev) =>

@@ -52,8 +52,13 @@ export interface ApplicationEvent {
   /** Optional CV / portfolio links — present when the worker provided them. */
   cvLink?: string | null;
   portfolioLink?: string | null;
+  /** CV/Portfolio actually attached to this application (Regular jobs only). */
+  submittedCvUrl?: string | null;
+  submittedPortfolioUrl?: string | null;
   status: string;
   createdAt: string;
+  /** "cepat" (Instant) | "lama" (Regular) — drives the notification copy. */
+  hiringMode?: "cepat" | "lama";
 }
 export type ApplicationSubscriber = (event: ApplicationEvent) => void;
 
@@ -367,6 +372,9 @@ export async function postApplication(data: {
   /** Optional CV / portfolio links — only sent when the worker filled them in. */
   cvLink?: string;
   portfolioLink?: string;
+  /** Regular-job dual-entry CV/Portfolio override for this application only. */
+  submittedCvUrl?: string;
+  submittedPortfolioUrl?: string;
 }): Promise<ApplicationEvent | null> {
   try {
     const res = await fetch(`${API_BASE}/applications`, {

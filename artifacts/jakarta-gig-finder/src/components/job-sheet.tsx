@@ -1,22 +1,26 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   CustomJob, calcTotal, paymentLabels,
   durasiKontrakOptions,
 } from "@/types/custom-job";
 import { calcEmployerFee, DEFAULT_FEE_RATE } from "@/types/escrow";
 import { WorkerProfile, isVerified } from "@/types/worker-profile";
+import { AuthUser } from "@/types/auth";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { uploadApplicationDocuments } from "@/lib/auth-client";
 import {
   Users, FileText, Shirt, Banknote, CheckCircle, ShieldCheck,
   Loader2, MessageSquare, AlertTriangle, Calendar, Building2,
+  FolderOpen, Upload, X,
 } from "lucide-react";
 
 interface JobSheetProps {
   job: CustomJob | null;
   onClose: () => void;
   workerProfile?: WorkerProfile | null;
-  onApply?: (job: CustomJob, profile: WorkerProfile) => void;
+  currentUser?: AuthUser | null;
+  onApply?: (job: CustomJob, profile: WorkerProfile, docs?: { submittedCvUrl?: string; submittedPortfolioUrl?: string }) => void;
   onOpenChat?: (job: CustomJob) => void;
   onReportSuspect?: (jobId: number) => void;
 }
@@ -28,9 +32,18 @@ function formatRp(value: number): string {
 type ApplyState = "idle" | "sending" | "done";
 
 export default function JobSheet({
-  job, onClose, workerProfile, onApply, onOpenChat, onReportSuspect,
+  job, onClose, workerProfile, currentUser, onApply, onOpenChat, onReportSuspect,
 }: JobSheetProps) {
   const [applyState, setApplyState] = useState<ApplyState>("idle");
+  // Regular jobs show a modal asking the worker to choose which CV/Portfolio
+  // to attach; Instant jobs skip this entirely and apply directly.
+  const [showDocsModal, setShowDocsModal] = useState(false);
+  const [docsUploading, setDocsUploading] = useState(false);
+  const [docsError, setDocsError] = useState<string | null>(null);
+  const [newCvFile, setNewCvFile] = useState<File | null>(null);
+  const [newPortfolioFile, setNewPortfolioFile] = useState<File | null>(null);
+  const cvInputRef = useRef<HTMLInputElement>(null);
+  const portfolioInputRef = useRef<HTMLInputElement>(null);
 
   if (!job) return null;
 
@@ -41,14 +54,51 @@ export default function JobSheet({
   const workerGets = total;
   const verified = workerProfile ? isVerified(workerProfile) : false;
   const durasiLabel = durasiKontrakOptions.find((o) => o.value === (job.durasiKontrak ?? "harian"))?.label ?? "Harian";
+  const isRegular = job.hiringMode !== "cepat";
+  const hasProfileDocs = !!(currentUser?.defaultCvUrl || currentUser?.defaultPortfolioUrl);
 
-  const handleApply = () => {
-    if (applyState !== "idle") return;
+  const submitApplication = (docs?: { submittedCvUrl?: string; submittedPortfolioUrl?: string }) => {
     setApplyState("sending");
     setTimeout(() => {
       setApplyState("done");
-      if (workerProfile && onApply) onApply(job, workerProfile);
+      if (workerProfile && onApply) onApply(job, workerProfile, docs);
     }, 2000);
+  };
+
+  const handleApply = () => {
+    if (applyState !== "idle") return;
+    if (isRegular) {
+      setShowDocsModal(true);
+      return;
+    }
+    // Instant jobs remain direct click-to-apply — no document upload phase.
+    submitApplication();
+  };
+
+  const handleUseProfileDocs = () => {
+    setShowDocsModal(false);
+    submitApplication(); // no submittedCvUrl/Url ⇒ server falls back to profile defaults
+  };
+
+  const handleUploadNewDocs = async () => {
+    if (!newCvFile && !newPortfolioFile) {
+      setDocsError("Pilih minimal satu berkas (CV atau Portofolio).");
+      return;
+    }
+    setDocsError(null);
+    setDocsUploading(true);
+    try {
+      const result = await uploadApplicationDocuments({
+        cv: newCvFile ?? undefined,
+        portfolio: newPortfolioFile ?? undefined,
+      });
+      setShowDocsModal(false);
+      submitApplication({ submittedCvUrl: result.cvUrl, submittedPortfolioUrl: result.portfolioUrl });
+    } catch (e) {
+      setDocsError(e instanceof Error ? e.message : "Gagal mengunggah berkas.");
+    } finally {
+      setDocsUploading(false);
+    }
   };
 
   return (
@@ -228,6 +278,86 @@ export default function JobSheet({
           </div>
         </div>
       </SheetContent>
+
+      {/* Apply-modal: dual-entry CV/Portfolio choice (Regular jobs only) */}
+      {showDocsModal && (
+        <div
+          className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.5)" }}
+        >
+          <div className="absolute inset-0" onClick={() => !docsUploading && setShowDocsModal(false)} />
+          <div className="relative bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-gray-900 text-base">CV & Portofolio</h3>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  Gunakan CV/Portofolio dari profil atau unggah berkas baru khusus untuk lowongan ini?
+                </p>
+              </div>
+              <button onClick={() => !docsUploading && setShowDocsModal(false)} className="text-gray-300 hover:text-gray-500 shrink-0">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {docsError && <p className="text-xs font-semibold text-red-500">{docsError}</p>}
+
+            <button
+              data-testid="button-use-profile-docs"
+              onClick={handleUseProfileDocs}
+              disabled={docsUploading}
+              className="w-full flex items-center gap-3 border-2 border-primary/20 bg-primary/5 rounded-xl px-4 py-3.5 hover:bg-primary/10 transition-colors disabled:opacity-60"
+            >
+              <FolderOpen className="w-5 h-5 text-primary shrink-0" />
+              <div className="text-left flex-1">
+                <p className="text-sm font-bold text-gray-900">Gunakan Berkas dari Profil</p>
+                <p className="text-[11px] text-gray-500">
+                  {hasProfileDocs ? "Pakai CV/Portofolio master yang tersimpan di profil Anda" : "Belum ada berkas di profil — lamaran tetap terkirim tanpa CV/Portofolio"}
+                </p>
+              </div>
+            </button>
+
+            <div className="border-t border-gray-100 pt-4 space-y-3">
+              <p className="text-xs font-semibold text-gray-600">Atau unggah berkas baru untuk lowongan ini:</p>
+
+              <input ref={cvInputRef} type="file" accept="application/pdf,.pdf" className="hidden"
+                onChange={(e) => setNewCvFile(e.target.files?.[0] ?? null)} />
+              <button
+                onClick={() => cvInputRef.current?.click()}
+                disabled={docsUploading}
+                className="w-full flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl px-4 py-3 hover:bg-gray-50 transition-colors disabled:opacity-60"
+              >
+                <Upload className="w-4 h-4 text-gray-400 shrink-0" />
+                <span className="text-xs font-semibold text-gray-700 truncate">
+                  {newCvFile ? newCvFile.name : "Unggah CV Baru (PDF, maks 10MB)"}
+                </span>
+              </button>
+
+              <input ref={portfolioInputRef} type="file" accept="application/pdf,.pdf" className="hidden"
+                onChange={(e) => setNewPortfolioFile(e.target.files?.[0] ?? null)} />
+              <button
+                onClick={() => portfolioInputRef.current?.click()}
+                disabled={docsUploading}
+                className="w-full flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl px-4 py-3 hover:bg-gray-50 transition-colors disabled:opacity-60"
+              >
+                <Upload className="w-4 h-4 text-gray-400 shrink-0" />
+                <span className="text-xs font-semibold text-gray-700 truncate">
+                  {newPortfolioFile ? newPortfolioFile.name : "Unggah Portofolio Baru (PDF, maks 10MB)"}
+                </span>
+              </button>
+
+              <button
+                data-testid="button-upload-new-docs"
+                onClick={handleUploadNewDocs}
+                disabled={docsUploading || (!newCvFile && !newPortfolioFile)}
+                className="w-full flex items-center justify-center gap-2 bg-primary text-white font-bold py-3 rounded-xl text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {docsUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                {docsUploading ? "Mengunggah..." : "Unggah & Lamar dengan Berkas Ini"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Sheet>
   );
 }

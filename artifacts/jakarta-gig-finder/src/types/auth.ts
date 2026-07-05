@@ -29,6 +29,9 @@ export interface AuthUser {
   ktpPhotoUrl?: string;
   selfieWithKtpUrl?: string;
   verificationStatus?: "pending" | "verified" | "rejected";
+  // Profile master CV/Portfolio — default source for Regular applications.
+  defaultCvUrl?: string;
+  defaultPortfolioUrl?: string;
 }
 
 export const DEMO_WORKER: AuthUser = {

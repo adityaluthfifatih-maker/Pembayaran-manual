@@ -33,6 +33,8 @@ export function toAuthUser(user: User): Record<string, unknown> {
     ktpPhotoUrl: user.ktpPhotoUrl ?? undefined,
     selfieWithKtpUrl: user.selfieWithKtpUrl ?? undefined,
     verificationStatus: user.verificationStatus,
+    defaultCvUrl: user.defaultCvUrl ?? undefined,
+    defaultPortfolioUrl: user.defaultPortfolioUrl ?? undefined,
   };
 }
 

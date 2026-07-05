@@ -13,7 +13,7 @@ export const UPLOAD_ROOT = path.resolve(
 );
 
 // Ensure sub-directories exist at startup.
-for (const sub of ["chat", "kyc"]) {
+for (const sub of ["chat", "kyc", "documents"]) {
   fs.mkdirSync(path.join(UPLOAD_ROOT, sub), { recursive: true });
 }
 
@@ -38,8 +38,14 @@ const ALLOWED_CHAT_MIME = new Set([
 
 const ALLOWED_KYC_MIME = new Set(["image/jpeg", "image/png"]);
 
-/** 5 MB upload limit */
+/** CV/Portfolio uploads are PDF-only — plain resume files, never images. */
+const ALLOWED_DOCUMENT_MIME = new Set(["application/pdf"]);
+
+/** 5 MB upload limit (chat attachments, KYC photos) */
 const MAX_SIZE_BYTES = 5 * 1024 * 1024;
+
+/** 10 MB upload limit for CV/Portfolio PDF resumes. */
+const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
 
 export const chatUpload = multer({
   storage: makeStorage("chat"),
@@ -61,6 +67,24 @@ export const kycUpload = multer({
       cb(null, true);
     } else {
       cb(new Error("Hanya JPG dan PNG yang diizinkan untuk dokumen KYC."));
+    }
+  },
+});
+
+/**
+ * CV / Portfolio resume uploads — used both for the worker's profile master
+ * files (default_cv_url/default_portfolio_url) and for a per-application
+ * override (submitted_cv_url/submitted_portfolio_url) on Regular jobs.
+ * PDF-only, 10MB max — distinct from the 5MB image/PDF chat attachment limit.
+ */
+export const documentUpload = multer({
+  storage: makeStorage("documents"),
+  limits: { fileSize: MAX_DOCUMENT_SIZE_BYTES },
+  fileFilter(_req, file, cb) {
+    if (ALLOWED_DOCUMENT_MIME.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Hanya PDF yang diizinkan untuk CV/Portofolio (maks 10MB)."));
     }
   },
 });

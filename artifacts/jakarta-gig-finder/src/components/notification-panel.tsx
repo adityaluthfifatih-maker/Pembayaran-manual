@@ -1,6 +1,6 @@
-import { Bell, X, ShieldCheck, AlertCircle, CheckCircle, Clock, ChevronRight, Inbox, MessageSquare } from "lucide-react";
+import { Bell, X, ShieldCheck, AlertCircle, CheckCircle, Clock, ChevronRight, Inbox, MessageSquare, FileText, FolderOpen } from "lucide-react";
 import { ApplicationNotification, ApplicationStatus } from "@/types/notification";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface NotificationPanelProps {
   notifications: ApplicationNotification[];
@@ -8,6 +8,17 @@ interface NotificationPanelProps {
   onOpenChat?: (notif: ApplicationNotification) => void;
   onMarkComplete?: (notifId: number) => void;
   onDispute?: (notifId: number) => void;
+  /** When set, the panel opens immediately with this notification expanded (e.g. deep-link from a toast click). */
+  initialExpandedId?: number | null;
+  initialOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+function notifCopy(n: ApplicationNotification): string {
+  if (n.hiringMode === "cepat") {
+    return `Pekerja ${n.applicantName} baru saja mendaftar secara INSTAN pada lowongan ${n.jobTitle} Anda. Klik di sini untuk melihat profil dan menyetujui langsung!`;
+  }
+  return `Pelamar baru di lowongan REGULER ${n.jobTitle} Anda. Klik di sini untuk melihat profil, CV, dan Portofolio mereka!`;
 }
 
 const statusConfig: Record<ApplicationStatus, { label: string; color: string; bg: string }> = {
@@ -25,9 +36,19 @@ function timeAgo(date: Date): string {
   return `${Math.floor(s / 3600)} jam lalu`;
 }
 
-export default function NotificationPanel({ notifications, onStatusChange, onOpenChat, onMarkComplete, onDispute }: NotificationPanelProps) {
-  const [open, setOpen] = useState(false);
-  const [expanded, setExpanded] = useState<number | null>(null);
+export default function NotificationPanel({ notifications, onStatusChange, onOpenChat, onMarkComplete, onDispute, initialExpandedId, initialOpen, onOpenChange }: NotificationPanelProps) {
+  const [open, _setOpen] = useState(!!initialOpen);
+  const [expanded, setExpanded] = useState<number | null>(initialExpandedId ?? null);
+
+  const setOpen = (v: boolean) => { _setOpen(v); onOpenChange?.(v); };
+
+  // Deep-link support: a toast click sets `initialOpen`/`initialExpandedId`
+  // from the parent, which should immediately open + expand this panel.
+  useEffect(() => {
+    if (initialOpen) setOpen(true);
+    if (initialExpandedId != null) setExpanded(initialExpandedId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOpen, initialExpandedId]);
 
   const unread = notifications.filter((n) => n.status === "baru").length;
 
@@ -138,12 +159,42 @@ export default function NotificationPanel({ notifications, onStatusChange, onOpe
                         {/* Expanded */}
                         {isExpanded && (
                           <div className="mt-4 space-y-3" style={{ animation: "fadeIn 0.15s ease" }}>
+                            <p className={`text-xs font-semibold leading-relaxed px-3 py-2.5 rounded-xl ${n.hiringMode === "cepat" ? "bg-amber-50 text-amber-800 border border-amber-100" : "bg-primary/5 text-primary border border-primary/10"}`}>
+                              {notifCopy(n)}
+                            </p>
+
                             <div className="bg-gray-50 rounded-xl p-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
                               <DataRow label="NIK"         value={n.applicantNikMasked} />
                               <DataRow label="NPWP"        value={n.applicantNpwpMasked} warn={!n.hasNpwp} />
                               <DataRow label="Bank"        value={n.bank} />
                               <DataRow label="No. Rekening" value={n.rekening} />
                             </div>
+
+                            {/* CV/Portfolio — Regular jobs only */}
+                            {n.hiringMode !== "cepat" && (n.cvUrl || n.portfolioUrl) && (
+                              <div className="flex gap-2">
+                                {n.cvUrl && (
+                                  <a
+                                    data-testid={`link-cv-${n.id}`}
+                                    href={n.cvUrl} target="_blank" rel="noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="flex-1 flex items-center justify-center gap-1.5 bg-blue-50 border border-blue-100 text-blue-700 text-xs font-bold py-2.5 rounded-xl hover:bg-blue-100 transition-colors"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" /> Lihat CV
+                                  </a>
+                                )}
+                                {n.portfolioUrl && (
+                                  <a
+                                    data-testid={`link-portfolio-${n.id}`}
+                                    href={n.portfolioUrl} target="_blank" rel="noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="flex-1 flex items-center justify-center gap-1.5 bg-violet-50 border border-violet-100 text-violet-700 text-xs font-bold py-2.5 rounded-xl hover:bg-violet-100 transition-colors"
+                                  >
+                                    <FolderOpen className="w-3.5 h-3.5" /> Lihat Portofolio
+                                  </a>
+                                )}
+                              </div>
+                            )}
 
                             <div className="flex items-start gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
                               <ShieldCheck className="w-3.5 h-3.5 text-gray-400 shrink-0 mt-0.5" />

@@ -1,0 +1,20 @@
+Please execute a comprehensive update to implement a dual-entry CV/Portfolio system, an automated notification flow that links directly to applicant profiles, and a fix for the chat validation deadlock.
+
+1. DUAL-ENTRY CV & PORTFOLIO INPUT (PROFILE & REGULAR APPLICATIONS):
+- Database Update: In the 'users' table, ensure there are columns for 'default_cv_url' and 'default_portfolio_url'. In the 'applications' table, ensure there are columns for 'submitted_cv_url' and 'submitted_portfolio_url'.
+- Profile Page (Worker Side): Add file upload fields in the Worker Profile Settings where users can save their master CV and Portfolio (.pdf, max 10MB) to their account profile.
+- Regular Application Page: When a worker clicks "Apply" on a Regular job, show a modal that says: "Gunakan CV/Portofolio dari profil atau unggah berkas baru khusus untuk lowongan ini?". If they upload a new one, save it under 'submitted_cv_url' in the 'applications' table; otherwise, default to their profile's master files.
+- Instant Application Page: Instant jobs remain direct click-to-apply (no document upload phase required).
+
+2. INSTANT & REGULAR NOTIFICATION LOGIC WITH DIRECT PROFILE LINK (FIX DEADLOCK):
+- Backend POST Application Endpoint: When a worker applies (both Instant and Regular), immediately send a real-time notification to the Employer/Company.
+- The notification payload must include a direct link/trigger to open that specific applicant's profile immediately.
+- Notification Text Content:
+  * For Instant Jobs: "Pekerja [Nama Pekerja] baru saja mendaftar secara INSTAN pada lowongan [Nama Lowongan] Anda. Klik di sini untuk melihat profil dan menyetujui langsung!"
+  * For Regular Jobs: "Pelamar baru di lowongan REGULER [Nama Lowongan] Anda. Klik di sini untuk melihat profil, CV, dan Portofolio mereka!"
+
+3. EMPLOYER ACTION & CHAT ROOM HANDSHAKE:
+- Frontend (Employer Side): When the Employer clicks the notification, immediately open/render the applicant's Profile Card (showing their skills, rating, and clickable CV/Portfolio links if it is a Regular job).
+- When the Employer clicks "Terima" (Accept), update the application status to 'ACCEPTED'. Instantly send a WebSocket event to the worker to unlock the chat container interface (removing the constraint block) and initialize the live real-time chat session immediately without a page refresh.
+
+Please ensure all database migrations, API routes, and frontend modal mappings are successfully integrated.

@@ -1,14 +1,54 @@
 import { Router, type IRouter } from "express";
 import { eq, desc, and } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, applicationsTable, gigsTable } from "@workspace/db";
+import { db, applicationsTable, gigsTable, usersTable } from "@workspace/db";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
+import { documentUpload } from "../lib/upload";
 import {
   broadcastApplication,
   broadcastApplicationStatus,
 } from "../lib/realtime";
 
 const router: IRouter = Router();
+
+/**
+ * Per-application CV/Portfolio upload — used by the "unggah berkas baru
+ * khusus untuk lowongan ini" option in the Regular apply modal. Returns the
+ * stored URLs so the client can include them in the follow-up POST
+ * /applications call as `submittedCvUrl`/`submittedPortfolioUrl`.
+ */
+router.post(
+  "/applications/documents/upload",
+  documentUpload.fields([
+    { name: "cv", maxCount: 1 },
+    { name: "portfolio", maxCount: 1 },
+  ]),
+  async (req, res): Promise<void> => {
+    const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
+    if (!user) {
+      res.status(401).json({ error: "Tidak terautentikasi." });
+      return;
+    }
+
+    const files = req.files as
+      | Record<string, Express.Multer.File[] | undefined>
+      | undefined;
+    const cvFile = files?.["cv"]?.[0];
+    const portfolioFile = files?.["portfolio"]?.[0];
+
+    if (!cvFile && !portfolioFile) {
+      res.status(400).json({
+        error: "Unggah minimal satu berkas (CV atau Portofolio). Format PDF, maks 10MB.",
+      });
+      return;
+    }
+
+    res.json({
+      cvUrl: cvFile ? `/api/uploads/documents/${cvFile.filename}` : undefined,
+      portfolioUrl: portfolioFile ? `/api/uploads/documents/${portfolioFile.filename}` : undefined,
+    });
+  },
+);
 
 /**
  * Worker submits an application for a gig.
@@ -32,6 +72,16 @@ const applyBody = z.object({
   cvLink: z.string().optional(),
   /** Optional link to the worker's portfolio. */
   portfolioLink: z.string().optional(),
+  /**
+   * Regular-job dual-entry CV/Portfolio. When provided, these are a fresh
+   * upload made specifically for this application (apply-modal "unggah
+   * berkas baru" choice). When omitted, the server falls back to the
+   * worker's profile master files (default_cv_url/default_portfolio_url) —
+   * the apply-modal "gunakan CV/Portofolio dari profil" choice. Instant jobs
+   * never send these — Instant stays direct click-to-apply.
+   */
+  submittedCvUrl: z.string().optional(),
+  submittedPortfolioUrl: z.string().optional(),
 });
 
 router.post("/applications", async (req, res): Promise<void> => {
@@ -50,17 +100,41 @@ router.post("/applications", async (req, res): Promise<void> => {
     return;
   }
 
-  // Resolve the employer_id from the gig row so we can scope GET/PATCH later.
+  // Resolve the employer_id and hiring mode from the gig row so we can scope
+  // GET/PATCH later and decide whether CV/Portfolio applies (Regular only).
   const [gig] = await db
-    .select({ employerId: gigsTable.employerId })
+    .select({ employerId: gigsTable.employerId, hiringMode: gigsTable.hiringMode })
     .from(gigsTable)
     .where(eq(gigsTable.id, parsed.data.jobId))
     .limit(1);
   const employerId = gig?.employerId ?? "";
+  const isRegular = gig?.hiringMode !== "cepat";
+
+  let submittedCvUrl = parsed.data.submittedCvUrl;
+  let submittedPortfolioUrl = parsed.data.submittedPortfolioUrl;
+
+  // Regular job, no fresh upload provided for this application ⇒ fall back to
+  // the worker's profile master CV/Portfolio (the "gunakan dari profil" choice).
+  if (isRegular && !submittedCvUrl && !submittedPortfolioUrl) {
+    const [profileUser] = await db
+      .select({ defaultCvUrl: usersTable.defaultCvUrl, defaultPortfolioUrl: usersTable.defaultPortfolioUrl })
+      .from(usersTable)
+      .where(eq(usersTable.id, user.id))
+      .limit(1);
+    submittedCvUrl = profileUser?.defaultCvUrl ?? undefined;
+    submittedPortfolioUrl = profileUser?.defaultPortfolioUrl ?? undefined;
+  }
 
   const [row] = await db
     .insert(applicationsTable)
-    .values({ ...parsed.data, workerId: user.id, employerId, status: "baru" })
+    .values({
+      ...parsed.data,
+      submittedCvUrl: isRegular ? submittedCvUrl : undefined,
+      submittedPortfolioUrl: isRegular ? submittedPortfolioUrl : undefined,
+      workerId: user.id,
+      employerId,
+      status: "baru",
+    })
     .returning();
 
   if (!row) {
@@ -74,7 +148,9 @@ router.post("/applications", async (req, res): Promise<void> => {
       "Application saved but employerId is empty — real-time notification skipped",
     );
   } else {
-    broadcastApplication(row, employerId);
+    // Include hiringMode alongside the row so the employer's client can pick
+    // the exact Instant vs Regular notification copy without an extra fetch.
+    broadcastApplication({ ...row, hiringMode: gig?.hiringMode ?? "lama" }, employerId);
   }
 
   req.log.info(

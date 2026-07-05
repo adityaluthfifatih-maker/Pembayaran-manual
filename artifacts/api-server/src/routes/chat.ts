@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { eq, asc, and } from "drizzle-orm";
+import { eq, asc, and, desc } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, chatMessagesTable, gigsTable, applicationsTable } from "@workspace/db";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
@@ -54,6 +54,13 @@ async function resolveParticipant(
   // Workers may only open a chat thread once the employer has accepted their
   // application (status = "diterima"). Without this check any worker who knows
   // a jobId/workerId pair could read or write messages before being accepted.
+  //
+  // IMPORTANT: order by createdAt desc and take the MOST RECENT application.
+  // A worker can re-apply to the same job (e.g. after a rejection), which
+  // creates a second row for the same (jobId, workerId) pair. Without this
+  // ordering, an unordered `.limit(1)` can non-deterministically return a
+  // stale "ditolak" row even after the employer accepted the newer one —
+  // permanently deadlocking the worker out of a chat they were just granted.
   if (isWorker) {
     const [app] = await db
       .select({ status: applicationsTable.status })
@@ -64,6 +71,7 @@ async function resolveParticipant(
           eq(applicationsTable.workerId, workerId),
         ),
       )
+      .orderBy(desc(applicationsTable.createdAt))
       .limit(1);
     if (!app || app.status !== "diterima") {
       res.status(403).json({ error: "Chat hanya tersedia setelah lamaran Anda diterima oleh pemberi kerja." });

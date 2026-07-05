@@ -9,6 +9,15 @@ interface ApplicantToastProps {
   onAccept: () => void;
   onDecline: () => void;
   onDismiss: () => void;
+  /** Clicking the notification body opens the applicant's profile immediately. */
+  onOpenProfile?: () => void;
+}
+
+function notifCopy(n: ApplicationNotification): string {
+  if (n.hiringMode === "cepat") {
+    return `Pekerja ${n.applicantName} baru saja mendaftar secara INSTAN pada lowongan ${n.jobTitle} Anda. Klik di sini untuk melihat profil dan menyetujui langsung!`;
+  }
+  return `Pelamar baru di lowongan REGULER ${n.jobTitle} Anda. Klik di sini untuk melihat profil, CV, dan Portofolio mereka!`;
 }
 
 const AUTO_SEC = 10;
@@ -20,7 +29,7 @@ function demoRating(name: string): number {
 }
 
 export default function ApplicantToast({
-  notification, job, onAccept, onDecline, onDismiss,
+  notification, job, onAccept, onDecline, onDismiss, onOpenProfile,
 }: ApplicantToastProps) {
   const [secs, setSecs] = useState(AUTO_SEC);
   const [done, setDone] = useState(false);
@@ -62,17 +71,24 @@ export default function ApplicantToast({
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
             </span>
-            <p className="text-sm font-black text-gray-900">📩 Pelamar Baru!</p>
-            {job && (
-              <span className="text-[10px] text-gray-400 truncate">
-                → {job.posisi}
-              </span>
-            )}
+            <p className="text-sm font-black text-gray-900">
+              {notification.hiringMode === "cepat" ? "⚡ Pelamar Instan!" : "📩 Pelamar Baru!"}
+            </p>
           </div>
           <button onClick={onDismiss} className="text-gray-300 hover:text-gray-500 shrink-0 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Notification copy — clicking opens the applicant's profile */}
+        <button
+          data-testid="button-open-applicant-profile"
+          onClick={onOpenProfile}
+          disabled={!onOpenProfile}
+          className="w-full text-left text-xs font-semibold leading-relaxed text-gray-700 hover:text-primary transition-colors disabled:cursor-default disabled:hover:text-gray-700"
+        >
+          {notifCopy(notification)}
+        </button>
 
         {/* Applicant */}
         <div className="flex items-center gap-3">

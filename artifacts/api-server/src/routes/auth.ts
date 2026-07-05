@@ -12,7 +12,7 @@ import {
   sessionCookieOptions,
   toAuthUser,
 } from "../lib/auth";
-import { kycUpload } from "../lib/upload";
+import { kycUpload, documentUpload } from "../lib/upload";
 
 const router: IRouter = Router();
 
@@ -252,6 +252,53 @@ router.post(
       .returning();
 
     req.log.info({ userId: user.id }, "Worker submitted KYC documents");
+    res.json(toAuthUser(updated));
+  },
+);
+
+/**
+ * Profile master CV/Portfolio upload (Worker Profile Settings). These become
+ * the default files auto-attached to a Regular application unless the worker
+ * chooses to upload a fresh document for that specific application instead
+ * (see the apply-modal flow in `POST /applications`).
+ */
+router.post(
+  "/auth/documents",
+  documentUpload.fields([
+    { name: "cv", maxCount: 1 },
+    { name: "portfolio", maxCount: 1 },
+  ]),
+  async (req, res): Promise<void> => {
+    const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
+    if (!user) {
+      res.status(401).json({ error: "Tidak terautentikasi." });
+      return;
+    }
+
+    const files = req.files as
+      | Record<string, Express.Multer.File[] | undefined>
+      | undefined;
+    const cvFile = files?.["cv"]?.[0];
+    const portfolioFile = files?.["portfolio"]?.[0];
+
+    if (!cvFile && !portfolioFile) {
+      res.status(400).json({
+        error: "Unggah minimal satu berkas (CV atau Portofolio). Format PDF, maks 10MB.",
+      });
+      return;
+    }
+
+    const updates: Partial<typeof usersTable.$inferInsert> = {};
+    if (cvFile) updates.defaultCvUrl = `/api/uploads/documents/${cvFile.filename}`;
+    if (portfolioFile) updates.defaultPortfolioUrl = `/api/uploads/documents/${portfolioFile.filename}`;
+
+    const [updated] = await db
+      .update(usersTable)
+      .set(updates)
+      .where(eq(usersTable.id, user.id))
+      .returning();
+
+    req.log.info({ userId: user.id }, "Worker updated profile CV/Portfolio");
     res.json(toAuthUser(updated));
   },
 );

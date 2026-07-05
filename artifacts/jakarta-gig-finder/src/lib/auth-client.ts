@@ -108,3 +108,54 @@ export async function submitKyc(files: {
   }
   return data as AuthUser;
 }
+
+/**
+ * Upload the worker's master CV/Portfolio to their profile (.pdf, max 10MB).
+ * These become the default files auto-attached to Regular applications.
+ */
+export async function submitDocuments(files: {
+  cv?: File;
+  portfolio?: File;
+}): Promise<AuthUser> {
+  const form = new FormData();
+  if (files.cv) form.append("cv", files.cv);
+  if (files.portfolio) form.append("portfolio", files.portfolio);
+
+  const res = await fetch(`${API_BASE}/auth/documents`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new AuthError((data as { error?: string }).error ?? "Gagal mengunggah berkas.", res.status);
+  }
+  return data as AuthUser;
+}
+
+/**
+ * Upload a CV/Portfolio for one specific application (Regular apply-modal
+ * "unggah berkas baru khusus untuk lowongan ini" choice). Returns the stored
+ * URLs to pass into `postApplication` as `submittedCvUrl`/`submittedPortfolioUrl`.
+ */
+export async function uploadApplicationDocuments(files: {
+  cv?: File;
+  portfolio?: File;
+}): Promise<{ cvUrl?: string; portfolioUrl?: string }> {
+  const form = new FormData();
+  if (files.cv) form.append("cv", files.cv);
+  if (files.portfolio) form.append("portfolio", files.portfolio);
+
+  const res = await fetch(`${API_BASE}/applications/documents/upload`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new AuthError((data as { error?: string }).error ?? "Gagal mengunggah berkas.", res.status);
+  }
+  return data as { cvUrl?: string; portfolioUrl?: string };
+}

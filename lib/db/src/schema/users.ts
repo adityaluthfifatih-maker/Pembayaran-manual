@@ -33,6 +33,10 @@ export const usersTable = pgTable("users", {
    * Values: "pending" | "verified" | "rejected"
    */
   verificationStatus: text("verification_status").notNull().default("pending"),
+  /** Master CV/resume file the worker keeps on their profile — reused as the default for Regular applications unless overridden per-application. */
+  defaultCvUrl: text("default_cv_url"),
+  /** Master portfolio file the worker keeps on their profile. */
+  defaultPortfolioUrl: text("default_portfolio_url"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

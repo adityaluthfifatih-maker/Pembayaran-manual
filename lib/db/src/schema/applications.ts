@@ -35,6 +35,14 @@ export const applicationsTable = pgTable("applications", {
   /** Optional CV / portfolio links submitted by the worker. Nullable — many workers won't have them. */
   cvLink: text("cv_link"),
   portfolioLink: text("portfolio_link"),
+  /**
+   * The CV/Portfolio actually attached to THIS application — either a fresh
+   * upload made in the apply modal, or a copy of the worker's profile master
+   * files (default_cv_url/default_portfolio_url) resolved at apply time.
+   * Regular jobs only; Instant applications never set these.
+   */
+  submittedCvUrl: text("submitted_cv_url"),
+  submittedPortfolioUrl: text("submitted_portfolio_url"),
   /** "baru" (pending) | "ditinjau" | "diterima" | "ditolak" | "selesai" */
   status: text("status").notNull().default("baru"),
   createdAt: timestamp("created_at", { withTimezone: true })
