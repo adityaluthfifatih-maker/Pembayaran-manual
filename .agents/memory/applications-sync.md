@@ -29,3 +29,11 @@ Whenever adding a new "actor submits → server persists → other device reacts
 3. Route file (`routes/X.ts`) with auth guard + broadcast call
 4. central-server.ts: `XEvent` type + `XSubscriber` + WS branch + `subscribeX()` export
 5. home.tsx: `handlerRef` + `processedRef` + `useEffect(() => subscribeX(...), [])`
+
+## Optimistic-success UI must be gated by the same precondition as the real call
+
+`job-sheet.tsx`'s apply CTA used to run its `setTimeout` → "Lamaran Terkirim!" success animation unconditionally, only gating the real `onApply`/`postApplication` network call behind `if (workerProfile && onApply)`. A worker who hadn't completed onboarding (`workerProfile === null`) saw a fake success screen while nothing was ever POSTed — so the employer never received a notification or a new application row.
+
+**Why:** This was invisible to backend/API testing (the API layer was fully correct) because the break was purely in client-side optimistic-UI gating. Only real UI interaction, or checking access logs for the actual POST that never arrived, revealed it.
+
+**How to apply:** any "optimistic success" UI (chime, animation, checkmark, toast) must be gated by the exact same precondition that gates the underlying network call, not a looser one. If a required precondition (e.g. a completed profile) is missing, block the action up front and route the user to fix the precondition (e.g. open onboarding) instead of faking success.

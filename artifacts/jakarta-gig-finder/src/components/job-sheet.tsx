@@ -23,6 +23,8 @@ interface JobSheetProps {
   onApply?: (job: CustomJob, profile: WorkerProfile, docs?: { submittedCvUrl?: string; submittedPortfolioUrl?: string }) => void;
   onOpenChat?: (job: CustomJob) => void;
   onReportSuspect?: (jobId: number) => void;
+  /** Called when the worker tries to apply without a completed profile — should open onboarding. */
+  onRequireProfile?: () => void;
 }
 
 function formatRp(value: number): string {
@@ -32,7 +34,7 @@ function formatRp(value: number): string {
 type ApplyState = "idle" | "sending" | "done";
 
 export default function JobSheet({
-  job, onClose, workerProfile, currentUser, onApply, onOpenChat, onReportSuspect,
+  job, onClose, workerProfile, currentUser, onApply, onOpenChat, onReportSuspect, onRequireProfile,
 }: JobSheetProps) {
   const [applyState, setApplyState] = useState<ApplyState>("idle");
   // Regular jobs show a modal asking the worker to choose which CV/Portfolio
@@ -58,15 +60,30 @@ export default function JobSheet({
   const hasProfileDocs = !!(currentUser?.defaultCvUrl || currentUser?.defaultPortfolioUrl);
 
   const submitApplication = (docs?: { submittedCvUrl?: string; submittedPortfolioUrl?: string }) => {
+    // Guard: without a completed worker profile there is nothing to send to
+    // the server, so never fake a "Lamaran Terkirim!" success — that used to
+    // silently drop the application (no POST /api/applications was ever
+    // made) while the worker saw a green checkmark and the employer never
+    // received anything.
+    if (!workerProfile || !onApply) {
+      setDocsError("Lengkapi profil Anda terlebih dahulu untuk melamar.");
+      onRequireProfile?.();
+      return;
+    }
     setApplyState("sending");
     setTimeout(() => {
       setApplyState("done");
-      if (workerProfile && onApply) onApply(job, workerProfile, docs);
+      onApply(job, workerProfile, docs);
     }, 2000);
   };
 
   const handleApply = () => {
     if (applyState !== "idle") return;
+    if (!workerProfile || !onApply) {
+      setDocsError("Lengkapi profil Anda terlebih dahulu untuk melamar.");
+      onRequireProfile?.();
+      return;
+    }
     if (isRegular) {
       setShowDocsModal(true);
       return;
@@ -223,14 +240,21 @@ export default function JobSheet({
           {/* CTA */}
           <div className="pt-1 pb-2 space-y-3">
             {applyState === "idle" && (
-              <button
-                data-testid="button-apply-job"
-                className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-white font-bold py-3.5 rounded-xl text-base transition-all shadow-lg"
-                style={{ boxShadow: "0 4px 16px rgba(6,95,70,0.35)" }}
-                onClick={handleApply}
-              >
-                Lamar Pekerjaan Ini
-              </button>
+              <>
+                <button
+                  data-testid="button-apply-job"
+                  className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-white font-bold py-3.5 rounded-xl text-base transition-all shadow-lg"
+                  style={{ boxShadow: "0 4px 16px rgba(6,95,70,0.35)" }}
+                  onClick={handleApply}
+                >
+                  Lamar Pekerjaan Ini
+                </button>
+                {!workerProfile && docsError && (
+                  <p className="text-xs font-semibold text-red-500 text-center" data-testid="text-apply-profile-error">
+                    {docsError}
+                  </p>
+                )}
+              </>
             )}
 
             {applyState === "sending" && (

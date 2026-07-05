@@ -1947,7 +1947,7 @@ export default function Home() {
                   </div>
                 )}
                 <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile}
-                  onApply={isSuspended ? undefined : handleApply} onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect} />
+                  onApply={isSuspended ? undefined : handleApply} onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect} onRequireProfile={() => setShowOnboarding(true)} />
               </div>
 
             ) : workerView === "scheduled" ? (
@@ -1959,7 +1959,7 @@ export default function Home() {
                   onChat={(job) => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "", feeRate: job.feeRate })}
                 />
                 <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile}
-                  onApply={isSuspended ? undefined : handleApply} onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect} />
+                  onApply={isSuspended ? undefined : handleApply} onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect} onRequireProfile={() => setShowOnboarding(true)} />
               </>
 
             ) : (
@@ -2069,7 +2069,7 @@ export default function Home() {
                   ))}
                 </div>
                 <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile}
-                  onApply={isSuspended ? undefined : handleApply} onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect} />
+                  onApply={isSuspended ? undefined : handleApply} onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect} onRequireProfile={() => setShowOnboarding(true)} />
               </div>
             )}
           </main>
