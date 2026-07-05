@@ -6,6 +6,7 @@ import JobSheet from "@/components/job-sheet";
 import JobPostingModal from "@/components/job-posting-modal";
 import WorkerOnboarding from "@/components/worker-onboarding";
 import NotificationPanel from "@/components/notification-panel";
+import NotificationBell from "@/components/notification-bell";
 import ClockInModal from "@/components/clock-in-modal";
 import AttendanceQrModal from "@/components/attendance-qr-modal";
 import RatingModal, { RatingPayload } from "@/components/rating-modal";
@@ -1639,7 +1640,10 @@ export default function Home() {
               <div className="flex items-center gap-2">
                 <RekhasthaLogo size={34} showSubtitle wordmarkClassName="text-lg" />
                 {mode === "perusahaan" && (
-                  <NotificationPanel notifications={notifications} onStatusChange={handleStatusChange} onOpenChat={handleOpenChatFromNotif} onMarkComplete={handleSplitPayment} onDispute={handleNotifDispute} />
+                  <>
+                    <NotificationPanel notifications={notifications} onStatusChange={handleStatusChange} onOpenChat={handleOpenChatFromNotif} onMarkComplete={handleSplitPayment} onDispute={handleNotifDispute} />
+                    <NotificationBell />
+                  </>
                 )}
               </div>
               <span className={`text-xs font-bold px-3 py-1.5 rounded-lg ${mode === "perusahaan" ? "bg-blue-50 text-blue-700" : "bg-primary/10 text-primary"}`}>

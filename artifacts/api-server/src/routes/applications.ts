@@ -1,7 +1,13 @@
 import { Router, type IRouter } from "express";
 import { eq, desc, and } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, applicationsTable, gigsTable, usersTable } from "@workspace/db";
+import {
+  db,
+  applicationsTable,
+  gigsTable,
+  usersTable,
+  notificationsTable,
+} from "@workspace/db";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
 import { documentUpload } from "../lib/upload";
 import {
@@ -145,11 +151,23 @@ router.post("/applications", async (req, res): Promise<void> => {
   if (!employerId) {
     req.log.warn(
       { jobId: parsed.data.jobId },
-      "Application saved but employerId is empty — real-time notification skipped",
+      "Application saved but employerId is empty — notification skipped",
     );
   } else {
+    // Persisted, polling-based notification — the reliable path. This does
+    // not depend on the employer's WebSocket ever being registered, so it
+    // still shows up on refresh/poll even if the realtime push is missed.
+    await db.insert(notificationsTable).values({
+      userId: employerId,
+      message: `${row.workerName || "Seorang pekerja"} baru saja melamar lowongan ${row.jobTitle || "Anda"}`,
+      type: "application",
+      jobId: row.jobId,
+      applicationId: row.id,
+    });
+
     // Include hiringMode alongside the row so the employer's client can pick
     // the exact Instant vs Regular notification copy without an extra fetch.
+    // Best-effort realtime push on top of the polling-based notification above.
     broadcastApplication({ ...row, hiringMode: gig?.hiringMode ?? "lama" }, employerId);
   }
 

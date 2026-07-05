@@ -28,3 +28,4 @@ export * from "./admin";
 export * from "./academy";
 export * from "./applications";
 export * from "./chat-messages";
+export * from "./notifications";

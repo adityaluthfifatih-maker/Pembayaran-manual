@@ -11,6 +11,7 @@ import boronganRouter from "./borongan";
 import emergencyRouter from "./emergency";
 import applicationsRouter from "./applications";
 import chatRouter from "./chat";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(boronganRouter);
 router.use(emergencyRouter);
 router.use(applicationsRouter);
 router.use(chatRouter);
+router.use(notificationsRouter);
 
 export default router;
