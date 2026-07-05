@@ -63,7 +63,7 @@ router.post("/emergency", async (req, res): Promise<void> => {
 
 /** Admin: list every still-active SOS incident (hydrates the alarm on load). */
 router.get("/emergency", async (req, res): Promise<void> => {
-  if (!isAdminSession(req.cookies?.[ADMIN_COOKIE])) {
+  if (!(await isAdminSession(req.cookies?.[ADMIN_COOKIE]))) {
     res.status(401).json({ error: "Sesi admin tidak valid." });
     return;
   }
@@ -79,7 +79,7 @@ router.get("/emergency", async (req, res): Promise<void> => {
 const resolveBody = z.object({ id: z.coerce.number() });
 
 router.post("/emergency/resolve", async (req, res): Promise<void> => {
-  if (!isAdminSession(req.cookies?.[ADMIN_COOKIE])) {
+  if (!(await isAdminSession(req.cookies?.[ADMIN_COOKIE]))) {
     res.status(401).json({ error: "Sesi admin tidak valid." });
     return;
   }
