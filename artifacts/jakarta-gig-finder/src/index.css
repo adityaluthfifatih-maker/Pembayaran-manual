@@ -166,6 +166,51 @@
   }
 }
 
+/* ── Desktop / laptop responsive wrapper ──────────────── */
+
+/*
+ * On desktop (≥1024px) the app renders as a centered phone-sized column
+ * with a slate background — preserving the mobile-first design intent.
+ * Admin portal is NOT constrained (it has its own full-width layout).
+ */
+@media (min-width: 1024px) {
+  html, body {
+    font-size: 16px;
+    line-height: 1.25;
+  }
+
+  body {
+    background: #0f172a;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    min-height: 100vh;
+  }
+
+  #root {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    min-height: 100vh;
+  }
+
+  /* Mobile shell container — home page route */
+  .mobile-app-shell {
+    width: 100%;
+    max-width: 480px;
+    min-height: 100vh;
+    position: relative;
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.06);
+    overflow: hidden;
+  }
+
+  /* Admin portal — full width, no constraint */
+  .admin-portal-shell {
+    width: 100%;
+    min-height: 100vh;
+  }
+}
+
 /* ── Custom animations ─────────────────────────────────── */
 @keyframes radar-expand {
   0%   { transform: scale(0.3); opacity: 0.85; }

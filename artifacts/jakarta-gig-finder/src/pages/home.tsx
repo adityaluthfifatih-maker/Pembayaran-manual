@@ -1349,7 +1349,7 @@ export default function Home() {
   const isProfileTab = activeTab === "profile";
 
   return (
-    <div className="flex flex-col h-[100dvh] w-full bg-gray-50 relative overflow-hidden">
+    <div className="mobile-app-shell flex flex-col h-[100dvh] w-full bg-gray-50 relative overflow-hidden">
 
       {/* ── JOB PING MODAL (worker ride-hailing style) ──── */}
       {activePing && (
@@ -1957,7 +1957,7 @@ export default function Home() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-xl font-bold text-gray-900">Pekerjaan Tersedia</h2>
-                      <p className="text-sm text-gray-500">{customJobs.length > 0 ? `${customJobs.length} lowongan · ${jobs.length} tetap` : "Berdasarkan lokasi Anda"}</p>
+                      <p className="text-sm text-gray-500">{allJobs.length > 0 ? `${allJobs.length} lowongan aktif · ${jobs.length} tetap` : "Berdasarkan lokasi Anda"}</p>
                     </div>
                     {workerProfile && (
                       <button onClick={() => setShowEarnings(true)} className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-3 py-1.5 rounded-full">
@@ -1976,13 +1976,13 @@ export default function Home() {
                     </div>
                   )}
 
-                  {customJobs.length > 0 && (
+                  {allJobs.length > 0 && (
                     <button onClick={() => setWorkerView("map")} className="w-full flex items-center justify-center gap-2 bg-violet-50 border border-violet-200 text-violet-700 text-xs font-semibold py-2.5 rounded-xl hover:bg-violet-100 transition-colors">
-                      <MapIcon className="w-4 h-4" /> Lihat {customJobs.length} lowongan di Peta Radar
+                      <MapIcon className="w-4 h-4" /> Lihat {allJobs.length} lowongan di Peta Radar
                     </button>
                   )}
 
-                  {customJobs.map((job) => (
+                  {allJobs.map((job) => (
                     <div key={job.id} data-testid={`card-custom-job-${job.id}`}
                       className={`bg-white p-4 rounded-xl border shadow-sm flex flex-col gap-3 ${job.flaggedSuspect ? "border-yellow-300 bg-yellow-50/50" : "border-violet-100"}`}>
                       <div className="flex justify-between items-start">
@@ -2083,7 +2083,7 @@ export default function Home() {
                   {notifications.filter(n => n.status === "diterima" || n.status === "ditinjau").length > 9 ? "9+" : notifications.filter(n => n.status === "diterima" || n.status === "ditinjau").length}
                 </span>
               )}
-              {mode === "pekerja" && (customJobs.length > 0 || activeJob) && (
+              {mode === "pekerja" && (allJobs.length > 0 || activeJob) && (
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-primary rounded-full border border-white" />
               )}
             </div>

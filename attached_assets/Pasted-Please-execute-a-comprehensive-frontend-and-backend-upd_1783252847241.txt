@@ -1,0 +1,18 @@
+Please execute a comprehensive frontend and backend update to optimize typography readability, layout scaling, camera rendering, and job data synchronization.
+
+1. OPTIMIZE TYPOGRAPHY & READABILITY ON DESKTOP/LAPTOP (MAIN FOCUS):
+- Implement responsive typography across the global application layout using media queries (@media (min-width: 1024px)) specifically targeted for laptop and PC screen sizes.
+- Substantially increase the base font sizes to ensure optimal readability: set the body text to a clear, large 16px or 18px size, and elevate main section headers to 24px - 28px.
+- Adjust the line-height (line spacing) globally to 1.25 or 1.3 to prevent text density clutter on large monitors, ensuring comfortable reading lengths.
+- Restrict maximum line widths for long paragraphs or data details (max-width: 70ch to 80ch) to prevent text from stretching awkwardly across wide desktop screens.
+
+2. FIX JOB LIST SYNCHRONIZATION BUG:
+- Problem: Job vacancies appear as pins on the Radar/Map view, but they DO NOT render in the textual Job List (Daftar Aplikasi) on the Worker page.
+- Fix backend: Inspect the GET endpoint that fetches active/approved jobs for workers. Ensure it returns a unified data array containing both 'regular' and 'instant' job types without restrictive pagination or text filters blocking the array list output.
+- Fix frontend: Ensure the Worker's textual Job List component subscribes to the EXACT SAME state/data array as the Radar Map view (Single Source of Truth), ensuring that every job visible on the map automatically renders as a card in the text list.
+
+3. FIX FRONT CAMERA MIRROR EFFECT ON LAPTOP:
+- Locate the HTML5 <video> streaming element used for QR scanning or face verification.
+- Apply a CSS horizontal flip using `transform: scaleX(-1);` specifically to the video preview container. This ensures that when a desktop/laptop user looks at the front-facing webcam preview, it mirrors naturally like a real reflection. 
+
+Please verify the data binding across the endpoints, implement these typography upscaling and UI fixes, and confirm once all updates are integrated successfully.

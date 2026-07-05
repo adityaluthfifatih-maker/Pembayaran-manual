@@ -1787,7 +1787,7 @@ function CommandCenter({
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
+    <div className="admin-portal-shell min-h-screen bg-gray-50 flex flex-col md:flex-row">
       {/* Sidebar */}
       <aside
         className="md:w-64 shrink-0 md:min-h-screen text-white"

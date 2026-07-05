@@ -70,7 +70,7 @@ export default function QrScanner({ onScan, onError }: QrScannerProps) {
         <div
           id={elementId}
           data-testid="qr-scanner-viewport"
-          className="w-full overflow-hidden rounded-2xl bg-black [&_video]:rounded-2xl"
+          className="w-full overflow-hidden rounded-2xl bg-black [&_video]:rounded-2xl [&_video]:[transform:scaleX(-1)]"
           style={{ minHeight: 220 }}
         />
         {/* Emerald corner brackets overlay */}
