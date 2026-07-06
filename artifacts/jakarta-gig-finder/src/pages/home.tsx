@@ -20,6 +20,7 @@ import HiringModePanel from "@/components/hiring-mode-panel";
 import ApplicantToast from "@/components/applicant-toast";
 import InstantGigAlarm from "@/components/instant-gig-alarm";
 import ScheduledJobsFeed from "@/components/scheduled-jobs-feed";
+import MyApplications from "@/components/my-applications";
 import { RekhasthaLogo } from "@/components/rekhastha-logo";
 import EscrowProjectsPanel from "@/components/escrow-projects-panel";
 import {
@@ -105,7 +106,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<AppTab>("home");
   const [mode, setMode] = useState<"perusahaan" | "pekerja">("perusahaan");
   const [companyView, setCompanyView] = useState<CompanyView>("jobs");
-  const [workerView, setWorkerView] = useState<"list" | "map" | "scheduled">("list");
+  const [workerView, setWorkerView] = useState<"list" | "map" | "scheduled" | "applications">("list");
 
   // ── Search ──────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
@@ -1538,17 +1539,21 @@ export default function Home() {
                       {isSuspended ? "Suspended" : `Rep: ${reputationPoints}`}
                     </span>
                     <div className="flex bg-gray-100/80 p-1 rounded-[14px] relative">
-                      <div className="absolute inset-y-1 w-[calc(33.333%-2px)] bg-white rounded-[10px] shadow-sm transition-transform duration-300 ease-out" 
+                      <div className="absolute inset-y-1 w-[calc(25%-2px)] bg-white rounded-[10px] shadow-sm transition-transform duration-300 ease-out" 
                            style={{ 
                              transform: workerView === "list" ? "translateX(2px)" 
-                                      : workerView === "map" ? "translateX(calc(100% + 2px))" 
-                                      : "translateX(calc(200% + 2px))" 
+                                      : workerView === "map" ? "translateX(calc(100% + 2px))"
+                                      : workerView === "scheduled" ? "translateX(calc(200% + 2px))"
+                                      : "translateX(calc(300% + 2px))"
                            }} />
-                      <button onClick={() => setWorkerView("list")} className={`flex-1 relative px-3 py-2 text-xs font-bold rounded-xl transition-colors ${workerView === "list" ? "text-primary" : "text-gray-500"}`}>Daftar</button>
-                      <button onClick={() => setWorkerView("map")} className={`flex-1 relative px-3 py-2 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 ${workerView === "map" ? "text-primary" : "text-gray-500"}`}>
+                      <button onClick={() => setWorkerView("list")} className={`flex-1 relative px-2 py-2 text-xs font-bold rounded-xl transition-colors ${workerView === "list" ? "text-primary" : "text-gray-500"}`}>Daftar</button>
+                      <button onClick={() => setWorkerView("map")} className={`flex-1 relative px-2 py-2 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1 ${workerView === "map" ? "text-primary" : "text-gray-500"}`}>
                         <MapIcon className="w-3.5 h-3.5" /> Radar
                       </button>
-                      <button onClick={() => setWorkerView("scheduled")} className={`flex-1 relative px-3 py-2 text-xs font-bold rounded-xl transition-colors ${workerView === "scheduled" ? "text-primary" : "text-gray-500"}`}>📅 Jadwal</button>
+                      <button onClick={() => setWorkerView("scheduled")} className={`flex-1 relative px-2 py-2 text-xs font-bold rounded-xl transition-colors ${workerView === "scheduled" ? "text-primary" : "text-gray-500"}`}>📅 Jadwal</button>
+                      <button onClick={() => setWorkerView("applications")} className={`flex-1 relative px-2 py-2 text-xs font-bold rounded-xl transition-colors ${workerView === "applications" ? "text-primary" : "text-gray-500"}`}>
+                        📋 Lamar{notifications.filter(n => n.workerId === currentUser.id || n.applicantName === (workerProfile?.namaLengkap || currentUser.name)).length > 0 && <span className="ml-0.5 text-[8px]">({notifications.filter(n => n.workerId === currentUser.id || n.applicantName === (workerProfile?.namaLengkap || currentUser.name)).length})</span>}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1760,12 +1765,23 @@ export default function Home() {
                 <ScheduledJobsFeed
                   jobs={scheduledGigs}
                   suspended={isSuspended}
+                  userLat={userLocation.lat}
+                  userLng={userLocation.lng}
                   onSelect={(job) => setSelectedJob(job)}
                   onChat={(job) => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "", feeRate: job.feeRate })}
                 />
                 <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile}
                   onApply={isSuspended ? undefined : handleApply} onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect} onRequireProfile={() => setShowOnboarding(true)} />
               </>
+
+            ) : workerView === "applications" ? (
+              <MyApplications
+                notifications={notifications}
+                customJobs={customJobs}
+                workerName={workerProfile?.namaLengkap || currentUser.name}
+                workerId={currentUser.id}
+                onChat={(job, notif) => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: notif.workerId, feeRate: job.feeRate })}
+              />
 
             ) : (
               <div className="flex-1 overflow-y-auto bg-gray-50">
