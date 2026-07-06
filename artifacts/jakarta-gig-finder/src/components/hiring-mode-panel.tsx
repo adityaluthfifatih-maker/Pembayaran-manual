@@ -2,8 +2,8 @@ import { useState, useMemo, useCallback } from "react";
 import LocationPickerSection from "@/components/location-picker-section";
 import {
   Zap, CalendarDays, Lock, LockOpen, Radio, Users, Banknote,
-  CheckCircle2, AlertTriangle, ChevronDown, ChevronUp, Star,
-  MapPin, Clock, MessageSquare, Filter, ShieldCheck, Briefcase,
+  CheckCircle2, AlertTriangle, ChevronDown, ChevronUp,
+  MapPin, Clock, MessageSquare, ShieldCheck, Briefcase,
   QrCode, XCircle,
 } from "lucide-react";
 import { CustomJob, PaymentType, HiringMode, paymentLabels, paymentInputLabels, paymentUnits } from "@/types/custom-job";
@@ -112,21 +112,16 @@ function BroadcastRadar() {
 }
 
 type BroadcastState = "idle" | "locking" | "broadcasting" | "done";
-type SortKey = "rating" | "jarak";
 
 function formatRp(n: number) {
   return "Rp " + Math.round(n).toLocaleString("id-ID");
 }
 
-// Simulated worker ratings for demo applicants
-const DEMO_RATINGS: Record<string, number> = {};
-function getRating(name: string): number {
-  if (!DEMO_RATINGS[name]) DEMO_RATINGS[name] = +(3.8 + Math.random() * 1.2).toFixed(1);
-  return DEMO_RATINGS[name];
-}
+// Simulated worker distances for demo applicants
+const DEMO_KM: Record<string, number> = {};
 function getDemoKm(name: string): number {
-  if (!DEMO_RATINGS[name + "_km"]) DEMO_RATINGS[name + "_km"] = +(0.5 + Math.random() * 4.5).toFixed(1);
-  return DEMO_RATINGS[name + "_km"];
+  if (!DEMO_KM[name]) DEMO_KM[name] = +(0.5 + Math.random() * 4.5).toFixed(1);
+  return DEMO_KM[name];
 }
 
 export default function HiringModePanel({
@@ -170,7 +165,6 @@ export default function HiringModePanel({
   const [showCepatConfirm, setShowCepatConfirm] = useState(false);
 
   // ── Bisa Lama state ───────────────────────────────────────────
-  const [sortKey, setSortKey] = useState<SortKey>("rating");
   const [escrowConfirmJobId, setEscrowConfirmJobId] = useState<number | null>(null);
   const [lockedJobIds, setLockedJobIds] = useState<Set<number>>(new Set());
   const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
@@ -313,11 +307,7 @@ export default function HiringModePanel({
   // ── Applicant sort ─────────────────────────────────────────────
   const sortedApplicants = (jobId: number) => {
     const list = notifications.filter(n => n.jobId === jobId);
-    return [...list].sort((a, b) =>
-      sortKey === "rating"
-        ? getRating(b.applicantName) - getRating(a.applicantName)
-        : getDemoKm(a.applicantName) - getDemoKm(b.applicantName)
-    );
+    return [...list].sort((a, b) => getDemoKm(a.applicantName) - getDemoKm(b.applicantName));
   };
 
   const inputCls = "w-full px-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-400 transition-all";
@@ -847,20 +837,6 @@ export default function HiringModePanel({
         )}
 
         {/* Bisa Lama: sort control */}
-        {hiringMode === "lama" && lamaJobs.length > 0 && (
-          <div className="flex items-center gap-2">
-            <Filter className="w-3.5 h-3.5 text-gray-400" />
-            <span className="text-[10px] text-gray-500 font-semibold">Urutkan pelamar:</span>
-            {(["rating", "jarak"] as SortKey[]).map(k => (
-              <button key={k} onClick={() => setSortKey(k)}
-                className={`px-2.5 py-1 text-[10px] font-bold rounded-full border transition-colors ${
-                  sortKey === k ? "bg-blue-600 text-white border-blue-600" : "text-gray-500 border-gray-200 hover:border-blue-300"
-                }`}>
-                {k === "rating" ? "⭐ Rating" : "📍 Jarak"}
-              </button>
-            ))}
-          </div>
-        )}
 
         {/* Job cards */}
         {(hiringMode === "cepat" ? cepatJobs : himaJobs(lamaJobs, legacyJobs, hiringMode)).map(job => {
@@ -960,7 +936,6 @@ export default function HiringModePanel({
                 {jobExpanded && applicants.length > 0 && (
                   <div className="space-y-2 pt-1">
                     {applicants.map(notif => {
-                      const rating = getRating(notif.applicantName);
                       const km = getDemoKm(notif.applicantName);
                       return (
                         <div key={notif.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${
@@ -974,9 +949,6 @@ export default function HiringModePanel({
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-gray-900 truncate">{maskName(notif.applicantName)}</p>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <span className="flex items-center gap-0.5 text-[10px] text-amber-600 font-semibold">
-                                <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" /> {rating}
-                              </span>
                               <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
                                 <MapPin className="w-2.5 h-2.5" /> {km} km
                               </span>

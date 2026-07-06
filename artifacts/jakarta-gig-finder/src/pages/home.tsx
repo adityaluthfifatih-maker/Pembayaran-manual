@@ -698,9 +698,7 @@ export default function Home() {
   }, [notifications, disputeJob]);
 
   const handleCancelJob = useCallback((jobId: number, deductFee: boolean) => {
-    setCustomJobs(prev => prev.map(j =>
-      j.id === jobId ? { ...j, escrowStatus: "refunded" as const } : j
-    ));
+    setCustomJobs(prev => prev.filter(j => j.id !== jobId));
     if (deductFee) {
       setWalletBalance(prev => prev + 20_000);
       setWalletTransactions(prev => [{
