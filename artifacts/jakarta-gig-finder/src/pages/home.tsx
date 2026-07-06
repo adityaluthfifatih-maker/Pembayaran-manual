@@ -1456,21 +1456,27 @@ export default function Home() {
       {/* ── RESPONSIVE BODY (desktop sidebar + content column) ────── */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* ── DESKTOP SIDEBAR (hidden on mobile) ─────────────── */}
-        <aside className="hidden lg:flex flex-col w-64 shrink-0 bg-white border-r border-gray-100 py-4">
-          <div className="px-5 pb-4 border-b border-gray-100">
-            <RekhasthaLogo size={34} showSubtitle wordmarkClassName="text-lg" />
+        <aside className="hidden lg:flex flex-col w-64 shrink-0 bg-white border-r border-gray-100">
+          <div className="px-4 py-5 bg-gradient-to-b from-emerald-700 to-emerald-600 border-b border-emerald-800/20">
+            <RekhasthaLogo size={34} showSubtitle variant="light" wordmarkClassName="text-lg text-white" />
           </div>
           <nav className="flex-1 flex flex-col gap-1 px-3 pt-4">
             <SidebarBtn icon={<HomeIcon className="w-5 h-5" />} label={mode === "pekerja" ? "Radar" : "Beranda"} active={activeTab === "home"} onClick={() => setActiveTab("home")} />
             <SidebarBtn icon={<MessageSquare className="w-5 h-5" />} label="Chat" active={activeTab === "chat"} onClick={() => setActiveTab("chat")}
               badge={mode === "perusahaan" ? notifications.filter(n => n.status === "diterima" || n.status === "ditinjau").length : undefined} />
             <SidebarBtn icon={<Briefcase className="w-5 h-5" />} label="Proyek" active={activeTab === "proyek"} onClick={() => setActiveTab("proyek")} />
-            <SidebarBtn icon={<User className="w-5 h-5" />} label={currentUser.name.split(" ")[0]} active={activeTab === "profile"} onClick={() => setActiveTab("profile")} />
           </nav>
-          <div className="px-5 pt-3 border-t border-gray-100">
-            <span className={`text-xs font-bold px-3 py-1.5 rounded-lg ${mode === "perusahaan" ? "bg-blue-50 text-blue-700" : "bg-primary/10 text-primary"}`}>
-              {mode === "perusahaan" ? "🏢 Perusahaan" : "👷 Pekerja"}
-            </span>
+          
+          <div className="px-4 py-4 border-t border-gray-100">
+            <button onClick={() => setActiveTab("profile")} className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 transition-colors text-left group">
+              <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 border border-emerald-200 group-hover:border-emerald-300 transition-colors">
+                <span className="text-emerald-700 font-black">{currentUser.name.split(" ")[0]?.[0]}</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-gray-900 truncate">{currentUser.name}</p>
+                <p className="text-[10px] font-semibold text-gray-500 truncate">{mode === "perusahaan" ? "🏢 Perusahaan" : "👷 Pekerja"}</p>
+              </div>
+            </button>
           </div>
         </aside>
 
@@ -1683,16 +1689,18 @@ export default function Home() {
 
             {/* Company sub-tabs */}
             {mode === "perusahaan" && (
-              <div className="px-4 pb-2">
-                <div className="flex bg-gray-100 p-1 rounded-xl gap-1">
+              <div className="px-4 pb-3">
+                <div className="flex bg-gray-100/80 p-1 rounded-[14px] gap-1 relative">
+                  <div className="absolute inset-y-1 left-1 w-[calc(50%-4px)] bg-white rounded-[10px] shadow-sm transition-transform duration-300 ease-out" 
+                       style={{ transform: companyView === "analytics" ? "translateX(100%)" : "translateX(0)" }} />
                   <button onClick={() => setCompanyView("jobs")}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-lg transition-all ${companyView === "jobs" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}>
-                    <Briefcase className="w-3.5 h-3.5" /> Kelola Lowongan
-                    {customJobs.length > 0 && <span className="w-4 h-4 rounded-full bg-primary text-white text-[9px] font-black flex items-center justify-center">{customJobs.length}</span>}
+                    className={`flex-1 relative flex items-center justify-center gap-1.5 py-2.5 text-[13px] font-bold rounded-xl transition-colors ${companyView === "jobs" ? "text-primary" : "text-gray-500"}`}>
+                    <Briefcase className="w-4 h-4" /> Kelola Lowongan
+                    {customJobs.length > 0 && <span className={`w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center transition-colors ${companyView === "jobs" ? "bg-primary text-white" : "bg-gray-300 text-white"}`}>{customJobs.length}</span>}
                   </button>
                   <button onClick={() => setCompanyView("analytics")} data-testid="button-analytics-tab"
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-lg transition-all ${companyView === "analytics" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}>
-                    <BarChart2 className="w-3.5 h-3.5" /> Analitik
+                    className={`flex-1 relative flex items-center justify-center gap-1.5 py-2.5 text-[13px] font-bold rounded-xl transition-colors ${companyView === "analytics" ? "text-primary" : "text-gray-500"}`}>
+                    <BarChart2 className="w-4 h-4" /> Analitik
                   </button>
                 </div>
               </div>
@@ -1768,12 +1776,18 @@ export default function Home() {
                       style={{ boxShadow: "0 0 8px rgba(249,115,22,0.5)" }}>
                       ⚡ Ping Demo
                     </button>
-                    <div className="flex bg-gray-100 p-0.5 rounded-lg">
-                      <button onClick={() => setWorkerView("list")} className={`px-2 py-1 text-xs font-semibold rounded-md transition-colors ${workerView === "list" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}>Daftar</button>
-                      <button onClick={() => setWorkerView("map")} className={`px-2 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 ${workerView === "map" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}>
-                        <MapIcon className="w-3 h-3" /> Radar
+                    <div className="flex bg-gray-100/80 p-1 rounded-[14px] relative">
+                      <div className="absolute inset-y-1 w-[calc(33.333%-2px)] bg-white rounded-[10px] shadow-sm transition-transform duration-300 ease-out" 
+                           style={{ 
+                             transform: workerView === "list" ? "translateX(2px)" 
+                                      : workerView === "map" ? "translateX(calc(100% + 2px))" 
+                                      : "translateX(calc(200% + 2px))" 
+                           }} />
+                      <button onClick={() => setWorkerView("list")} className={`flex-1 relative px-3 py-2 text-xs font-bold rounded-xl transition-colors ${workerView === "list" ? "text-primary" : "text-gray-500"}`}>Daftar</button>
+                      <button onClick={() => setWorkerView("map")} className={`flex-1 relative px-3 py-2 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 ${workerView === "map" ? "text-primary" : "text-gray-500"}`}>
+                        <MapIcon className="w-3.5 h-3.5" /> Radar
                       </button>
-                      <button onClick={() => setWorkerView("scheduled")} className={`px-2 py-1 text-xs font-semibold rounded-md transition-colors ${workerView === "scheduled" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}>📅 Jadwal</button>
+                      <button onClick={() => setWorkerView("scheduled")} className={`flex-1 relative px-3 py-2 text-xs font-bold rounded-xl transition-colors ${workerView === "scheduled" ? "text-primary" : "text-gray-500"}`}>📅 Jadwal</button>
                     </div>
                   </div>
                 </div>
@@ -1997,7 +2011,7 @@ export default function Home() {
                 <div className="p-4 space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h2 className="text-xl font-bold text-gray-900">Pekerjaan Tersedia</h2>
+                      <h2 className="text-2xl font-display font-bold text-gray-900">Pekerjaan Tersedia</h2>
                       <p className="text-sm text-gray-500">{allJobs.length > 0 ? `${allJobs.length} lowongan aktif · ${jobs.length} tetap` : "Berdasarkan lokasi Anda"}</p>
                     </div>
                     {workerProfile && (
@@ -2113,7 +2127,7 @@ export default function Home() {
       </div>
 
       {/* ── BOTTOM NAVIGATION (mobile only — 4 tabs) ─────── */}
-      <nav className="lg:hidden shrink-0 bg-white border-t border-gray-100 flex shadow-[0_-2px_12px_rgba(0,0,0,0.06)] z-20">
+      <nav className="lg:hidden shrink-0 bg-white shadow-[0_-4px_24px_rgba(0,0,0,0.08)] border-t border-gray-100 flex z-20">
         <NavBtn
           icon={<HomeIcon className="w-5 h-5" />}
           label={mode === "pekerja" ? "Radar" : "Beranda"}
@@ -2178,10 +2192,12 @@ function ChatEmptyState({ label, sub }: { label: string; sub: string }) {
 function NavBtn({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick}
-      className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 transition-colors ${active ? "text-primary" : "text-gray-400 hover:text-gray-600"}`}>
-      {icon}
-      <span className="text-[10px] font-semibold">{label}</span>
-      {active && <span className="w-1 h-1 rounded-full bg-primary" />}
+      className={`flex-1 flex flex-col items-center justify-center gap-1 min-h-[68px] pb-safe active:scale-95 transition-transform ${active ? "text-primary" : "text-gray-400 hover:text-gray-600"}`}>
+      <div className={`flex items-center justify-center p-1.5 rounded-full transition-colors ${active ? "bg-emerald-50 text-primary" : ""}`}>
+        {icon}
+      </div>
+      <span className={`text-[10px] ${active ? "font-bold" : "font-medium"}`}>{label}</span>
+      {active && <span className="w-4 h-1 rounded-full bg-primary mt-0.5" />}
     </button>
   );
 }
@@ -2189,7 +2205,7 @@ function NavBtn({ icon, label, active, onClick }: { icon: React.ReactNode; label
 function SidebarBtn({ icon, label, active, onClick, badge }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void; badge?: number }) {
   return (
     <button onClick={onClick}
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${active ? "bg-primary/10 text-primary" : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"}`}>
+      className={`flex items-center gap-3 px-4 h-12 rounded-xl text-sm font-semibold active:scale-95 transition-all ${active ? "bg-primary/10 text-primary" : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"}`}>
       <span className="relative shrink-0">
         {icon}
         {!!badge && badge > 0 && (

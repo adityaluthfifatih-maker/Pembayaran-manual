@@ -177,7 +177,7 @@ export default function CompanyProfilePage({
                           <p className="text-sm font-bold text-gray-900 truncate">{job.posisi}</p>
                           <p className="text-xs text-gray-500">Escrow: {fmt(job.escrowAmount ?? 0)}</p>
                         </div>
-                        <span className={`text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${isDisputed ? "bg-red-100 text-red-700 animate-pulse" : "bg-blue-100 text-blue-700"}`}>
+                        <span className={`text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${isDisputed ? "bg-red-100 text-red-700 animate-pulse" : "bg-emerald-100 text-emerald-700"}`}>
                           {isDisputed ? "🔴 DIBEKUKAN" : "🔒 DIKUNCI"}
                         </span>
                       </div>
@@ -438,7 +438,7 @@ export default function CompanyProfilePage({
                   const count = escrowEvents.filter(e => e.toStatus === s).length;
                   if (!count) return null;
                   const colors: Record<string, string> = {
-                    locked: "bg-blue-50 text-blue-700 border-blue-200",
+                    locked: "bg-emerald-50 text-emerald-700 border-emerald-200",
                     disputed: "bg-red-50 text-red-700 border-red-200",
                     released: "bg-emerald-50 text-emerald-700 border-emerald-200",
                     refunded: "bg-gray-100 text-gray-700 border-gray-200",

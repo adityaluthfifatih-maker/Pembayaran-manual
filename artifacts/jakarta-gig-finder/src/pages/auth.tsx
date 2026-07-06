@@ -146,33 +146,35 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
 
       {/* ── Top brand strip ──────────────────────────────── */}
       <div
-        className="flex-shrink-0 flex flex-col items-center justify-end pb-7 pt-12 px-6"
+        className="flex-shrink-0 flex flex-col items-center justify-end pb-12 pt-16 px-6 relative overflow-hidden"
         style={{
           background: "linear-gradient(160deg, #065F46 0%, #059669 55%, #10B981 100%)",
-          borderBottomLeftRadius: "32px",
-          borderBottomRightRadius: "32px",
         }}
       >
-        <div className="mb-2">
-          <RekhasthaLogo size={44} variant="light" showSubtitle wordmarkClassName="text-2xl" />
+        <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: "radial-gradient(#ffffff 2px, transparent 2px)", backgroundSize: "24px 24px" }}></div>
+        <div className="relative z-10 mb-4">
+          <RekhasthaLogo size={48} variant="light" showSubtitle wordmarkClassName="text-3xl font-display" />
         </div>
-        <p className="text-sm text-emerald-100 text-center leading-relaxed">
+        <p className="relative z-10 text-sm text-emerald-100 text-center leading-relaxed">
           Platform kerja harian terpercaya Jakarta<br />
           <span className="font-semibold text-white">15.000+ Pekerja · 3.000+ Perusahaan</span>
         </p>
       </div>
 
       {/* ── Form card ────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto px-5 pt-6 pb-8">
+      <div className="flex-1 overflow-y-auto px-5 pb-8 relative z-20">
+        <div className="bg-white rounded-3xl p-6 shadow-lg -mt-6">
 
         {/* Tab switcher */}
-        <div className="flex bg-gray-100 p-1 rounded-2xl mb-5">
+        <div className="flex bg-gray-100 p-1 rounded-[14px] mb-5 relative">
+          <div className="absolute inset-y-1 w-[calc(50%-4px)] bg-white rounded-[10px] shadow-sm transition-transform duration-300 ease-out" 
+               style={{ transform: tab === "masuk" ? "translateX(2px)" : "translateX(calc(100% + 2px))" }} />
           <button onClick={() => { setTab("masuk"); setError(null); }}
-            className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${tab === "masuk" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}>
+            className={`flex-1 relative py-2.5 text-sm font-bold rounded-xl transition-colors ${tab === "masuk" ? "text-primary" : "text-gray-500"}`}>
             Masuk
           </button>
           <button onClick={() => { setTab("daftar"); setError(null); }}
-            className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${tab === "daftar" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}>
+            className={`flex-1 relative py-2.5 text-sm font-bold rounded-xl transition-colors ${tab === "daftar" ? "text-primary" : "text-gray-500"}`}>
             Daftar Baru
           </button>
         </div>
@@ -298,6 +300,7 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
               required
             />
             <button type="button" onClick={() => setShowPass((p) => !p)}
+              aria-label={showPass ? "Sembunyikan password" : "Tampilkan password"}
               className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
               {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
@@ -356,6 +359,7 @@ export default function AuthPage({ onComplete }: AuthPageProps) {
       {showTerms && <TermsModal onClose={() => setShowTerms(false)} />}
 
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.animate-spin{animation:spin 1s linear infinite}`}</style>
+    </div>
     </div>
   );
 }
