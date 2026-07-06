@@ -22,6 +22,7 @@ import ApplicantToast from "@/components/applicant-toast";
 import InstantGigAlarm from "@/components/instant-gig-alarm";
 import ScheduledJobsFeed from "@/components/scheduled-jobs-feed";
 import { RekhasthaLogo } from "@/components/rekhastha-logo";
+import EscrowProjectsPanel from "@/components/escrow-projects-panel";
 import {
   subscribeToServer,
   subscribeAttendance,
@@ -92,7 +93,7 @@ function randomJakartaCoords() {
 const JAKARTA_CENTER = { lat: -6.2088, lng: 106.8456 };
 type JobStatus = "applied" | "accepted" | "clocked_in" | "completed" | null;
 type CompanyView = "jobs" | "analytics";
-type AppTab = "home" | "chat" | "profile";
+type AppTab = "home" | "chat" | "proyek" | "profile";
 
 // A gig is "instant" (Broadcast Instan) only when it is a cepat posting. Regular
 // (lama) jobs — even once their escrow is locked and they go live — stay in the
@@ -1354,6 +1355,7 @@ export default function Home() {
 
   // ── Profile pages ───────────────────────────────────────────────
   const isProfileTab = activeTab === "profile";
+  const isProyekTab = activeTab === "proyek";
 
   return (
     <div className="mobile-app-shell flex flex-col h-[100dvh] w-full bg-gray-50 relative overflow-hidden">
@@ -1450,6 +1452,29 @@ export default function Home() {
           onNominalUpdate={handleNominalUpdate}
           onClose={() => setChatContext(null)} />
       )}
+
+      {/* ── RESPONSIVE BODY (desktop sidebar + content column) ────── */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* ── DESKTOP SIDEBAR (hidden on mobile) ─────────────── */}
+        <aside className="hidden lg:flex flex-col w-64 shrink-0 bg-white border-r border-gray-100 py-4">
+          <div className="px-5 pb-4 border-b border-gray-100">
+            <RekhasthaLogo size={34} showSubtitle wordmarkClassName="text-lg" />
+          </div>
+          <nav className="flex-1 flex flex-col gap-1 px-3 pt-4">
+            <SidebarBtn icon={<HomeIcon className="w-5 h-5" />} label={mode === "pekerja" ? "Radar" : "Beranda"} active={activeTab === "home"} onClick={() => setActiveTab("home")} />
+            <SidebarBtn icon={<MessageSquare className="w-5 h-5" />} label="Chat" active={activeTab === "chat"} onClick={() => setActiveTab("chat")}
+              badge={mode === "perusahaan" ? notifications.filter(n => n.status === "diterima" || n.status === "ditinjau").length : undefined} />
+            <SidebarBtn icon={<Briefcase className="w-5 h-5" />} label="Proyek" active={activeTab === "proyek"} onClick={() => setActiveTab("proyek")} />
+            <SidebarBtn icon={<User className="w-5 h-5" />} label={currentUser.name.split(" ")[0]} active={activeTab === "profile"} onClick={() => setActiveTab("profile")} />
+          </nav>
+          <div className="px-5 pt-3 border-t border-gray-100">
+            <span className={`text-xs font-bold px-3 py-1.5 rounded-lg ${mode === "perusahaan" ? "bg-blue-50 text-blue-700" : "bg-primary/10 text-primary"}`}>
+              {mode === "perusahaan" ? "🏢 Perusahaan" : "👷 Pekerja"}
+            </span>
+          </div>
+        </aside>
+
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
 
       {/* ── CHAT TAB ─────────────────────────────────────── */}
       {activeTab === "chat" && (
@@ -1631,8 +1656,13 @@ export default function Home() {
         </div>
       )}
 
-      {/* ── HOME TAB CONTENT (hidden when profile tab active) */}
-      {!isProfileTab && (
+      {/* ── PROYEK & MILESTONE TAB (escrow) ──────────────── */}
+      {isProyekTab && (
+        <EscrowProjectsPanel currentUser={currentUser} />
+      )}
+
+      {/* ── HOME TAB CONTENT (hidden when profile/proyek tab active) */}
+      {!isProfileTab && !isProyekTab && (
         <>
           {/* ── HEADER ─────────────────────────────────── */}
           <header className="z-10 bg-white border-b border-gray-100 shadow-sm flex flex-col shrink-0">
@@ -2002,6 +2032,9 @@ export default function Home() {
                           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                             {job.isAgency ? <span className="text-[10px] font-black px-2 py-0.5 rounded bg-gradient-to-r from-blue-100 to-violet-100 text-violet-700">[AGENCY JOB]</span>
                               : <span className="text-xs text-violet-600 font-medium">Lowongan Kustom</span>}
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${job.hiringMode === "lama" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
+                              {job.hiringMode === "lama" ? "Reguler" : "Instan"}
+                            </span>
                             {job.namaPerusahaan && <span className="text-[10px] text-gray-400">· {job.namaPerusahaan}</span>}
                             {job.flaggedSuspect && <span className="text-[10px] font-bold text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded">⚠️ Ditinjau</span>}
                           </div>
@@ -2076,8 +2109,11 @@ export default function Home() {
         </>
       )}
 
-      {/* ── BOTTOM NAVIGATION (3 tabs) ─────────────────── */}
-      <nav className="shrink-0 bg-white border-t border-gray-100 flex shadow-[0_-2px_12px_rgba(0,0,0,0.06)] z-20">
+        </div>
+      </div>
+
+      {/* ── BOTTOM NAVIGATION (mobile only — 4 tabs) ─────── */}
+      <nav className="lg:hidden shrink-0 bg-white border-t border-gray-100 flex shadow-[0_-2px_12px_rgba(0,0,0,0.06)] z-20">
         <NavBtn
           icon={<HomeIcon className="w-5 h-5" />}
           label={mode === "pekerja" ? "Radar" : "Beranda"}
@@ -2102,6 +2138,12 @@ export default function Home() {
           label="Chat"
           active={activeTab === "chat"}
           onClick={() => setActiveTab("chat")}
+        />
+        <NavBtn
+          icon={<Briefcase className="w-5 h-5" />}
+          label="Proyek"
+          active={activeTab === "proyek"}
+          onClick={() => setActiveTab("proyek")}
         />
         <NavBtn
           icon={
@@ -2140,6 +2182,23 @@ function NavBtn({ icon, label, active, onClick }: { icon: React.ReactNode; label
       {icon}
       <span className="text-[10px] font-semibold">{label}</span>
       {active && <span className="w-1 h-1 rounded-full bg-primary" />}
+    </button>
+  );
+}
+
+function SidebarBtn({ icon, label, active, onClick, badge }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void; badge?: number }) {
+  return (
+    <button onClick={onClick}
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${active ? "bg-primary/10 text-primary" : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"}`}>
+      <span className="relative shrink-0">
+        {icon}
+        {!!badge && badge > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center">
+            {badge > 9 ? "9+" : badge}
+          </span>
+        )}
+      </span>
+      {label}
     </button>
   );
 }

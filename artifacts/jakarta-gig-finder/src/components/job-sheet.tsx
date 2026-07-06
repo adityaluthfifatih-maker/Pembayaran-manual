@@ -132,6 +132,9 @@ export default function JobSheet({
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-xl font-bold text-gray-900 leading-tight">{job.posisi}</h2>
                 <Badge className="bg-violet-100 text-violet-700 border-0 text-xs font-semibold">Lowongan Kustom</Badge>
+                <Badge className={`border-0 text-xs font-semibold ${isRegular ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
+                  {isRegular ? "Reguler" : "Instan"}
+                </Badge>
                 {job.flaggedSuspect && (
                   <Badge className="bg-yellow-100 text-yellow-700 border-0 text-xs">⚠️ Sedang Ditinjau</Badge>
                 )}
