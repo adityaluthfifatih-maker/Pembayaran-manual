@@ -344,3 +344,23 @@ export function verifyKyc(
 ): Promise<{ id: string; verificationStatus: KycStatus }> {
   return request("/admin/kyc/verify", "POST", { userId, status });
 }
+
+// ── Live platform stats ───────────────────────────────────────────
+
+export interface AdminStats {
+  totalUsers: number;
+  newUsersToday: number;
+  workers: number;
+  employers: number;
+  activeGigs: number;
+  releasedGigs: number;
+  disputedGigs: number;
+  totalGigs: number;
+  escrowHeld: number;
+  escrowReleased: number;
+  escrowDisputed: number;
+}
+
+export function fetchAdminStats(): Promise<AdminStats> {
+  return request("/admin/stats", "GET");
+}

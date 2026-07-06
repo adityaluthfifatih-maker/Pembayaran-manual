@@ -5,7 +5,7 @@ import {
   Scale, HardHat, ExternalLink, Gavel, Building2,
   XCircle, Award, RotateCcw, Trophy,
   Plus, Pencil, Trash2, Save, Settings2, Briefcase, FileText, X,
-  ShieldCheck, IdCard,
+  ShieldCheck, IdCard, LayoutDashboard, TrendingUp, UserCheck, Banknote,
 } from "lucide-react";
 import {
   adminLogin, adminLogout, adminMe, fetchLedger, forceRelease,
@@ -17,12 +17,13 @@ import {
   fetchAdminJobs, deleteAdminJob, refundAdminJob, forcePayoutAdminJob,
   fetchAdminLogs,
   fetchKycQueue, verifyKyc,
+  fetchAdminStats,
   type LedgerRow, type AdminUserRow,
   type DisputeRow, type OnsiteData,
   type AcademyQuestion, type AcademyCompletion, type AcademyResult,
   type AdminAcademyQuestion, type QuestionInput,
   type JobManagementRow, type AdminLogRow,
-  type KycRow,
+  type KycRow, type AdminStats,
 } from "@/lib/admin-client";
 import { EmergencyAlarm } from "@/components/emergency-alarm";
 
@@ -33,7 +34,7 @@ function formatRp(v: number): string {
   return "Rp " + Math.round(v).toLocaleString("id-ID");
 }
 
-type Tab = "escrow" | "resolution" | "onsite" | "users" | "kyc" | "academy" | "jobs" | "logs";
+type Tab = "dashboard" | "escrow" | "resolution" | "onsite" | "users" | "kyc" | "academy" | "jobs" | "logs";
 
 // ── Login gateway ─────────────────────────────────────────────────
 function LoginGate({ onSuccess }: { onSuccess: () => void }) {
@@ -145,6 +146,221 @@ function StatusBadge({ row }: { row: LedgerRow }) {
     <span className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-bold border ${s.cls}`}>
       {s.label}
     </span>
+  );
+}
+
+// ── Tab 0: Live Dashboard ─────────────────────────────────────────
+function StatCard({
+  icon, label, value, sub, color,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  sub?: string;
+  color: string;
+}) {
+  return (
+    <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex items-start gap-3">
+      <div
+        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+        style={{ background: `${color}18` }}
+      >
+        <span style={{ color }}>{icon}</span>
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide truncate">{label}</p>
+        <p className="text-xl font-black text-gray-900 leading-tight">{value}</p>
+        {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+function DashboardTab() {
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const s = await fetchAdminStats();
+      setStats(s);
+      setLastUpdated(new Date());
+    } catch {
+      /* keep last known stats */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    // Refetch whenever a gig or attendance event arrives via the shared WS.
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${proto}//${window.location.host}${API_BASE}/ws`);
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data) as { type?: string };
+        if (
+          msg.type === "gig_broadcast" ||
+          msg.type === "attendance" ||
+          msg.type === "application"
+        ) {
+          void load();
+        }
+      } catch {
+        /* ignore malformed frames */
+      }
+    };
+    return () => ws.close();
+  }, [load]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
+        Gagal memuat statistik.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header bar */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-black text-gray-800">Statistik Platform Live</h3>
+          <p className="text-xs text-gray-400">
+            {lastUpdated
+              ? `Diperbarui ${lastUpdated.toLocaleTimeString("id-ID")}`
+              : "Memuat…"}
+          </p>
+        </div>
+        <button
+          onClick={() => void load()}
+          className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Refresh
+        </button>
+      </div>
+
+      {/* Users section */}
+      <div>
+        <p className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Pengguna</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard
+            icon={<Users className="w-5 h-5" />}
+            label="Total Pengguna"
+            value={stats.totalUsers.toLocaleString("id-ID")}
+            sub={`+${stats.newUsersToday} hari ini`}
+            color="#10b981"
+          />
+          <StatCard
+            icon={<UserCheck className="w-5 h-5" />}
+            label="Pekerja"
+            value={stats.workers.toLocaleString("id-ID")}
+            color="#3b82f6"
+          />
+          <StatCard
+            icon={<Building2 className="w-5 h-5" />}
+            label="Perusahaan"
+            value={stats.employers.toLocaleString("id-ID")}
+            color="#8b5cf6"
+          />
+          <StatCard
+            icon={<TrendingUp className="w-5 h-5" />}
+            label="Daftar Hari Ini"
+            value={stats.newUsersToday.toLocaleString("id-ID")}
+            color={GOLD}
+          />
+        </div>
+      </div>
+
+      {/* Gigs section */}
+      <div>
+        <p className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Gig</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard
+            icon={<Briefcase className="w-5 h-5" />}
+            label="Total Gig"
+            value={stats.totalGigs.toLocaleString("id-ID")}
+            color="#6b7280"
+          />
+          <StatCard
+            icon={<Zap className="w-5 h-5" />}
+            label="Gig Aktif"
+            value={stats.activeGigs.toLocaleString("id-ID")}
+            sub="Escrow terkunci"
+            color="#f97316"
+          />
+          <StatCard
+            icon={<CheckCircle2 className="w-5 h-5" />}
+            label="Selesai"
+            value={stats.releasedGigs.toLocaleString("id-ID")}
+            color="#10b981"
+          />
+          <StatCard
+            icon={<AlertTriangle className="w-5 h-5" />}
+            label="Disengketakan"
+            value={stats.disputedGigs.toLocaleString("id-ID")}
+            color="#ef4444"
+          />
+        </div>
+      </div>
+
+      {/* Escrow section */}
+      <div>
+        <p className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Escrow</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div
+            className="rounded-2xl p-5 text-white shadow-md"
+            style={{ background: "linear-gradient(135deg, #f97316, #f59e0b)" }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Banknote className="w-4 h-4 opacity-80" />
+              <span className="text-xs font-black uppercase tracking-wide opacity-80">Dana Ditahan</span>
+            </div>
+            <p className="text-2xl font-black leading-tight">{formatRp(stats.escrowHeld)}</p>
+            <p className="text-[11px] opacity-70 mt-1">{stats.activeGigs} gig aktif</p>
+          </div>
+          <div
+            className="rounded-2xl p-5 text-white shadow-md"
+            style={{ background: "linear-gradient(135deg, #059669, #10b981)" }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <CheckCircle2 className="w-4 h-4 opacity-80" />
+              <span className="text-xs font-black uppercase tracking-wide opacity-80">Dana Cair</span>
+            </div>
+            <p className="text-2xl font-black leading-tight">{formatRp(stats.escrowReleased)}</p>
+            <p className="text-[11px] opacity-70 mt-1">{stats.releasedGigs} gig selesai</p>
+          </div>
+          <div
+            className="rounded-2xl p-5 text-white shadow-md"
+            style={{ background: "linear-gradient(135deg, #dc2626, #ef4444)" }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Scale className="w-4 h-4 opacity-80" />
+              <span className="text-xs font-black uppercase tracking-wide opacity-80">Dana Sengketa</span>
+            </div>
+            <p className="text-2xl font-black leading-tight">{formatRp(stats.escrowDisputed)}</p>
+            <p className="text-[11px] opacity-70 mt-1">{stats.disputedGigs} gig sengketa</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Live indicator */}
+      <div className="flex items-center justify-center gap-2 text-xs text-gray-400 py-2">
+        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block" />
+        Terhubung live via WebSocket · diperbarui otomatis
+      </div>
+    </div>
   );
 }
 
@@ -1884,8 +2100,9 @@ function CommandCenter({
   requireAcademy: boolean;
   onTrainingPassed: () => void;
 }) {
-  const [tab, setTab] = useState<Tab>("escrow");
+  const [tab, setTab] = useState<Tab>("dashboard");
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: "dashboard", label: "📊 Dashboard Live", icon: <LayoutDashboard className="w-4 h-4" /> },
     { id: "escrow", label: "💰 Pengawasan Escrow", icon: <Wallet className="w-4 h-4" /> },
     { id: "jobs", label: "📋 Manajemen Job", icon: <Briefcase className="w-4 h-4" /> },
     { id: "resolution", label: "⚖️ Pusat Resolusi", icon: <Gavel className="w-4 h-4" /> },
@@ -1972,6 +2189,7 @@ function CommandCenter({
           </h2>
           <p className="text-sm text-gray-500">Panel operator platform Rekhastha</p>
         </div>
+        {tab === "dashboard" && <DashboardTab />}
         {tab === "escrow" && <EscrowTab trainingPassed={trainingPassed} requireAcademy={requireAcademy} />}
         {tab === "jobs" && <JobsTab />}
         {tab === "resolution" && <ResolutionTab />}

@@ -661,4 +661,42 @@ router.put("/admin/academy/settings", async (req, res): Promise<void> => {
   res.json({ passingScore: parsed.data.passingScore });
 });
 
+// ── Live platform stats ───────────────────────────────────────────
+router.get("/admin/stats", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req))) {
+    res.status(401).json({ error: "Sesi admin tidak valid." });
+    return;
+  }
+  const [allUsers, allGigs] = await Promise.all([
+    db.select().from(usersTable),
+    db.select().from(gigsTable),
+  ]);
+  const now = Date.now();
+  const day = 86_400_000;
+  const totalUsers = allUsers.length;
+  const newUsersToday = allUsers.filter(
+    (u) => u.createdAt && new Date(u.createdAt).getTime() > now - day,
+  ).length;
+  const workers = allUsers.filter((u) => u.role === "pekerja").length;
+  const employers = allUsers.filter((u) => u.role === "perusahaan").length;
+  const activeGigs = allGigs.filter((g) => g.escrowStatus === "locked").length;
+  const releasedGigs = allGigs.filter((g) => g.escrowStatus === "released").length;
+  const disputedGigs = allGigs.filter((g) => g.escrowStatus === "disputed").length;
+  const totalGigs = allGigs.length;
+  const escrowHeld = allGigs
+    .filter((g) => g.escrowStatus === "locked")
+    .reduce((s, g) => s + (g.escrowAmount ?? 0), 0);
+  const escrowReleased = allGigs
+    .filter((g) => g.escrowStatus === "released")
+    .reduce((s, g) => s + (g.escrowAmount ?? 0), 0);
+  const escrowDisputed = allGigs
+    .filter((g) => g.escrowStatus === "disputed")
+    .reduce((s, g) => s + (g.escrowAmount ?? 0), 0);
+  res.json({
+    totalUsers, newUsersToday, workers, employers,
+    activeGigs, releasedGigs, disputedGigs, totalGigs,
+    escrowHeld, escrowReleased, escrowDisputed,
+  });
+});
+
 export default router;

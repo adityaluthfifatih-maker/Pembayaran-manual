@@ -17,7 +17,6 @@ import EarningsDashboard from "@/components/earnings-dashboard";
 import ChatModal from "@/components/chat-modal";
 import AnalyticsDashboard from "@/components/analytics-dashboard";
 import HiringModePanel from "@/components/hiring-mode-panel";
-import JobPingModal from "@/components/job-ping-modal";
 import ApplicantToast from "@/components/applicant-toast";
 import InstantGigAlarm from "@/components/instant-gig-alarm";
 import ScheduledJobsFeed from "@/components/scheduled-jobs-feed";
@@ -210,7 +209,6 @@ export default function Home() {
       // Instant broadcasts alert ONLY on a worker viewport with radar ON.
       if (modeRef.current === "pekerja") {
         if (radarOnRef.current) {
-          seenPingJobIds.current.add(gig.id); // dedup vs the local JobPingModal path
           setAlarmGig(gig);
           fireNativeNotification();
         }
@@ -464,7 +462,6 @@ export default function Home() {
       const pend = pendingBroadcastRef.current;
       pendingBroadcastRef.current = null;
       if (radarOnRef.current) {
-        seenPingJobIds.current.add(pend.id);
         setAlarmGig(pend);
         fireNativeNotification();
       }
@@ -481,9 +478,7 @@ export default function Home() {
   useEffect(() => () => {
     if (radarToastTimer.current) clearTimeout(radarToastTimer.current);
   }, []);
-  const [activePing, setActivePing] = useState<CustomJob | null>(null);
   const seenNotifIds = useRef<Set<number>>(new Set());
-  const seenPingJobIds = useRef<Set<number>>(new Set());
 
   // ── Geolocation ─────────────────────────────────────────────────
   const [userLocation, setUserLocation] = useState(JAKARTA_CENTER);
@@ -838,18 +833,6 @@ export default function Home() {
     }
   }, [notifications, mode, applicantToast]);
 
-  // ── Worker ping: detect new Cepat broadcast jobs ─────────────────
-  useEffect(() => {
-    if (mode !== "pekerja" || activePing) return;
-    const newCepat = customJobs.find(
-      j => j.hiringMode === "cepat" && j.broadcastActive && !seenPingJobIds.current.has(j.id)
-    );
-    if (newCepat) {
-      seenPingJobIds.current.add(newCepat.id);
-      setActivePing(newCepat);
-    }
-  }, [customJobs, mode, activePing]);
-
   // ── Job posting ─────────────────────────────────────────────────
   const [workerMapFlyTarget, setWorkerMapFlyTarget] = useState<[number, number] | null>(null);
 
@@ -1182,21 +1165,6 @@ export default function Home() {
   return (
     <div className="mobile-app-shell flex flex-col h-[100dvh] w-full bg-gray-50 relative overflow-hidden">
 
-      {/* ── JOB PING MODAL (worker ride-hailing style) ──── */}
-      {activePing && (
-        <JobPingModal
-          job={activePing}
-          userLat={userLocation.lat}
-          userLng={userLocation.lng}
-          onAccept={(job) => {
-            if (workerProfile) {
-              handleApply(job, workerProfile);
-            }
-            setActivePing(null);
-          }}
-          onDecline={() => setActivePing(null)}
-        />
-      )}
 
       {/* ── APPLICANT TOAST (employer incoming applicant) ─ */}
       {applicantToast && (
@@ -1569,33 +1537,6 @@ export default function Home() {
                     <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${isSuspended ? "bg-red-100 text-red-600" : reputationPoints < 80 ? "bg-amber-100 text-amber-700" : "bg-primary/10 text-primary"}`}>
                       {isSuspended ? "Suspended" : `Rep: ${reputationPoints}`}
                     </span>
-                    {/* Demo ping button */}
-                    <button
-                      onClick={() => {
-                        const demo: CustomJob = {
-                          id: -(Date.now()),
-                          type: "custom_job",
-                          posisi: "Event Staff Malam",
-                          deskripsi: "Dibutuhkan segera untuk acara malam ini di SCBD.",
-                          pembayaran: "per_shift",
-                          nominal: 275_000,
-                          dresscode: "Hitam rapi",
-                          kuota: 2,
-                          lat: userLocation.lat + 0.008,
-                          lng: userLocation.lng + 0.006,
-                          postedAt: new Date(),
-                          namaPerusahaan: "PT. Event Jakarta",
-                          hiringMode: "cepat",
-                          broadcastActive: true,
-                          escrowStatus: "locked",
-                          escrowAmount: 316_250,
-                        };
-                        setActivePing(demo);
-                      }}
-                      className="flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full bg-orange-500 text-white animate-pulse hover:animate-none active:scale-95 transition-all"
-                      style={{ boxShadow: "0 0 8px rgba(249,115,22,0.5)" }}>
-                      ⚡ Ping Demo
-                    </button>
                     <div className="flex bg-gray-100/80 p-1 rounded-[14px] relative">
                       <div className="absolute inset-y-1 w-[calc(33.333%-2px)] bg-white rounded-[10px] shadow-sm transition-transform duration-300 ease-out" 
                            style={{ 
