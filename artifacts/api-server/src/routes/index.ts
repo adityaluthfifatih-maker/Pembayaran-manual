@@ -12,6 +12,7 @@ import emergencyRouter from "./emergency";
 import applicationsRouter from "./applications";
 import chatRouter from "./chat";
 import notificationsRouter from "./notifications";
+import escrowProjectsRouter from "./escrow-projects";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(emergencyRouter);
 router.use(applicationsRouter);
 router.use(chatRouter);
 router.use(notificationsRouter);
+router.use(escrowProjectsRouter);
 
 export default router;
