@@ -22,18 +22,11 @@ function notifCopy(n: ApplicationNotification): string {
 
 const AUTO_SEC = 10;
 
-function demoRating(name: string): number {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
-  return +(3.8 + (Math.abs(h) % 12) / 10).toFixed(1);
-}
-
 export default function ApplicantToast({
   notification, job, onAccept, onDecline, onDismiss, onOpenProfile,
 }: ApplicantToastProps) {
   const [secs, setSecs] = useState(AUTO_SEC);
   const [done, setDone] = useState(false);
-  const rating = demoRating(notification.applicantName);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -99,7 +92,7 @@ export default function ApplicantToast({
             <p className="font-bold text-gray-900 text-sm truncate">{notification.applicantName}</p>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <span className="flex items-center gap-0.5 text-[11px] font-bold text-amber-600">
-                <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {rating}
+                <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> Baru
               </span>
               {notification.hasNpwp && (
                 <span className="flex items-center gap-0.5 text-[11px] font-semibold text-emerald-600">

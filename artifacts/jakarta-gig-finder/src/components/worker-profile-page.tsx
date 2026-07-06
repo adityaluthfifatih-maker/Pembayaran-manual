@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ShieldCheck, AlertCircle, Star, LogOut, Zap, TrendingUp, Clock, Banknote, Award, Play, Wallet, IdCard, Camera, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { ShieldCheck, AlertCircle, Star, LogOut, Zap, TrendingUp, Clock, Banknote, Award, Wallet, IdCard, Camera, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { AuthUser } from "@/types/auth";
 import { WorkerProfile } from "@/types/worker-profile";
 import { RatingPayload } from "@/components/rating-modal";
@@ -24,7 +24,6 @@ interface WorkerProfilePageProps {
   escrowEvents: EscrowEvent[];
   workerJobIds: number[];
   onLogout: () => void;
-  onDemoInject: () => void;
   onEditProfile: () => void;
   onWithdraw: (method: string, account: string) => void;
   onKycUpdated: (user: AuthUser) => void;
@@ -39,7 +38,7 @@ function maskNpwp(npwp: string) { return npwp.length >= 4 ? "••••••"
 export default function WorkerProfilePage({
   currentUser, workerProfile, reputationPoints, ratings,
   completedJobs, totalEarned, walletBalance, walletTransactions,
-  isWithdrawLocked, escrowEvents, workerJobIds, onLogout, onDemoInject, onEditProfile, onWithdraw, onKycUpdated,
+  isWithdrawLocked, escrowEvents, workerJobIds, onLogout, onEditProfile, onWithdraw, onKycUpdated,
 }: WorkerProfilePageProps) {
   const [tab, setTab] = useState<ProfileTab>("data");
   const ktpInputRef = useRef<HTMLInputElement>(null);
@@ -222,11 +221,6 @@ export default function WorkerProfilePage({
               </div>
             )}
 
-            {/* Demo inject */}
-            <button onClick={onDemoInject}
-              className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-violet-200 bg-violet-50 text-violet-700 text-sm font-bold py-3.5 rounded-2xl hover:bg-violet-100 transition-colors">
-              <Play className="w-4 h-4" /> 🚀 Suntik 20 Data Simulasi (Mode Demo)
-            </button>
           </>
 
         ) : tab === "analitik" ? (
@@ -302,10 +296,6 @@ export default function WorkerProfilePage({
               </div>
             )}
 
-            <button onClick={onDemoInject}
-              className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-violet-200 bg-violet-50 text-violet-700 text-sm font-bold py-3.5 rounded-2xl hover:bg-violet-100 transition-colors">
-              <Play className="w-4 h-4" /> 🚀 Suntik Data Demo untuk Presentasi
-            </button>
           </>
         ) : tab === "wallet" ? (
           /* ── E-WALLET ──────────────────────────────────── */

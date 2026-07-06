@@ -46,7 +46,6 @@ import { fetchMe, logout as logoutRequest } from "@/lib/auth-client";
 import WorkerProfilePage from "@/components/worker-profile-page";
 import CompanyProfilePage from "@/components/company-profile-page";
 import { workers, Worker } from "@/data/workers";
-import { jobs } from "@/data/jobs";
 import { CustomJob, calcTotal, paymentUnits } from "@/types/custom-job";
 import { WalletTransaction, EscrowEvent, calcSplit, ADMIN_DISPUTE_FEE, calcEscrowAmount, calcEmployerDeposit, DEFAULT_FEE_RATE, DURATION_DAYS, LATE_CLOCKIN_PENALTY, CLOCKIN_GRACE_MS, DISPUTE_WINDOW_MS, warnIfFeeRateMissing } from "@/types/escrow";
 import { WorkerProfile, isVerified } from "@/types/worker-profile";
@@ -99,74 +98,6 @@ type AppTab = "home" | "chat" | "proyek" | "profile";
 // (lama) jobs — even once their escrow is locked and they go live — stay in the
 // silent scheduled feed and never trigger the radar alarm or green pins.
 const isInstantGig = (j: CustomJob) => j.hiringMode === "cepat";
-
-// ── Demo data factories ────────────────────────────────────────────
-function makeDemoWorkerProfile(): WorkerProfile {
-  return {
-    namaLengkap: "Budi Santoso", nik: "3175011502900001",
-    tempatLahir: "Jakarta", tanggalLahir: "1990-02-15", jenisKelamin: "L",
-    whatsapp: "08123456789", npwp: "123456789012345", belumPunyaNpwp: false,
-    namaBank: "BCA", nomorRekening: "1234567890", namaRekening: "Budi Santoso",
-    ktpUploaded: true, selfieUploaded: true,
-  };
-}
-
-function makeDemoJobs(): CustomJob[] {
-  const durations: Array<CustomJob["durasiKontrak"]> = ["harian", "1_bulan", "3_bulan", "6_bulan", "harian"];
-  const tipes: Array<{ posisi: string; nominal: number; nama: string }> = [
-    { posisi: "Barista Part-Time", nominal: 120_000, nama: "PT Kopi Kenangan" },
-    { posisi: "Event Staff Runner", nominal: 200_000, nama: "EO Spekta Indonesia" },
-    { posisi: "Pelayan Resto", nominal: 110_000, nama: "Resto Ayam Bakar Solo" },
-    { posisi: "Admin & Kasir", nominal: 3_500_000, nama: "CV Indomaret Franchise" },
-    { posisi: "Crew Packing Gudang", nominal: 175_000, nama: "PT Lazada Logistik" },
-  ];
-  return tipes.map((t, i) => {
-    const pembayaran: CustomJob["pembayaran"] = i < 2 || i === 4 ? "per_shift" : i === 3 ? "per_projek" : "per_hari";
-    const kuota = i === 1 ? 20 : 3;
-    const jumlahHari = DURATION_DAYS[durations[i] ?? "harian"] ?? 1;
-    const escrowAmount = calcEmployerDeposit(calcEscrowAmount(t.nominal, pembayaran, jumlahHari, kuota));
-    return {
-      id: nextJobId++, type: "custom_job" as const,
-      posisi: t.posisi, deskripsi: `Dibutuhkan segera ${t.posisi} berpengalaman di bidangnya.`,
-      pembayaran, nominal: t.nominal, dresscode: "Baju hitam, sopan", kuota,
-      namaPerusahaan: t.nama, nibPerusahaan: "1234567890123",
-      durasiKontrak: durations[i], tipeAkun: (i === 1 ? "agensi" : "perusahaan") as CustomJob["tipeAkun"],
-      isAgency: i === 1,
-      escrowStatus: "locked" as const,
-      escrowAmount,
-      jumlahHari,
-      ...randomJakartaCoords(), postedAt: new Date(Date.now() - i * 3600_000),
-    };
-  });
-}
-
-function makeDemoRatings(): RatingPayload[] {
-  const names = ["Andi Kurniawan", "Siti Rahayu", "Doni Prasetyo", "Maya Sari", "Rizky Pratama"];
-  return names.map((name, i) => ({
-    stars: 3 + (i % 3) + (i === 0 ? 2 : 0) > 5 ? 5 : 3 + (i % 3),
-    comment: ["Pekerja sangat disiplin!", "Datang tepat waktu.", "Hasil kerja memuaskan.", "Cepat belajar & ramah.", "Profesional dan bertanggung jawab."][i],
-    raterType: "company" as const,
-    targetName: name,
-  }));
-}
-
-function makeDemoNotifs(jobs: CustomJob[]): ApplicationNotification[] {
-  const names = ["Andi K.", "Siti R.", "Doni P.", "Maya S.", "Rizky P.", "Agus T.", "Dewi L.", "Hendra M.", "Indah W.", "Joko S."];
-  return names.slice(0, Math.min(names.length, jobs.length * 2)).map((name, i) => ({
-    id: nextNotifId++,
-    jobId: jobs[i % jobs.length]?.id ?? 100,
-    jobTitle: jobs[i % jobs.length]?.posisi ?? "Pekerjaan",
-    workerId: "",
-    applicantName: name,
-    applicantNikMasked: "3175••••••••0001",
-    applicantNpwpMasked: "••••••0001",
-    hasNpwp: i % 3 !== 0,
-    bank: ["BCA", "BRI", "Mandiri", "OVO", "GoPay"][i % 5],
-    rekening: "123••••789",
-    timestamp: new Date(Date.now() - i * 900_000),
-    status: (["baru", "ditinjau", "diterima", "baru", "ditinjau"] as ApplicationStatus[])[i % 5],
-  }));
-}
 
 export default function Home() {
   // ── Auth & navigation ──────────────────────────────────────────
@@ -838,113 +769,6 @@ export default function Home() {
     }]);
     setWalletBalance(0);
   }, [walletBalance]);
-
-  // ── Demo inject ─────────────────────────────────────────────────
-  const handleDemoInject = useCallback(() => {
-    if (!currentUser) return;
-    if (currentUser.role === "pekerja") {
-      const demoProfile = makeDemoWorkerProfile();
-      setWorkerProfile(demoProfile);
-      setReputationPoints(87);
-      setTotalEarned(4_200_000);
-      // Inject demo wallet data
-      const demoTx1: WalletTransaction = {
-        id: 1, type: "credit", amount: 2_835_000,
-        label: "Upah penuh — pekerjaan selesai", jobTitle: "Event Staff Runner",
-        timestamp: new Date(Date.now() - 2 * 86_400_000),
-        note: "Upah dicairkan 100% utuh tanpa potongan; biaya platform 15% ditanggung perusahaan.",
-      };
-      const demoTx2: WalletTransaction = {
-        id: 2, type: "credit", amount: 936_000,
-        label: "Upah penuh — pekerjaan selesai", jobTitle: "Barista Part-Time",
-        timestamp: new Date(Date.now() - 5 * 86_400_000),
-        note: "Upah dicairkan 100% utuh tanpa potongan; biaya platform 15% ditanggung perusahaan.",
-      };
-      setWalletBalance(3_771_000);
-      setWalletTransactions([demoTx2, demoTx1]);
-      const fakeJob: CustomJob = {
-        id: nextJobId++, type: "custom_job",
-        posisi: "Barista Event Besar", deskripsi: "Demo job",
-        pembayaran: "per_shift", nominal: 350_000, dresscode: "Hitam formal", kuota: 1,
-        namaPerusahaan: "PT Kopi Kenangan", tipeAkun: "perusahaan",
-        ...randomJakartaCoords(), postedAt: new Date(),
-      };
-      const demoCompleted: ApplicationNotification[] = Array.from({ length: 5 }, (_, i) => ({
-        id: nextNotifId++, jobId: fakeJob.id, jobTitle: fakeJob.posisi,
-        workerId: "",
-        applicantName: maskName(demoProfile.namaLengkap),
-        applicantNikMasked: maskNik(demoProfile.nik),
-        applicantNpwpMasked: maskNpwp(demoProfile.npwp),
-        hasNpwp: true,
-        bank: demoProfile.namaBank, rekening: maskRekening(demoProfile.nomorRekening),
-        timestamp: new Date(Date.now() - i * 86_400_000),
-        status: "diterima" as ApplicationStatus,
-      }));
-      setCompletedNotifs(demoCompleted);
-      // Inject matching escrow audit trail for wallet transactions
-      setEscrowEvents([
-        {
-          id: Date.now() + 100,
-          jobId: fakeJob.id,
-          jobTitle: "Event Staff Runner",
-          fromStatus: "locked",
-          toStatus: "released",
-          actor: "company",
-          amount: 2_835_000,
-          timestamp: new Date(Date.now() - 2 * 86_400_000),
-          note: `Perusahaan menyetujui pembayaran. Upah dicairkan 100% utuh; biaya platform 15% ditanggung perusahaan.`,
-        },
-        {
-          id: Date.now() + 101,
-          jobId: fakeJob.id,
-          jobTitle: "Barista Part-Time",
-          fromStatus: "locked",
-          toStatus: "released",
-          actor: "company",
-          amount: 936_000,
-          timestamp: new Date(Date.now() - 5 * 86_400_000),
-          note: `Perusahaan menyetujui pembayaran. Upah dicairkan 100% utuh; biaya platform 15% ditanggung perusahaan.`,
-        },
-      ]);
-      setRatings([
-        { stars: 5, comment: "Pekerja sangat disiplin!", raterType: "company", targetName: "PT Kopi Kenangan" },
-        { stars: 4, comment: "Bagus, datang tepat waktu.", raterType: "company", targetName: "EO Spekta" },
-        { stars: 5, comment: "Profesional sekali.", raterType: "company", targetName: "Resto Solo" },
-      ]);
-    } else {
-      const demoJobs = makeDemoJobs();
-      setCustomJobs(demoJobs);
-      const demoNotifs = makeDemoNotifs(demoJobs);
-      setNotifications(demoNotifs);
-      setRatings(makeDemoRatings());
-      // Inject demo escrow audit log for company
-      const now = Date.now();
-      const demoEvents: EscrowEvent[] = [
-        ...demoJobs.map((j, i) => ({
-          id: now + i,
-          jobId: j.id,
-          jobTitle: j.posisi,
-          toStatus: "locked" as const,
-          actor: "system" as const,
-          amount: j.escrowAmount,
-          timestamp: new Date(now - (5 - i) * 3_600_000),
-          note: `Dana dikunci otomatis oleh sistem. Lowongan aktif di peta.`,
-        })),
-        // One disputed event for drama — job index 3 (Admin & Kasir)
-        {
-          id: now + 10,
-          jobId: demoJobs[3].id,
-          jobTitle: demoJobs[3].posisi,
-          fromStatus: "locked",
-          toStatus: "disputed",
-          actor: "worker",
-          timestamp: new Date(now - 1_800_000),
-          note: `Pekerja mengajukan sengketa: upah tidak sesuai kesepakatan. Dana dibekukan.`,
-        },
-      ];
-      setEscrowEvents(demoEvents);
-    }
-  }, [currentUser]);
 
   // ── Search ──────────────────────────────────────────────────────
   const suggestedTags = ["Barista", "Waiter / Waitress", "Event Crew / Runner", "Latte Art", "POS/Kasir", "Crowd Control"];
@@ -1636,7 +1460,6 @@ export default function Home() {
               escrowEvents={escrowEvents}
               workerJobIds={completedNotifs.map(n => n.jobId)}
               onLogout={handleLogout}
-              onDemoInject={handleDemoInject}
               onEditProfile={() => setShowOnboarding(true)}
               onWithdraw={handleWithdraw}
               onKycUpdated={setCurrentUser}
@@ -1649,7 +1472,6 @@ export default function Home() {
               notifications={notifications}
               escrowEvents={escrowEvents}
               onLogout={handleLogout}
-              onDemoInject={handleDemoInject}
               onDispute={handleJobDispute}
               onAdminResolve={handleAdminResolve}
               onJobUpdate={(updated) =>
@@ -2010,7 +1832,7 @@ export default function Home() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-2xl font-display font-bold text-gray-900">Pekerjaan Tersedia</h2>
-                      <p className="text-sm text-gray-500">{allJobs.length > 0 ? `${allJobs.length} lowongan aktif · ${jobs.length} tetap` : "Berdasarkan lokasi Anda"}</p>
+                      <p className="text-sm text-gray-500">{allJobs.length > 0 ? `${allJobs.length} lowongan aktif` : "Berdasarkan lokasi Anda"}</p>
                     </div>
                     {workerProfile && (
                       <button onClick={() => setShowEarnings(true)} className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 px-3 py-1.5 rounded-full">
@@ -2096,22 +1918,6 @@ export default function Home() {
                     </div>
                   ))}
 
-                  {jobs.map((job) => (
-                    <div key={job.id} data-testid={`card-job-${job.id}`} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col gap-3">
-                      <div className="flex justify-between items-start">
-                        <div><h3 className="font-bold text-gray-900">{job.category}</h3><p className="text-sm text-primary font-medium">{job.company}</p></div>
-                        <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded">Baru</span>
-                      </div>
-                      <div className="flex flex-col gap-2 text-sm text-gray-600">
-                        <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-gray-400" /><span>{job.location}</span></div>
-                        <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-gray-400" /><span>{job.time}</span></div>
-                        <div className="flex items-center gap-2"><Banknote className="w-4 h-4 text-primary" /><span className="font-semibold text-gray-900">{job.pay}</span></div>
-                      </div>
-                      <Button disabled={isSuspended} className={`w-full mt-1 ${isSuspended ? "bg-gray-200 text-gray-400" : "bg-primary hover:bg-primary/90 text-white"} font-semibold`}>
-                        {isSuspended ? "Akun Ditangguhkan" : "Lamar Sekarang"}
-                      </Button>
-                    </div>
-                  ))}
                 </div>
                 <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile}
                   onApply={isSuspended ? undefined : handleApply} onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect} onRequireProfile={() => setShowOnboarding(true)} />

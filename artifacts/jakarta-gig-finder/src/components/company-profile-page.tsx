@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ShieldCheck, LogOut, Building2, Play, BarChart2, Lock, AlertTriangle, Gavel, CheckCircle, RefreshCcw, History, ExternalLink, FileCheck } from "lucide-react";
+import { ShieldCheck, LogOut, Building2, BarChart2, Lock, AlertTriangle, Gavel, CheckCircle, RefreshCcw, History, ExternalLink, FileCheck } from "lucide-react";
 import { AuthUser } from "@/types/auth";
 import { CustomJob } from "@/types/custom-job";
 import { RatingPayload } from "@/components/rating-modal";
@@ -15,7 +15,6 @@ interface CompanyProfilePageProps {
   ratings: RatingPayload[];
   notifications: ApplicationNotification[];
   onLogout: () => void;
-  onDemoInject: () => void;
   escrowEvents: EscrowEvent[];
   onDispute: (jobId: number) => void;
   onAdminResolve: (jobId: number, winner: "worker" | "company") => void;
@@ -25,7 +24,7 @@ interface CompanyProfilePageProps {
 type ProfileTab = "data" | "analitik" | "riwayat";
 
 export default function CompanyProfilePage({
-  currentUser, customJobs, ratings, notifications, escrowEvents, onLogout, onDemoInject, onDispute, onAdminResolve, onJobUpdate,
+  currentUser, customJobs, ratings, notifications, escrowEvents, onLogout, onDispute, onAdminResolve, onJobUpdate,
 }: CompanyProfilePageProps) {
   const [tab, setTab] = useState<ProfileTab>("data");
   const [showAdminPanel, setShowAdminPanel] = useState(false);
@@ -339,12 +338,6 @@ export default function CompanyProfilePage({
             ))}
           </div>
 
-          {/* Demo inject */}
-          <button onClick={onDemoInject}
-            className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-violet-200 bg-violet-50 text-violet-700 text-sm font-bold py-3.5 rounded-2xl hover:bg-violet-100 transition-colors">
-            <Play className="w-4 h-4" /> 🚀 Suntik 20 Data Simulasi (Mode Demo)
-          </button>
-
           {/* Switch to analytics CTA */}
           <button onClick={() => setTab("analitik")}
             className="w-full flex items-center justify-center gap-2 bg-slate-900 text-emerald-400 text-sm font-bold py-3.5 rounded-2xl hover:bg-slate-800 transition-colors">
@@ -405,10 +398,6 @@ export default function CompanyProfilePage({
         <div className="flex flex-col" style={{ background: "#0F172A" }}>
           <AnalyticsDashboard customJobs={customJobs} ratings={ratings} totalApplicants={notifications.length} />
           <div className="px-4 pb-10 space-y-3" style={{ background: "#0F172A" }}>
-            <button onClick={onDemoInject}
-              className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-violet-500/40 text-violet-400 text-sm font-bold py-3.5 rounded-2xl hover:bg-violet-900/20 transition-colors">
-              <Play className="w-4 h-4" /> 🚀 Suntik Data Demo untuk Presentasi
-            </button>
             <button onClick={onLogout}
               className="w-full flex items-center justify-center gap-2 border border-red-800 text-red-400 text-sm font-semibold py-3 rounded-2xl hover:bg-red-900/20 transition-colors">
               <LogOut className="w-4 h-4" /> Keluar dari Akun
