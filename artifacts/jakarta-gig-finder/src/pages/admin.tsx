@@ -6,7 +6,12 @@ import {
   XCircle, Award, RotateCcw, Trophy,
   Plus, Pencil, Trash2, Save, Settings2, Briefcase, FileText, X,
   ShieldCheck, IdCard, LayoutDashboard, TrendingUp, UserCheck, Banknote,
+  LineChart as LineChartIcon, CreditCard, Crown,
 } from "lucide-react";
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Legend,
+} from "recharts";
 import {
   adminLogin, adminLogout, adminMe, fetchLedger, forceRelease,
   fetchAdminUsers, toggleSuspend, AdminError,
@@ -18,12 +23,14 @@ import {
   fetchAdminLogs,
   fetchKycQueue, verifyKyc,
   fetchAdminStats,
+  fetchRevenueStats,
   type LedgerRow, type AdminUserRow,
   type DisputeRow, type OnsiteData,
   type AcademyQuestion, type AcademyCompletion, type AcademyResult,
   type AdminAcademyQuestion, type QuestionInput,
   type JobManagementRow, type AdminLogRow,
   type KycRow, type AdminStats,
+  type RevenueStats,
 } from "@/lib/admin-client";
 import { EmergencyAlarm } from "@/components/emergency-alarm";
 
@@ -34,7 +41,7 @@ function formatRp(v: number): string {
   return "Rp " + Math.round(v).toLocaleString("id-ID");
 }
 
-type Tab = "dashboard" | "escrow" | "resolution" | "onsite" | "users" | "kyc" | "academy" | "jobs" | "logs";
+type Tab = "dashboard" | "revenue" | "escrow" | "resolution" | "onsite" | "users" | "kyc" | "academy" | "jobs" | "logs";
 
 // ── Login gateway ─────────────────────────────────────────────────
 function LoginGate({ onSuccess }: { onSuccess: () => void }) {
@@ -356,6 +363,219 @@ function DashboardTab() {
       </div>
 
       {/* Live indicator */}
+      <div className="flex items-center justify-center gap-2 text-xs text-gray-400 py-2">
+        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block" />
+        Terhubung live via WebSocket · diperbarui otomatis
+      </div>
+    </div>
+  );
+}
+
+// ── Tab: Revenue analytics (flat-rate Instan Kilat + langganan) ──────
+const CATEGORY_LABEL: Record<string, string> = {
+  umum: "Umum",
+  terampil: "Terampil",
+  profesional: "Profesional",
+  lainnya: "Lainnya",
+};
+const CATEGORY_COLOR: Record<string, string> = {
+  umum: "#3b82f6",
+  terampil: "#f97316",
+  profesional: "#8b5cf6",
+  lainnya: "#6b7280",
+};
+
+function RevenueTab() {
+  const [stats, setStats] = useState<RevenueStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const s = await fetchRevenueStats();
+      setStats(s);
+      setLastUpdated(new Date());
+    } catch {
+      /* keep last known stats */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${proto}//${window.location.host}${API_BASE}/ws`);
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data) as { type?: string };
+        if (msg.type === "instant_activated" || msg.type === "gig_broadcast") void load();
+      } catch {
+        /* ignore malformed frames */
+      }
+    };
+    return () => ws.close();
+  }, [load]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
+        Gagal memuat data pendapatan.
+      </div>
+    );
+  }
+
+  const chartData = stats.daily.map((d) => ({
+    ...d,
+    label: new Date(d.date).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }),
+  }));
+
+  const categoryEntries = Object.entries(stats.byCategory).filter(([, v]) => v.count > 0);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-black text-gray-800">Analitik Pendapatan</h3>
+          <p className="text-xs text-gray-400">
+            {lastUpdated ? `Diperbarui ${lastUpdated.toLocaleTimeString("id-ID")}` : "Memuat…"}
+          </p>
+        </div>
+        <button
+          onClick={() => void load()}
+          className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Refresh
+        </button>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        <div
+          className="rounded-2xl p-5 text-white shadow-md"
+          style={{ background: "linear-gradient(135deg, #064e3b, #10b981)" }}
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <Wallet className="w-4 h-4 opacity-80" />
+            <span className="text-xs font-black uppercase tracking-wide opacity-80">Total Pendapatan</span>
+          </div>
+          <p className="text-2xl font-black leading-tight">{formatRp(stats.totalRevenue)}</p>
+          <p className="text-[11px] opacity-70 mt-1">Sepanjang waktu</p>
+        </div>
+        <StatCard
+          icon={<TrendingUp className="w-5 h-5" />}
+          label="Pendapatan Hari Ini"
+          value={formatRp(stats.todayRevenue)}
+          color={GOLD}
+        />
+        <StatCard
+          icon={<Zap className="w-5 h-5" />}
+          label="Broadcast Instan"
+          value={formatRp(stats.instantRevenue)}
+          sub={`${stats.totalInstantOrders} pesanan terbayar`}
+          color="#f97316"
+        />
+        <StatCard
+          icon={<Crown className="w-5 h-5" />}
+          label="Langganan Bulanan"
+          value={formatRp(stats.subscriptionRevenue)}
+          sub={`${stats.activeSubscriptions} perusahaan aktif`}
+          color="#8b5cf6"
+        />
+      </div>
+
+      {/* Trend chart */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+        <div className="flex items-center gap-2 mb-4">
+          <LineChartIcon className="w-4 h-4 text-emerald-700" />
+          <h4 className="font-black text-gray-900 text-sm">Tren Pendapatan 14 Hari Terakhir</h4>
+        </div>
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+            <YAxis
+              tick={{ fontSize: 11 }}
+              tickFormatter={(v: number) => `${Math.round(v / 1000)}k`}
+              width={45}
+            />
+            <Tooltip
+              formatter={(value: number) => formatRp(value)}
+              labelFormatter={(label: string) => `Tanggal: ${label}`}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Line type="monotone" dataKey="instant" name="Broadcast Instan" stroke="#f97316" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="subscription" name="Langganan" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="total" name="Total" stroke="#10b981" strokeWidth={2.5} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Breakdown by category */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <CreditCard className="w-4 h-4 text-emerald-700" />
+            <h4 className="font-black text-gray-900 text-sm">Pendapatan per Kategori (Instan Kilat)</h4>
+          </div>
+          {categoryEntries.length === 0 ? (
+            <p className="text-sm text-gray-400 py-8 text-center">Belum ada pesanan terbayar.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={categoryEntries.map(([cat, v]) => ({
+                name: CATEGORY_LABEL[cat] ?? cat,
+                amount: v.amount,
+                count: v.count,
+                fill: CATEGORY_COLOR[cat] ?? "#6b7280",
+              }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${Math.round(v / 1000)}k`} width={45} />
+                <Tooltip formatter={(value: number) => formatRp(value)} />
+                <Bar dataKey="amount" name="Pendapatan" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <ClipboardList className="w-4 h-4 text-emerald-700" />
+            <h4 className="font-black text-gray-900 text-sm">Rincian Kategori</h4>
+          </div>
+          <div className="space-y-2.5">
+            {(["umum", "terampil", "profesional"] as const).map((cat) => {
+              const v = stats.byCategory[cat] ?? { count: 0, amount: 0 };
+              return (
+                <div key={cat} className="flex items-center justify-between border-b border-gray-50 pb-2.5 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ background: CATEGORY_COLOR[cat] }}
+                    />
+                    <span className="text-sm font-bold text-gray-700">{CATEGORY_LABEL[cat]}</span>
+                    <span className="text-[11px] text-gray-400">({v.count}x)</span>
+                  </div>
+                  <span className="text-sm font-black text-gray-900">{formatRp(v.amount)}</span>
+                </div>
+              );
+            })}
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-sm font-bold text-gray-700">Langganan Bulanan (Rp149.000)</span>
+              <span className="text-sm font-black text-gray-900">{formatRp(stats.subscriptionRevenue)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="flex items-center justify-center gap-2 text-xs text-gray-400 py-2">
         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block" />
         Terhubung live via WebSocket · diperbarui otomatis
@@ -2103,6 +2323,7 @@ function CommandCenter({
   const [tab, setTab] = useState<Tab>("dashboard");
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "dashboard", label: "📊 Dashboard Live", icon: <LayoutDashboard className="w-4 h-4" /> },
+    { id: "revenue", label: "📈 Analitik Pendapatan", icon: <LineChartIcon className="w-4 h-4" /> },
     { id: "escrow", label: "💰 Pengawasan Escrow", icon: <Wallet className="w-4 h-4" /> },
     { id: "jobs", label: "📋 Manajemen Job", icon: <Briefcase className="w-4 h-4" /> },
     { id: "resolution", label: "⚖️ Pusat Resolusi", icon: <Gavel className="w-4 h-4" /> },
@@ -2190,6 +2411,7 @@ function CommandCenter({
           <p className="text-sm text-gray-500">Panel operator platform Rekhastha</p>
         </div>
         {tab === "dashboard" && <DashboardTab />}
+        {tab === "revenue" && <RevenueTab />}
         {tab === "escrow" && <EscrowTab trainingPassed={trainingPassed} requireAcademy={requireAcademy} />}
         {tab === "jobs" && <JobsTab />}
         {tab === "resolution" && <ResolutionTab />}

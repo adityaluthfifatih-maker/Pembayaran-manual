@@ -364,3 +364,32 @@ export interface AdminStats {
 export function fetchAdminStats(): Promise<AdminStats> {
   return request("/admin/stats", "GET");
 }
+
+// ── Revenue analytics ──────────────────────────────────────────────
+
+export interface RevenueCategoryStat {
+  count: number;
+  amount: number;
+}
+
+export interface RevenueDailyPoint {
+  date: string;
+  instant: number;
+  subscription: number;
+  total: number;
+}
+
+export interface RevenueStats {
+  totalRevenue: number;
+  instantRevenue: number;
+  subscriptionRevenue: number;
+  todayRevenue: number;
+  activeSubscriptions: number;
+  totalInstantOrders: number;
+  byCategory: Record<string, RevenueCategoryStat>;
+  daily: RevenueDailyPoint[];
+}
+
+export function fetchRevenueStats(): Promise<RevenueStats> {
+  return request("/admin/revenue", "GET");
+}

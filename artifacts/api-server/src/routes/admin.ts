@@ -10,6 +10,8 @@ import {
   academyCompletionsTable,
   academyQuestionsTable,
   adminLogsTable,
+  instantOrdersTable,
+  companySubscriptionsTable,
 } from "@workspace/db";
 import {
   ADMIN_COOKIE,
@@ -32,6 +34,7 @@ import {
   toClientQuestions,
 } from "../lib/academy";
 import { broadcastGig } from "../lib/realtime";
+import { INSTANT_PRICE_BY_CATEGORY, SUBSCRIPTION_PRICE_MONTHLY } from "../lib/pricing";
 
 const router: IRouter = Router();
 
@@ -696,6 +699,99 @@ router.get("/admin/stats", async (req, res): Promise<void> => {
     totalUsers, newUsersToday, workers, employers,
     activeGigs, releasedGigs, disputedGigs, totalGigs,
     escrowHeld, escrowReleased, escrowDisputed,
+  });
+});
+
+// ── Revenue analytics: flat-rate Instan Kilat + subscriptions ──────
+function categoryForAmount(amount: number): string {
+  for (const [category, price] of Object.entries(INSTANT_PRICE_BY_CATEGORY)) {
+    if (price === amount) return category;
+  }
+  return "lainnya";
+}
+
+router.get("/admin/revenue", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req))) {
+    res.status(401).json({ error: "Sesi admin tidak valid." });
+    return;
+  }
+
+  const [allOrders, allSubs] = await Promise.all([
+    db.select().from(instantOrdersTable),
+    db.select().from(companySubscriptionsTable),
+  ]);
+
+  // Only orders the gateway actually confirmed count as revenue.
+  const paidOrders = allOrders.filter(
+    (o) => o.status === "active" || o.status === "completed",
+  );
+  // A subscription row represents a paid Rp149.000/bulan purchase the moment
+  // it was created — there is no separate payment ledger for renewals yet.
+  const paidSubs = allSubs.filter((s) => s.isPremium);
+
+  const now = Date.now();
+  const day = 86_400_000;
+  const startOfToday = new Date(now - (now % day));
+
+  const instantRevenue = paidOrders.reduce((s, o) => s + o.amount, 0);
+  const subscriptionRevenue = paidSubs.length * SUBSCRIPTION_PRICE_MONTHLY;
+
+  const byCategory: Record<string, { count: number; amount: number }> = {
+    umum: { count: 0, amount: 0 },
+    terampil: { count: 0, amount: 0 },
+    profesional: { count: 0, amount: 0 },
+    lainnya: { count: 0, amount: 0 },
+  };
+  for (const o of paidOrders) {
+    const cat = categoryForAmount(o.amount);
+    byCategory[cat].count += 1;
+    byCategory[cat].amount += o.amount;
+  }
+
+  const todayRevenue =
+    paidOrders
+      .filter((o) => o.createdAt && new Date(o.createdAt) >= startOfToday)
+      .reduce((s, o) => s + o.amount, 0) +
+    paidSubs
+      .filter((s) => s.createdAt && new Date(s.createdAt) >= startOfToday)
+      .length * SUBSCRIPTION_PRICE_MONTHLY;
+
+  // Last 14 days, oldest first, for the trend chart.
+  const DAYS = 14;
+  const daily: { date: string; instant: number; subscription: number; total: number }[] = [];
+  for (let i = DAYS - 1; i >= 0; i--) {
+    const bucketStart = startOfToday.getTime() - i * day;
+    const bucketEnd = bucketStart + day;
+    const instant = paidOrders
+      .filter((o) => {
+        const t = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+        return t >= bucketStart && t < bucketEnd;
+      })
+      .reduce((s, o) => s + o.amount, 0);
+    const subscription =
+      paidSubs.filter((s) => {
+        const t = s.createdAt ? new Date(s.createdAt).getTime() : 0;
+        return t >= bucketStart && t < bucketEnd;
+      }).length * SUBSCRIPTION_PRICE_MONTHLY;
+    daily.push({
+      date: new Date(bucketStart).toISOString().slice(0, 10),
+      instant,
+      subscription,
+      total: instant + subscription,
+    });
+  }
+
+  res.json({
+    totalRevenue: instantRevenue + subscriptionRevenue,
+    instantRevenue,
+    subscriptionRevenue,
+    todayRevenue,
+    activeSubscriptions: paidSubs.filter(
+      (s) => !s.expiresAt || s.expiresAt.getTime() > now,
+    ).length,
+    totalInstantOrders: paidOrders.length,
+    byCategory,
+    daily,
   });
 });
 
