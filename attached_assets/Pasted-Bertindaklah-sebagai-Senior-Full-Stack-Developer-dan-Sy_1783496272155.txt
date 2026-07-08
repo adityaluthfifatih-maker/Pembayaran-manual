@@ -1,0 +1,43 @@
+Bertindaklah sebagai Senior Full-Stack Developer dan System Architect. Saya sedang membangun MVP backend untuk platform rekrutmen on-demand bernama "Rekhastha" menggunakan TypeScript, Express, dan PostgreSQL. Platform ini dirancang khusus untuk UMKM dengan skema komersial Flat Rate (Harga Pas Rupiah) dan Paket Bulanan untuk menggantikan sistem persenan komisi.
+
+Tolong buatkan struktur proyek lengkap di Replit (atau workspace lokal) yang mencakup skema database, middleware proteksi data, alur webhook payment gateway, dan sistem pencocokan instan anti-tabrakan berdasarkan aturan bisnis berikut:
+
+1. ATURAN PENGGUNA (SISI PELAMAR):
+   - Akses untuk membuat profil, mencari lowongan, dan melamar kerja di Mode Reguler wajib 100% GRATIS tanpa batasan kuota.
+
+2. STRUKTUR HARGA & PAKET PERUSAHAAN (SISI PEMBERI KERJA):
+   A. PAKET GRATIS (Mode Reguler):
+      - Biaya: Rp 0. Bisa pasang 1 lowongan kerja pasif di feed.
+      - LIMITASI: Perusahaan hanya diizinkan melihat profil lengkap dan kontak (No. WA/Email) dari 3 PELAMAR PERTAMA yang masuk. Pelamar ke-4 dan seterusnya wajib di-masking/sensor di tingkat backend (jangan cuma disembunyikan pakai CSS di frontend).
+   
+   B. PAKET SATUAN / PAY-PER-POST (Mode Instan Kilat):
+      - Umum / Manual: Rp 35.000 sekali pasang.
+      - Terampil / Teknis: Rp 49.000 sekali pasang.
+      - Profesional: Rp 75.000 sekali pasang.
+      - Logika: Begitu bayar lewat gateway (Midtrans/Xendit), sistem langsung mengaktifkan geofencing radius 5 KM untuk menyebarkan push-notification real-time ke pelamar terdekat. Kontak otomatis terbuka penuh untuk pelamar yang berhasil match.
+   
+   C. PAKET BULANAN SUBSCRIPTION (Premium Member):
+      - Biaya: Rp 149.000 per bulan.
+      - Logika: Bisa pasang lowongan tanpa batas, dan status paywall untuk pelamar ke-4 otomatis terbuka (bisa melihat semua kontak pelamar sepuasnya).
+
+3. TUGAS KODING YANG HARUS ANDA BUAT:
+
+   A. SKEMA DATABASE (PostgreSQL - simpan di 'schema.sql'):
+      - Tabel `users` (id, name, email, phone_number, role [applicant/company], latitude, longitude, is_ready_to_work). Gunakan ekstensi bawaan `cube` dan `earthdistance` untuk indexing koordinat spasial GIST yang ringan.
+      - Tabel `job_postings` (id, company_id, title, category [umum/terampil/profesional], mode [reguler/instan], is_active).
+      - Tabel `applications` (id, job_id, applicant_id, created_at) dengan CONSTRAINT UNIQUE pada (job_id, applicant_id) agar tidak ada data ganda.
+      - Tabel `company_subscriptions` (id, company_id, is_premium, expires_at).
+      - Tabel `instant_orders` (id, job_id, company_id, order_id_gateway, amount [35000/49000/75000], status [pending/active/failed/completed], matched_applicant_id).
+
+   B. ENDPOINT GET /api/jobs/:job_id/applicants (Logika Filter Sensor):
+      - Buat query PostgreSQL menggunakan CTE dan Window Function ROW_NUMBER() OVER(ORDER BY created_at ASC). 
+      - Jika perusahaan tidak punya subscription aktif (is_premium = false) dan nomor urut pelamar >= 4, lakukan masking pada data string: nama menjadi "Pelamar Ke-X", email menjadi "****@***", dan phone_number menjadi "08***********", serta selipkan pesan paywall "Upgrade ke Paket Bulanan (Rp 149.000) atau bayar Paket Satuan untuk membuka semua kontak."
+
+   C. ENDPOINT POST /api/webhook/payment (Webhook Midtrans/Xendit):
+      - Terima response sukses bayar nominal Rp 35.000 / Rp 49.000 / Rp 75.000. Update status order menjadi 'active'.
+      - Gunakan fungsi asynchronous non-blocking (`setImmediate`) untuk mencari ID pelamar dalam radius 5 KM dari lokasi perusahaan menggunakan formula `earth_distance` SQL. Tampilkan log simulasi broadcast notifikasi di console.
+
+   D. ENDPOINT POST /api/jobs/instant/accept (Sistem Pencocokan Instan):
+      - Logika bagi pelamar untuk mengambil kerja instan (siapa cepat dia dapat). Wajib gunakan transaksi database dengan locking row tingkat tinggi (`FOR UPDATE`) pada tabel `instant_orders` untuk mencegah kondisi balapan data (race condition) agar lowongan tidak bisa diambil oleh dua orang secara bersamaan di milidetik yang sama.
+
+Pastikan seluruh kode ditulis secara modular menggunakan TypeScript/Express, bersih, efisien, memiliki error handling yang kuat, dan siap dijalankan di VPS murah dengan spesifikasi rendah.
