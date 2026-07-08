@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { ShieldCheck, LogOut, Building2, BarChart2, Lock, AlertTriangle, Gavel, CheckCircle, RefreshCcw, History, ExternalLink, FileCheck } from "lucide-react";
+import { ShieldCheck, LogOut, Building2, Lock, AlertTriangle, Gavel, CheckCircle, RefreshCcw, History, ExternalLink, FileCheck } from "lucide-react";
 import { AuthUser } from "@/types/auth";
 import { CustomJob } from "@/types/custom-job";
 import { RatingPayload } from "@/components/rating-modal";
 import { ApplicationNotification } from "@/types/notification";
-import AnalyticsDashboard from "@/components/analytics-dashboard";
 import EscrowTimeline from "@/components/escrow-timeline";
 import { EscrowEvent } from "@/types/escrow";
 import { approveRemoteProof, rejectRemoteProof } from "@/lib/borongan-client";
