@@ -25,6 +25,17 @@ contact info in a company-facing response. Reuse `ensureEarthdistanceExtensions`
 (`worker-map.tsx`, showing the worker's own surroundings/gigs) is unaffected — this
 restriction applies only to company/employer-facing worker-location data.
 
+**Anti-triangulation monitoring:** `artifacts/api-server/src/lib/radar-abuse.ts` flags
+(logs + `radar_scrape_alerts` row, visible via `GET /admin/radar-alerts`) a company
+whose radar-stats calls look like location-probing — many calls or many distinct
+lat/lng/radius combos in a 60s window. It never blocks the request; the aggregate
+response already limits what a scraper can learn, this is purely for admin visibility.
+
+**Deploy gotcha:** `api-server`'s dev workflow does a one-shot `build && start`, not a
+watcher — after editing server routes/schema you must restart the `API Server`
+workflow (and `pnpm --filter @workspace/db run push` after a schema change) or the
+running server keeps serving the old bundle and new routes 404.
+
 ## Print-quality gotcha (applies beyond radar)
 
 Do not implement "download/print as PDF" via `window.open("", "_blank")` +

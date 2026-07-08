@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
 import { desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, gigsTable, dailyPayoutsTable, adminLogsTable } from "@workspace/db";
+import { db, gigsTable, dailyPayoutsTable, adminLogsTable, radarScrapeAlertsTable } from "@workspace/db";
 import { ADMIN_COOKIE, isAdminSession, adminSessionId } from "../lib/admin";
 import { broadcastGig } from "../lib/realtime";
 
@@ -288,6 +288,28 @@ router.get("/admin/logs", async (req, res): Promise<void> => {
     .limit(200);
 
   res.json(logs);
+});
+
+/**
+ * GET /admin/radar-alerts — recent flags where a company's usage of the
+ * aggregate-only radar-stats endpoint looked like it was probing for
+ * individual worker locations (rapid repeated calls or many distinct
+ * lat/lng/radius combos in a short window). Informational — nothing is
+ * ever blocked automatically.
+ */
+router.get("/admin/radar-alerts", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req))) {
+    res.status(401).json({ error: "Sesi admin tidak valid." });
+    return;
+  }
+
+  const alerts = await db
+    .select()
+    .from(radarScrapeAlertsTable)
+    .orderBy(desc(radarScrapeAlertsTable.createdAt))
+    .limit(200);
+
+  res.json(alerts);
 });
 
 export default router;

@@ -48,6 +48,27 @@ export const adminLogsTable = pgTable("admin_logs", {
     .defaultNow(),
 });
 
+/**
+ * Flags raised when a company's `GET /api/companies/radar-stats` usage looks
+ * like it's probing for worker locations (rapid repeated calls, or many
+ * distinct lat/lng/radius combos in a short window) rather than normal
+ * dashboard refreshes. Informational only — the request is never blocked,
+ * this just gives admins visibility into potential scraping/anti-bypass
+ * abuse of the aggregate-only radar endpoint.
+ */
+export const radarScrapeAlertsTable = pgTable("radar_scrape_alerts", {
+  id: serial("id").primaryKey(),
+  companyId: text("company_id").notNull(),
+  ip: text("ip"),
+  requestCount: integer("request_count").notNull(),
+  distinctLocations: integer("distinct_locations").notNull(),
+  windowSeconds: integer("window_seconds").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export type AdminSession = typeof adminSessionsTable.$inferSelect;
 export type AdminLoginAttempt = typeof adminLoginAttemptsTable.$inferSelect;
 export type AdminLog = typeof adminLogsTable.$inferSelect;
+export type RadarScrapeAlert = typeof radarScrapeAlertsTable.$inferSelect;

@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { db, usersTable } from "@workspace/db";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
 import { getActiveSubscription } from "./monetization";
+import { recordRadarCall, maybeRecordRadarAbuseAlert } from "../lib/radar-abuse";
 
 const router: IRouter = Router();
 
@@ -143,6 +144,9 @@ router.get("/companies/radar-stats", async (req, res) => {
 
   const count = rows.rows[0]?.count ?? 0;
   const subscription = await getActiveSubscription(user.id);
+
+  const abuseCheck = recordRadarCall(user.id, originLat, originLng, radiusKm);
+  void maybeRecordRadarAbuseAlert(user.id, req.ip, abuseCheck);
 
   res.json({ count, radiusKm, isPremium: !!subscription });
 });
