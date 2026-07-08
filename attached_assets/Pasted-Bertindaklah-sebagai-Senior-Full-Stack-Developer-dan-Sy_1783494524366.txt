@@ -1,0 +1,24 @@
+Bertindaklah sebagai Senior Full-Stack Developer dan System Architect. Saya sedang membangun platform rekrutmen on-demand bernama "Rekhastha" menggunakan skema Freemium dan On-Demand Pay-per-Post. Tolong buatkan rancangan logika backend, skema database, dan alur integrasi payment gateway (Midtrans/Xendit) berdasarkan aturan bisnis berikut:
+
+1. ATURAN PENGGUNA (SISI PELAMAR):
+   - Akses untuk mencari kerja, membuat profil, dan melamar di Mode Reguler wajib 100% GRATIS tanpa batasan kuota.
+
+2. ATURAN PERUSAHAAN (SISI PEMBERI KERJA):
+   A. MODE REGULER (Freemium dengan Limitasi):
+      - Perusahaan dapat memposting 1 lowongan kerja secara GRATIS.
+      - Lowongan tayang secara pasif di feed aplikasi.
+      - LIMITASI: Di dasbor perusahaan, mereka hanya diizinkan melihat data profil lengkap dan kontak (No. WA/Email) dari 3 PELAMAR PERTAMA yang masuk.
+      - Jika jumlah pelamar > 3, pelamar ke-4 dan seterusnya harus di-blur/dikunci kontak detailnya.
+      - Tampilkan pop-up / trigger paywall: "Upgrade ke Paket Bulanan (Rp 149.000) atau bayar Paket Satuan untuk membuka semua kontak."
+
+   B. MODE INSTAN (On-Demand / Pay-per-Post):
+      - Ini adalah fitur berbayar premium seharga Rp 35.000 - Rp 49.000 per transaksi (sekali bayar).
+      - LOGIKA SISTEM: Begitu perusahaan membayar via payment gateway dan mengaktifkan "Mode Instan", sistem backend harus mengaktifkan fungsi geofencing/radius (Hyperlocal).
+      - Kirimkan push-notification secara real-time (seperti sistem dapet orderan ojek online) kepada pelamar terdekat yang profilnya cocok dan statusnya "Siap Bekerja".
+      - Pelamar pertama yang menekan tombol "Terima Proyek/Kerjaan" akan langsung otomatis mencocokkan (match) dengan perusahaan, dan kontak kedua belah pihak langsung terbuka penuh.
+
+3. TUGAS ANDA (YANG HARUS DIHASILKAN):
+   - Buat skema tabel database (PostgreSQL/MySQL) yang efisien untuk menangani limitasi pelamar perusahaan (misal: tabel `job_postings`, `applications`, `company_subscriptions`, dan `instant_orders`).
+   - Buat logic middleware atau function penentu status enkripsi kontak pelamar ke-4 jika perusahaan berstatus 'free_tier'.
+   - Buat alur webhook API untuk menerima response sukses dari Midtrans/Xendit agar status 'instant_orders' otomatis berubah dari 'pending_payment' menjadi 'active' sehingga trigger push-notification ke pelamar terdekat langsung berjalan berjalan.
+   - Pastikan logic ini ringan dan hemat resource server karena akan dideploy di VPS murah.

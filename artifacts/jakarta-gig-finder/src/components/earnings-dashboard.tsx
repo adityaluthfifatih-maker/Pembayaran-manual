@@ -13,6 +13,42 @@ interface EarningsDashboardProps {
 
 function formatRp(v: number) { return "Rp " + v.toLocaleString("id-ID"); }
 
+function formatRpShort(v: number) {
+  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, "") + "jt";
+  if (v >= 1_000) return Math.round(v / 1_000) + "rb";
+  return String(v);
+}
+
+function startOfWeek(d: Date) {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = (day === 0 ? -6 : 1) - day;
+  date.setDate(date.getDate() + diff);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function buildWeeklyEarnings(jobs: ApplicationNotification[], weeksBack = 6) {
+  const now = new Date();
+  const buckets: { start: Date; total: number }[] = [];
+  for (let i = weeksBack - 1; i >= 0; i--) {
+    const start = startOfWeek(now);
+    start.setDate(start.getDate() - i * 7);
+    buckets.push({ start, total: 0 });
+  }
+  for (const job of jobs) {
+    if (job.status !== "diterima" && job.status !== "selesai") continue;
+    const amount = job.hiringMode === "lama" && job.jumlahHari && job.jumlahHari > 1
+      ? (job.nominal ?? 0) * job.jumlahHari
+      : (job.nominal ?? 0);
+    if (!amount) continue;
+    const weekStart = startOfWeek(job.timestamp);
+    const bucket = buckets.find((b) => b.start.getTime() === weekStart.getTime());
+    if (bucket) bucket.total += amount;
+  }
+  return buckets;
+}
+
 export default function EarningsDashboard({
   workerProfile, reputationPoints, completedJobs, totalEarned, onDownloadSlip, onClose,
 }: EarningsDashboardProps) {
@@ -23,6 +59,9 @@ export default function EarningsDashboard({
 
   const repColor = reputationPoints >= 80 ? "text-primary" : reputationPoints >= 50 ? "text-amber-600" : "text-red-600";
   const repBg = reputationPoints >= 80 ? "bg-primary" : reputationPoints >= 50 ? "bg-amber-500" : "bg-red-500";
+
+  const weeklyEarnings = buildWeeklyEarnings(completedJobs);
+  const maxWeekly = Math.max(1, ...weeklyEarnings.map((w) => w.total));
 
   return (
     <div
@@ -115,6 +154,37 @@ export default function EarningsDashboard({
                 Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.
               </p>
             </div>
+          </div>
+
+          {/* Weekly earnings chart */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+            <p className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4 text-primary" /> Riwayat Penghasilan Mingguan
+            </p>
+            {weeklyEarnings.every((w) => w.total === 0) ? (
+              <p className="text-xs text-gray-400 text-center py-6">Belum ada penghasilan tercatat minggu ini.</p>
+            ) : (
+              <div className="flex items-end justify-between gap-2 h-32">
+                {weeklyEarnings.map((w, i) => {
+                  const heightPct = Math.max(4, (w.total / maxWeekly) * 100);
+                  const isCurrent = i === weeklyEarnings.length - 1;
+                  return (
+                    <div key={w.start.getTime()} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
+                      <span className={`text-[9px] font-bold ${w.total > 0 ? "text-gray-700" : "text-gray-300"}`}>
+                        {w.total > 0 ? formatRpShort(w.total) : ""}
+                      </span>
+                      <div
+                        className={`w-full rounded-t-md transition-all duration-500 ${isCurrent ? "bg-primary" : "bg-primary/25"}`}
+                        style={{ height: `${heightPct}%`, minHeight: 4 }}
+                      />
+                      <span className="text-[9px] text-gray-400 font-medium">
+                        {w.start.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit" })}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Rekening info */}
