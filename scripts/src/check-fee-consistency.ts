@@ -1,7 +1,20 @@
 /**
- * Fee-consistency check — ensures pay-slip-modal, job-sheet, chat-modal, and
- * analytics-dashboard all compute identical platform-fee and gross amounts for
- * the same CustomJob nominal across all three category-tiered rates.
+ * LEGACY — pre-pivot % commission math regression check.
+ *
+ * As of the flat-rate + freemium paywall pivot, NEW postings never charge a
+ * % commission (Instan Kilat pays a flat listing price via instant-orders;
+ * Posting Reguler is free). `feeRate` is stored as `0` for all new gigs.
+ *
+ * This script is kept ONLY to guard the legacy `escrow.ts` tiered-rate math
+ * (`PLATFORM_FEE_RATES`, `getFeeRate`, `calcEmployerFee`, `calcEmployerDeposit`)
+ * that still back-fills pre-pivot gig rows and the wage-escrow split/QR-release
+ * pipeline (`calcSplit`) that all jobs — old and new — still use to pay workers
+ * 100% of their wage. It does NOT describe current pricing for new postings.
+ * See `.agents/memory/flat-rate-paywall-pivot.md` for the current model.
+ *
+ * Ensures pay-slip-modal, job-sheet, chat-modal, and analytics-dashboard all
+ * compute identical platform-fee and gross amounts for the same CustomJob
+ * nominal across all three legacy category-tiered rates.
  *
  * Also verifies server-side persistence: queries the DB and confirms that every
  * gig row with a non-null `job_category` stores a `fee_rate` that matches the

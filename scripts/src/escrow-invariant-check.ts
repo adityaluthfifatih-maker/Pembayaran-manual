@@ -1,5 +1,13 @@
 /**
- * Escrow Invariant Check — Rekhastha
+ * LEGACY — Escrow Invariant Check — Rekhastha
+ *
+ * As of the flat-rate + freemium paywall pivot, this % commission math is NO
+ * LONGER used to price new postings — see `.agents/memory/flat-rate-paywall-pivot.md`.
+ * It is kept because `escrow.ts`'s split/deposit math (`calcSplit`,
+ * `calcEmployerDeposit`, `calcEmployerFee`) still backs the wage-escrow lock
+ * and QR-release payout pipeline for ALL jobs (old and new — new jobs simply
+ * store `feeRate: 0`, which these same functions correctly reduce to a 100%
+ * pass-through). This script guards that shared math from regressing.
  *
  * Verifies — using the ACTUAL production functions from escrow.ts — that for
  * every gig flow (cepat and lama/negotiated):

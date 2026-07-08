@@ -38,6 +38,7 @@ _Replace the heading above with the project's name, and this line with one sente
 - The device that posts a gig stays silent; the chime + OS notification fire only on receiving worker-mode devices (gated in `home.tsx`'s subscriber).
 - Gig POST bodies are validated with `drizzle-zod` (`insertGigSchema`), a deliberate deviation from the repo's OpenAPI/Orval contract-first default, because the payload is the bespoke frontend `CustomJob`.
 - Auth is custom bcrypt email/password over an httpOnly session cookie (not Clerk/Replit Auth), to preserve the bespoke Indonesian login UI and rich `AuthUser` shape. See `.agents/memory/auth-accounts.md`.
+- **Monetization model (current):** flat-rate + freemium paywall, NOT % commission. Posting Reguler is always free; Instan Kilat pays a flat one-time listing price per category (umum/terampil/profesional) via `instant-orders` + a simulated payment webhook; applicant contact info is paywalled after the first 3 free per job unless the employer has an active Rp149k/mo subscription. New gigs store `feeRate: 0`. The old 3%/5%/8% category-tiered commission math in `escrow.ts` is kept **only** as shared wage-escrow lock/QR-release payout plumbing (still used by all jobs, old and new) — it no longer prices anything. See `.agents/memory/flat-rate-paywall-pivot.md`.
 
 ## Product
 

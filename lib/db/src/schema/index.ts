@@ -30,3 +30,4 @@ export * from "./applications";
 export * from "./chat-messages";
 export * from "./notifications";
 export * from "./escrow-projects";
+export * from "./monetization";

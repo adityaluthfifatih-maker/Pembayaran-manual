@@ -115,6 +115,16 @@ export function broadcastGig(gig: unknown): void {
 }
 
 /**
+ * Push an Instan Kilat activation (payment confirmed) to every connected
+ * device. Worker devices already filter/alert on incoming gigs by radius —
+ * this simply re-announces the gig as "live" so the radar/chime pipeline
+ * fires the instant the geofenced broadcast fans out.
+ */
+export function broadcastInstantActivated(gig: unknown): void {
+  broadcast({ type: "instant_order_activated", gig });
+}
+
+/**
  * Push a QR attendance event (a worker scanned an employer's masuk/pulang QR)
  * to every connected device. The employer device that posted the job releases
  * escrow on a "pulang"; the worker device flips its shift state.

@@ -8,3 +8,4 @@
 - [Applications sync pattern](applications-sync.md) — applications table workerId is text (users.id is text PK); WS fan-out via broadcastApplication; employer handler uses allJobs + employerId guard + dedup Set.
 - [KYC verification flow](kyc-verification.md) — verificationStatus defaults "pending" at signup, so admin queue filters by doc presence not status; resubmission resets to pending.
 - [Xendit escrow projects](xendit-escrow-projects.md) — separate project/milestone escrow using real Xendit Invoice+Disbursement APIs, distinct from the fee-based internal escrow engine.
+- [Flat-rate + paywall pivot](flat-rate-paywall-pivot.md) — % commission retired for new postings (feeRate:0); Instan Kilat flat price + applicant-contact paywall; escrow.ts math kept legacy-only.

@@ -13,6 +13,7 @@ import applicationsRouter from "./applications";
 import chatRouter from "./chat";
 import notificationsRouter from "./notifications";
 import escrowProjectsRouter from "./escrow-projects";
+import monetizationRouter from "./monetization";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(applicationsRouter);
 router.use(chatRouter);
 router.use(notificationsRouter);
 router.use(escrowProjectsRouter);
+router.use(monetizationRouter);
 
 export default router;

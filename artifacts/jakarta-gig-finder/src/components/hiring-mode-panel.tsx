@@ -1,14 +1,16 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import LocationPickerSection from "@/components/location-picker-section";
 import {
   Zap, CalendarDays, Lock, LockOpen, Radio, Users, Banknote,
   CheckCircle2, AlertTriangle, ChevronDown, ChevronUp,
   MapPin, Clock, MessageSquare, ShieldCheck, Briefcase,
-  QrCode, XCircle,
+  QrCode, XCircle, Sparkles, CreditCard,
 } from "lucide-react";
 import { CustomJob, PaymentType, HiringMode, paymentLabels, paymentInputLabels, paymentUnits } from "@/types/custom-job";
 import { ApplicationNotification, ApplicationStatus, maskName } from "@/types/notification";
-import { JobCategory, PLATFORM_FEE_RATES, getFeeRate, CANCELLATION_FEE_1HR } from "@/types/escrow";
+import { JobCategory, getFeeRate, CANCELLATION_FEE_1HR } from "@/types/escrow";
+import { INSTANT_PRICE_BY_CATEGORY, SUBSCRIPTION_PRICE_MONTHLY, FREE_APPLICANT_LIMIT, getInstantPrice } from "@/types/monetization";
+import { createInstantOrder, confirmInstantPayment, fetchSubscription, subscribePremium } from "@/lib/monetization-client";
 import { AuthUser } from "@/types/auth";
 
 interface HiringModePanelProps {
@@ -174,13 +176,35 @@ export default function HiringModePanel({
   const [cancelConfirmJobId, setCancelConfirmJobId] = useState<number | null>(null);
   const [showQrJobId, setShowQrJobId] = useState<number | null>(null);
 
+  // ── Monetization: subscription + Instan Kilat payment state ──────
+  const [isPremium, setIsPremium] = useState(false);
+  const [payingInstant, setPayingInstant] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
+
+  useEffect(() => {
+    fetchSubscription().then(sub => setIsPremium(sub.isPremium)).catch(() => {});
+  }, []);
+
+  const handleSubscribe = async () => {
+    setSubscribing(true);
+    try {
+      await subscribePremium();
+      setIsPremium(true);
+    } catch {
+      // Best-effort demo subscribe; UI stays on free tier if it fails.
+    } finally {
+      setSubscribing(false);
+    }
+  };
+
   // ── Derived calc ──────────────────────────────────────────────
   const nominalNum = parseInt(nominalRaw.replace(/\D/g, "")) || 0;
   const kuotaNum = Math.max(1, parseInt(kuota) || 1);
-  const feeRate = getFeeRate(jobCategory);
+  const feeRate = 0; // Flat-rate model: no more % commission — see instantListingPrice below.
   const upahPokok = nominalNum * kuotaNum;
-  const biayaSistem = Math.round(upahPokok * feeRate);
+  const biayaSistem = 0;
   const totalEscrow = upahPokok + biayaSistem;
+  const instantListingPrice = getInstantPrice(jobCategory);
   const isEscrowLocked = broadcastState === "done" && hiringMode === "cepat";
   const baseValid = posisi.trim().length >= 3 && nominalNum >= 10_000;
   const catatanValid = deskripsi.trim().length > 0;
@@ -200,8 +224,12 @@ export default function HiringModePanel({
   };
 
   // ── Submit Broadcast Instan ────────────────────────────────────
-  const handleCepatSubmit = () => {
-    if (!formValid || broadcastState !== "idle") return;
+  // Instan Kilat now pays a flat listing price per category (no more %
+  // commission on wages). The job is only broadcast after the payment
+  // webhook confirms — mirrored client-side here via createInstantOrder +
+  // confirmInstantPayment (simulated Midtrans/Xendit callback).
+  const handleCepatSubmit = async () => {
+    if (!formValid || broadcastState !== "idle" || payingInstant) return;
     // Force-fetch device GPS (permission prompt) — location is auto-locked to a 5km radar radius.
     if (typeof navigator !== "undefined" && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(() => {}, () => {}, {
@@ -209,8 +237,9 @@ export default function HiringModePanel({
       });
     }
     setBroadcastState("locking");
+    setPayingInstant(true);
 
-    setTimeout(() => {
+    const finish = () => {
       setBroadcastState("broadcasting");
       const count = Math.floor(Math.random() * 16) + 5;
       setBroadcastCount(count);
@@ -218,7 +247,7 @@ export default function HiringModePanel({
 
       onJobPosted({
         posisi: posisi.trim(),
-        deskripsi: deskripsi.trim() || `Dibutuhkan segera ${posisi} di Jakarta. Gaji langsung melalui escrow Rekhastha.`,
+        deskripsi: deskripsi.trim() || `Dibutuhkan segera ${posisi} di Jakarta. Gaji langsung dibayar setelah shift selesai.`,
         pembayaran,
         nominal: nominalNum,
         dresscode,
@@ -231,7 +260,7 @@ export default function HiringModePanel({
         durasiKontrak: "harian",
         jobDate: new Date(), // AUTOMATED DATE — always today for instant broadcasts
         jobCategory,
-        feeRate,
+        feeRate: 0,
       });
 
       setTimeout(() => {
@@ -242,15 +271,30 @@ export default function HiringModePanel({
           setFormOpen(false);
         }, 4000);
       }, 1500);
-    }, 1800);
+    };
+
+    try {
+      // jobId isn't known until onJobPosted persists the gig, so the demo
+      // order uses a synthetic 0 id — the flat price/category is what
+      // matters for the payment simulation here.
+      const order = await createInstantOrder(0, jobCategory);
+      await confirmInstantPayment(order.id);
+    } catch {
+      // Payment simulation is best-effort in this demo flow; still broadcast.
+    } finally {
+      setPayingInstant(false);
+    }
+
+    setTimeout(finish, 1200);
   };
 
   // ── Submit Posting Reguler (scheduled marketplace listing) ─────
+  // Always free: no listing fee, no wage commission.
   const handleLamaSubmit = () => {
     if (!formValid) return;
     onJobPosted({
       posisi: posisi.trim(),
-      deskripsi: deskripsi.trim() || `Lowongan ${posisi} untuk kontrak terjadwal. Dikelola melalui escrow Rekhastha.`,
+      deskripsi: deskripsi.trim() || `Lowongan ${posisi} untuk kontrak terjadwal.`,
       pembayaran,
       nominal: nominalNum,
       dresscode,
@@ -265,7 +309,7 @@ export default function HiringModePanel({
       alamat: pickerAddress.trim(),
       ...(pickerLat !== null && pickerLng !== null ? { lat: pickerLat, lng: pickerLng } : {}),
       jobCategory,
-      feeRate,
+      feeRate: 0,
     });
     resetForm();
     setFormOpen(false);
@@ -324,19 +368,19 @@ export default function HiringModePanel({
             <Lock className="w-6 h-6 text-orange-500" />
           </div>
           <div className="text-center">
-            <h3 className="font-black text-gray-900">Konfirmasi Kunci Escrow</h3>
+            <h3 className="font-black text-gray-900">Konfirmasi Pembayaran</h3>
             <p className="text-sm text-gray-500 mt-1">
-              Periksa rincian biaya sebelum broadcast dikirimkan
+              Bayar biaya posting flat sebelum broadcast dikirimkan
             </p>
           </div>
 
           {/* Fee breakdown */}
           <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 space-y-2.5">
             <div className="flex items-center gap-2 mb-1">
-              <Banknote className="w-4 h-4 text-orange-600 shrink-0" />
-              <span className="text-xs font-bold text-orange-800">Rincian Dana Escrow</span>
+              <CreditCard className="w-4 h-4 text-orange-600 shrink-0" />
+              <span className="text-xs font-bold text-orange-800">Biaya Posting Instan Kilat</span>
               <span className="ml-auto text-[10px] font-black px-2 py-0.5 rounded-full bg-orange-200 text-orange-800">
-                {Math.round(feeRate * 100)}% TERKUNCI
+                {jobCategory.toUpperCase()}
               </span>
             </div>
             <div className="space-y-1.5 text-xs">
@@ -345,16 +389,16 @@ export default function HiringModePanel({
                 <span className="font-semibold text-emerald-700">{formatRp(upahPokok)}</span>
               </div>
               <div className="flex justify-between text-gray-600">
-                <span>Biaya Platform Rekhastha ({Math.round(feeRate * 100)}% Beban Perusahaan)</span>
-                <span className="font-semibold">{formatRp(biayaSistem)}</span>
+                <span>Biaya Posting Flat ({jobCategory})</span>
+                <span className="font-semibold">{formatRp(instantListingPrice)}</span>
               </div>
               <div className="flex justify-between font-bold border-t border-orange-200 pt-2 text-sm text-orange-900">
-                <span>Total Dana yang Dititipkan ke Escrow</span>
-                <span>{formatRp(totalEscrow)}</span>
+                <span>Total Dibayar ke Rekhastha</span>
+                <span>{formatRp(instantListingPrice)}</span>
               </div>
             </div>
             <p className="text-[10px] text-emerald-700/80 leading-relaxed pt-0.5">
-              🟢 Pekerja menerima 100% upah utuh — biaya platform sepenuhnya ditanggung perusahaan.
+              🟢 Pekerja menerima 100% upah utuh — biaya posting flat tidak memotong upah pekerja.
             </p>
           </div>
 
@@ -367,8 +411,9 @@ export default function HiringModePanel({
           <div className="flex gap-2">
             <button
               onClick={() => { setShowCepatConfirm(false); handleCepatSubmit(); }}
-              className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold py-3 rounded-xl text-sm shadow-md active:scale-[0.98] transition-all">
-              🔒 Kunci &amp; Broadcast
+              disabled={payingInstant}
+              className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold py-3 rounded-xl text-sm shadow-md active:scale-[0.98] transition-all disabled:opacity-60">
+              💳 Bayar {formatRp(instantListingPrice)} &amp; Broadcast
             </button>
             <button
               onClick={() => setShowCepatConfirm(false)}
@@ -473,8 +518,8 @@ export default function HiringModePanel({
             : "bg-emerald-50/60 text-emerald-800 border-emerald-200"
         }`}>
           {hiringMode === "cepat"
-            ? `🚨 Untuk kebutuhan mendesak. Sistem broadcast ke semua pekerja aktif dalam radius 5km. Escrow HARUS dikunci terlebih dahulu (biaya sistem ${Math.round(feeRate * 100)}% beban perusahaan).`
-            : `📅 Untuk kontrak terencana & terjadwal. Lowongan masuk ke Daftar Lowongan Kerja Terjadwal untuk dilihat pekerja — tanpa alarm broadcast (biaya sistem ${Math.round(feeRate * 100)}% beban perusahaan).`}
+            ? `🚨 Untuk kebutuhan mendesak. Sistem broadcast ke semua pekerja aktif dalam radius 5km. Biaya posting flat ${formatRp(instantListingPrice)} sesuai kategori — dibayar sekali, bukan potongan dari upah.`
+            : `📅 Untuk kontrak terencana & terjadwal. Lowongan masuk ke Daftar Lowongan Kerja Terjadwal untuk dilihat pekerja — 100% GRATIS, tanpa biaya posting.`}
         </div>
       </div>
 
@@ -554,7 +599,7 @@ export default function HiringModePanel({
                   <div>
                     <label className={labelCls}>Kategori Pekerjaan *</label>
                     <div className="grid grid-cols-3 gap-1.5">
-                      {(Object.entries(PLATFORM_FEE_RATES) as [JobCategory, number][]).map(([cat, rate]) => {
+                      {(Object.entries(INSTANT_PRICE_BY_CATEGORY) as [JobCategory, number][]).map(([cat, price]) => {
                         const categoryLabels: Record<JobCategory, { name: string; desc: string }> = {
                           umum:        { name: "Umum / Manual",       desc: "Pindahan, bersih, packing" },
                           terampil:    { name: "Terampil / Teknis",   desc: "Listrik, sopir, katering" },
@@ -573,13 +618,15 @@ export default function HiringModePanel({
                           >
                             <p className={`text-[10px] font-bold leading-tight ${active ? "text-white" : ""}`}>{categoryLabels[cat].name}</p>
                             <p className={`text-[9px] mt-0.5 leading-tight ${active ? "text-white/70" : "text-gray-400"}`}>{categoryLabels[cat].desc}</p>
-                            <p className={`text-xs font-black mt-1 ${active ? "text-amber-300" : "text-primary"}`}>{Math.round(rate * 100)}%</p>
+                            <p className={`text-xs font-black mt-1 ${active ? "text-amber-300" : "text-primary"}`}>
+                              {hiringMode === "cepat" ? formatRp(price) : "Gratis"}
+                            </p>
                           </button>
                         );
                       })}
                     </div>
 
-                    {/* ── Fee preview card for selected category ── */}
+                    {/* ── Price preview card for selected category ── */}
                     {(() => {
                       const categoryLabels: Record<JobCategory, { name: string; desc: string; examples: string }> = {
                         umum:        { name: "Umum / Manual",       desc: "Pindahan, bersih, packing",     examples: "Kuli angkut, petugas kebersihan, packing gudang" },
@@ -592,8 +639,12 @@ export default function HiringModePanel({
                           <Banknote className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
                           <div className="min-w-0">
                             <p className="text-[11px] font-bold text-amber-900 leading-tight">
-                              {info.name} — Biaya platform{" "}
-                              <span className="text-primary font-black">{Math.round(feeRate * 100)}%</span>
+                              {info.name} —{" "}
+                              {hiringMode === "cepat" ? (
+                                <>Biaya posting <span className="text-primary font-black">{formatRp(instantListingPrice)}</span></>
+                              ) : (
+                                <span className="text-emerald-700 font-black">Gratis</span>
+                              )}
                             </p>
                             <p className="text-[10px] text-amber-700 leading-tight mt-0.5">{info.examples}</p>
                           </div>
@@ -608,34 +659,36 @@ export default function HiringModePanel({
                         onClick={() => setShowFeeExplanation(o => !o)}
                         className="flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-700 font-semibold underline underline-offset-2"
                       >
-                        Kenapa tarif berbeda per kategori?
+                        Kenapa harga berbeda per kategori?
                         {showFeeExplanation ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                       </button>
                       {showFeeExplanation && (
                         <div className="mt-1.5 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 space-y-1.5">
-                          <p className="text-[10px] font-bold text-blue-900">Rekhastha mengenakan biaya berdasarkan kompleksitas pekerjaan:</p>
+                          <p className="text-[10px] font-bold text-blue-900">Posting Reguler selalu gratis. Instan Kilat mengenakan biaya posting flat berdasarkan kompleksitas pekerjaan:</p>
                           <ul className="space-y-1">
                             <li className="flex items-start gap-1.5 text-[10px] text-blue-800 leading-relaxed">
-                              <span className="font-black text-primary shrink-0">3%</span>
-                              <span><span className="font-semibold">Umum / Manual</span> — Verifikasi dasar, risiko rendah. Biaya minimal agar aksesibel untuk UMKM dan rumah tangga.</span>
+                              <span className="font-black text-primary shrink-0">{formatRp(INSTANT_PRICE_BY_CATEGORY.umum)}</span>
+                              <span><span className="font-semibold">Umum / Manual</span> — Verifikasi dasar, risiko rendah. Harga minimal agar aksesibel untuk UMKM dan rumah tangga.</span>
                             </li>
                             <li className="flex items-start gap-1.5 text-[10px] text-blue-800 leading-relaxed">
-                              <span className="font-black text-primary shrink-0">5%</span>
+                              <span className="font-black text-primary shrink-0">{formatRp(INSTANT_PRICE_BY_CATEGORY.terampil)}</span>
                               <span><span className="font-semibold">Terampil / Teknis</span> — Memerlukan verifikasi keahlian & koordinasi lebih. Mencakup perlindungan kontrak lebih kuat.</span>
                             </li>
                             <li className="flex items-start gap-1.5 text-[10px] text-blue-800 leading-relaxed">
-                              <span className="font-black text-primary shrink-0">8%</span>
+                              <span className="font-black text-primary shrink-0">{formatRp(INSTANT_PRICE_BY_CATEGORY.profesional)}</span>
                               <span><span className="font-semibold">Profesional</span> — NDA, verifikasi sertifikat, dan dukungan prioritas. Nilai kontrak umumnya lebih tinggi.</span>
                             </li>
                           </ul>
                           <p className="text-[9px] text-blue-600 leading-relaxed border-t border-blue-200 pt-1.5">
-                            🟢 Pekerja selalu menerima 100% upah penuh — biaya platform sepenuhnya beban perusahaan.
+                            🟢 Pekerja selalu menerima 100% upah penuh — biaya posting flat dibayar terpisah oleh perusahaan.
                           </p>
                         </div>
                       )}
                     </div>
 
-                    <p className="text-[10px] text-gray-400 mt-1">Biaya platform beban perusahaan · pekerja terima 100% upah</p>
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      {hiringMode === "cepat" ? "Biaya posting flat dibayar perusahaan · pekerja terima 100% upah" : "Posting Reguler 100% gratis · pekerja terima 100% upah"}
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -728,7 +781,7 @@ export default function HiringModePanel({
                 </>
               )}
 
-              {/* ── Escrow Calculator ──────────────────────────── */}
+              {/* ── Rincian Biaya (flat-rate model) ──────────────── */}
               {nominalNum > 0 && broadcastState === "idle" && (
                 <div className={`rounded-xl border p-3 space-y-2 ${
                   hiringMode === "cepat" ? "bg-orange-50 border-orange-200" : "bg-blue-50 border-blue-200"
@@ -736,12 +789,12 @@ export default function HiringModePanel({
                   <div className="flex items-center gap-2 mb-1">
                     <Banknote className={`w-4 h-4 ${hiringMode === "cepat" ? "text-orange-600" : "text-blue-600"}`} />
                     <span className={`text-xs font-bold ${hiringMode === "cepat" ? "text-orange-800" : "text-blue-800"}`}>
-                      Kalkulator Escrow Rekhastha
+                      Rincian Biaya Posting
                     </span>
                     <span className={`ml-auto text-[10px] font-black px-2 py-0.5 rounded-full ${
-                      hiringMode === "cepat" ? "bg-orange-200 text-orange-800" : "bg-blue-200 text-blue-800"
+                      hiringMode === "cepat" ? "bg-orange-200 text-orange-800" : "bg-emerald-200 text-emerald-800"
                     }`}>
-                      {Math.round(feeRate * 100)}% {hiringMode === "cepat" ? "TERKUNCI" : "MARK-UP"}
+                      {hiringMode === "cepat" ? "BAYAR FLAT" : "GRATIS"}
                     </span>
                   </div>
                   <div className="space-y-1.5 text-xs">
@@ -749,18 +802,21 @@ export default function HiringModePanel({
                       <span>Upah Bersih Pekerja ({kuotaNum} orang)</span>
                       <span className="font-semibold text-emerald-700">{formatRp(upahPokok)}</span>
                     </div>
-                    <div className="flex justify-between text-gray-600">
-                      <span>Biaya Platform Rekhastha ({Math.round(feeRate * 100)}% Beban Perusahaan)</span>
-                      <span className="font-semibold">{formatRp(biayaSistem)}</span>
-                    </div>
-                    <div className={`flex justify-between font-bold border-t pt-1.5 text-sm ${
-                      hiringMode === "cepat" ? "border-orange-200 text-orange-900" : "border-blue-200 text-blue-900"
-                    }`}>
-                      <span>Total Dana yang Dititipkan ke Escrow</span>
-                      <span>{formatRp(totalEscrow)}</span>
-                    </div>
+                    {hiringMode === "cepat" ? (
+                      <div className="flex justify-between text-gray-600">
+                        <span>Biaya Posting Instan Kilat ({jobCategory})</span>
+                        <span className="font-semibold">{formatRp(instantListingPrice)}</span>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between text-gray-600">
+                        <span>Biaya Posting Reguler</span>
+                        <span className="font-semibold text-emerald-700">Gratis</span>
+                      </div>
+                    )}
                     <p className="text-[10px] text-emerald-700/80 leading-relaxed pt-0.5">
-                      🟢 Pekerja menerima 100% upah utuh — biaya platform {Math.round(feeRate * 100)}% sepenuhnya ditanggung perusahaan.
+                      🟢 Pekerja menerima 100% upah utuh. {hiringMode === "cepat"
+                        ? "Biaya posting flat dibayar sekali ke Rekhastha, bukan dipotong dari upah pekerja."
+                        : "Posting Reguler tidak dikenakan biaya sama sekali."}
                     </p>
                   </div>
                   {/* Status badge */}
@@ -774,8 +830,8 @@ export default function HiringModePanel({
                       hiringMode === "cepat" ? "text-orange-800" : "text-blue-800"
                     }`}>
                       Status: {hiringMode === "cepat"
-                        ? "⏳ Menunggu Penguncian Escrow"
-                        : "⏳ Deposit Wajib Setelah Seleksi Kandidat"}
+                        ? "⏳ Menunggu Pembayaran & Broadcast"
+                        : "⏳ Upah Dikunci Setelah Seleksi Kandidat"}
                     </span>
                   </div>
                   {/* Tax footnote */}
@@ -789,7 +845,7 @@ export default function HiringModePanel({
               {isEscrowLocked && (
                 <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
                   <Lock className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span className="text-xs font-bold text-emerald-800">Status: Escrow Terkunci 🔒 · Dana Aman di Rekhastha</span>
+                  <span className="text-xs font-bold text-emerald-800">Status: Upah Terkunci 🔒 · Dana Aman di Rekhastha</span>
                 </div>
               )}
 
@@ -804,8 +860,8 @@ export default function HiringModePanel({
                         ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md active:scale-[0.98]"
                         : "bg-gray-100 text-gray-400 cursor-not-allowed"
                     }`}>
-                    <Lock className="w-4 h-4" />
-                    {formValid ? `🔒 Kunci Escrow ${formatRp(totalEscrow)} & Broadcast Sekarang` : "Isi Posisi & Upah untuk Lanjut"}
+                    <CreditCard className="w-4 h-4" />
+                    {formValid ? `💳 Bayar ${formatRp(instantListingPrice)} & Broadcast Sekarang` : "Isi Posisi & Upah untuk Lanjut"}
                   </button>
                 ) : (
                   <button
@@ -935,31 +991,51 @@ export default function HiringModePanel({
                 {/* Expanded applicant list (Bisa Lama only) */}
                 {jobExpanded && applicants.length > 0 && (
                   <div className="space-y-2 pt-1">
-                    {applicants.map(notif => {
+                    {applicants.map((notif, idx) => {
                       const km = getDemoKm(notif.applicantName);
+                      const isLocked = !isPremium && idx >= FREE_APPLICANT_LIMIT;
                       return (
                         <div key={notif.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${
                           notif.status === "diterima" || notif.status === "selesai"
                             ? "bg-emerald-50 border-emerald-200"
                             : "bg-white border-gray-100"
                         }`}>
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white font-black text-xs shrink-0">
-                            {notif.applicantName.slice(0, 1)}
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-black text-xs shrink-0 ${
+                            isLocked ? "bg-gray-300" : "bg-gradient-to-br from-blue-400 to-indigo-500"
+                          }`}>
+                            {isLocked ? <Lock className="w-3.5 h-3.5" /> : notif.applicantName.slice(0, 1)}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-gray-900 truncate">{maskName(notif.applicantName)}</p>
+                            <p className={`text-xs font-bold truncate ${isLocked ? "text-gray-400 blur-[2px] select-none" : "text-gray-900"}`}>
+                              {isLocked ? "Pelamar Terkunci" : maskName(notif.applicantName)}
+                            </p>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
-                                <MapPin className="w-2.5 h-2.5" /> {km} km
-                              </span>
-                              {notif.hasNpwp && (
-                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                                  <ShieldCheck className="w-2.5 h-2.5" /> Verified Mitra
+                              {isLocked ? (
+                                <span className="text-[10px] font-bold text-amber-700 flex items-center gap-0.5">
+                                  <Lock className="w-2.5 h-2.5" /> Perlu Rekhastha Premium
                                 </span>
+                              ) : (
+                                <>
+                                  <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                                    <MapPin className="w-2.5 h-2.5" /> {km} km
+                                  </span>
+                                  {notif.hasNpwp && (
+                                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                      <ShieldCheck className="w-2.5 h-2.5" /> Verified Mitra
+                                    </span>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>
-                          {notif.status === "diterima" || notif.status === "selesai" ? (
+                          {isLocked ? (
+                            <button
+                              onClick={handleSubscribe}
+                              disabled={subscribing}
+                              className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 px-2.5 py-1.5 rounded-lg hover:bg-amber-200 transition-colors shrink-0 disabled:opacity-60">
+                              🔓 Buka {formatRp(SUBSCRIPTION_PRICE_MONTHLY)}/bln
+                            </button>
+                          ) : notif.status === "diterima" || notif.status === "selesai" ? (
                             <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-1 shrink-0">
                               <CheckCircle2 className="w-3.5 h-3.5" /> Diterima
                             </span>
@@ -967,7 +1043,7 @@ export default function HiringModePanel({
                             <button
                               onClick={() => setEscrowConfirmJobId(job.id)}
                               className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 transition-colors shrink-0">
-                              Terima & Kunci Escrow
+                              Terima & Kunci Upah
                             </button>
                           ) : (
                             <span className="text-[10px] text-gray-400 shrink-0">Menunggu</span>
@@ -975,6 +1051,11 @@ export default function HiringModePanel({
                         </div>
                       );
                     })}
+                    {!isPremium && applicants.length > FREE_APPLICANT_LIMIT && (
+                      <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 text-center">
+                        Menampilkan {FREE_APPLICANT_LIMIT} dari {applicants.length} pelamar secara gratis. Berlangganan Rekhastha Premium untuk melihat semua.
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -985,13 +1066,16 @@ export default function HiringModePanel({
                   const confirmBase    = job.nominal * confirmDays * job.kuota;
                   const confirmFee     = Math.round(confirmBase * confirmFeeRate);
                   const confirmTotal   = confirmBase + confirmFee;
+                  const confirmIsFree  = confirmFeeRate === 0;
                   return (
                     <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
                       <div className="flex items-center gap-2">
                         <Lock className="w-3.5 h-3.5 text-blue-700 shrink-0" />
-                        <span className="text-xs font-bold text-blue-900">Konfirmasi Penguncian Escrow</span>
-                        <span className="ml-auto text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-200 text-blue-800">
-                          {Math.round(confirmFeeRate * 100)}% MARK-UP
+                        <span className="text-xs font-bold text-blue-900">Konfirmasi Penguncian Upah</span>
+                        <span className={`ml-auto text-[10px] font-black px-2 py-0.5 rounded-full ${
+                          confirmIsFree ? "bg-emerald-200 text-emerald-800" : "bg-blue-200 text-blue-800"
+                        }`}>
+                          {confirmIsFree ? "GRATIS" : `${Math.round(confirmFeeRate * 100)}% MARK-UP`}
                         </span>
                       </div>
                       <div className="space-y-1.5 text-[11px]">
@@ -1005,16 +1089,20 @@ export default function HiringModePanel({
                             <span>= {formatRp(confirmBase)}</span>
                           </div>
                         )}
-                        <div className="flex justify-between text-gray-600">
-                          <span>Biaya Platform Rekhastha ({Math.round(confirmFeeRate * 100)}% Beban Perusahaan)</span>
-                          <span className="font-semibold">{formatRp(confirmFee)}</span>
-                        </div>
+                        {!confirmIsFree && (
+                          <div className="flex justify-between text-gray-600">
+                            <span>Biaya Platform Rekhastha ({Math.round(confirmFeeRate * 100)}% Beban Perusahaan)</span>
+                            <span className="font-semibold">{formatRp(confirmFee)}</span>
+                          </div>
+                        )}
                         <div className="flex justify-between font-bold text-blue-900 border-t border-blue-200 pt-1.5 text-xs">
-                          <span>Total Dana yang Dititipkan ke Escrow</span>
+                          <span>Total Dana yang Dikunci</span>
                           <span>{formatRp(confirmTotal)}</span>
                         </div>
                         <p className="text-[10px] text-emerald-700/80 leading-relaxed pt-0.5">
-                          🟢 Pekerja menerima 100% upah utuh — biaya platform {Math.round(confirmFeeRate * 100)}% sepenuhnya ditanggung perusahaan.
+                          🟢 Pekerja menerima 100% upah utuh. {confirmIsFree
+                            ? "Posting Reguler tidak dikenakan biaya platform."
+                            : `Biaya platform ${Math.round(confirmFeeRate * 100)}% sepenuhnya ditanggung perusahaan.`}
                         </p>
                       </div>
                       <div className="flex gap-2">
