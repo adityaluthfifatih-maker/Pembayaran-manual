@@ -23,6 +23,7 @@ import ScheduledJobsFeed from "@/components/scheduled-jobs-feed";
 import MyApplications from "@/components/my-applications";
 import { RekhasthaLogo } from "@/components/rekhastha-logo";
 import EscrowProjectsPanel from "@/components/escrow-projects-panel";
+import CompanyRadarMap from "@/components/company-radar-map";
 import {
   subscribeToServer,
   subscribeAttendance,
@@ -43,6 +44,7 @@ import { createBlacklist, fetchEmployerIdsBlockingWorker } from "@/lib/blacklist
 import { submitRating } from "@/lib/rating-client";
 import AuthPage from "@/pages/auth";
 import { fetchMe, logout as logoutRequest } from "@/lib/auth-client";
+import { postWorkerLocation } from "@/lib/radar-client";
 import WorkerProfilePage from "@/components/worker-profile-page";
 import CompanyProfilePage from "@/components/company-profile-page";
 import { workers, Worker } from "@/data/workers";
@@ -91,7 +93,7 @@ function randomJakartaCoords() {
 
 const JAKARTA_CENTER = { lat: -6.2088, lng: 106.8456 };
 type JobStatus = "applied" | "accepted" | "clocked_in" | "completed" | null;
-type CompanyView = "jobs" | "analytics";
+type CompanyView = "jobs" | "analytics" | "radar";
 type AppTab = "home" | "chat" | "proyek" | "profile";
 
 // A gig is "instant" (Broadcast Instan) only when it is a cepat posting. Regular
@@ -491,6 +493,11 @@ export default function Home() {
       (p) => {
         setUserLocation({ lat: p.coords.latitude, lng: p.coords.longitude });
         setLocationAccuracy(Math.round(p.coords.accuracy));
+        // Keep the server's copy of this worker's coordinates fresh while the
+        // radar is on, so companies can find them via GET /api/companies/radar.
+        if (radarOnRef.current) {
+          void postWorkerLocation(p.coords.latitude, p.coords.longitude, true);
+        }
       },
       () => setUserLocation(JAKARTA_CENTER),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
@@ -812,7 +819,10 @@ export default function Home() {
         : "⚪ Radar Mati: Anda tidak akan menerima panggilan kerja instan harian sementara waktu",
     );
     radarToastTimer.current = setTimeout(() => setRadarStatusToast(null), 4000);
-  }, []);
+    // Sync readiness (and current fix) to the server right away so employer
+    // radar reflects the toggle instantly instead of waiting for the next GPS tick.
+    void postWorkerLocation(userLocation.lat, userLocation.lng, next);
+  }, [userLocation]);
 
   const filteredWorkers = useMemo(() => {
     if (!activeTags.length && !searchQuery.trim()) return workers;
@@ -1480,16 +1490,20 @@ export default function Home() {
             {mode === "perusahaan" && (
               <div className="px-4 pb-3">
                 <div className="flex bg-gray-100/80 p-1 rounded-[14px] gap-1 relative">
-                  <div className="absolute inset-y-1 left-1 w-[calc(50%-4px)] bg-white rounded-[10px] shadow-sm transition-transform duration-300 ease-out" 
-                       style={{ transform: companyView === "analytics" ? "translateX(100%)" : "translateX(0)" }} />
+                  <div className="absolute inset-y-1 left-1 w-[calc(33.33%-4px)] bg-white rounded-[10px] shadow-sm transition-transform duration-300 ease-out"
+                       style={{ transform: companyView === "analytics" ? "translateX(100%)" : companyView === "radar" ? "translateX(200%)" : "translateX(0)" }} />
                   <button onClick={() => setCompanyView("jobs")}
                     className={`flex-1 relative flex items-center justify-center gap-1.5 py-2.5 text-[13px] font-bold rounded-xl transition-colors ${companyView === "jobs" ? "text-primary" : "text-gray-500"}`}>
-                    <Briefcase className="w-4 h-4" /> Kelola Lowongan
+                    <Briefcase className="w-4 h-4" /> Lowongan
                     {customJobs.length > 0 && <span className={`w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center transition-colors ${companyView === "jobs" ? "bg-primary text-white" : "bg-gray-300 text-white"}`}>{customJobs.length}</span>}
                   </button>
                   <button onClick={() => setCompanyView("analytics")} data-testid="button-analytics-tab"
                     className={`flex-1 relative flex items-center justify-center gap-1.5 py-2.5 text-[13px] font-bold rounded-xl transition-colors ${companyView === "analytics" ? "text-primary" : "text-gray-500"}`}>
                     <BarChart2 className="w-4 h-4" /> Analitik
+                  </button>
+                  <button onClick={() => setCompanyView("radar")} data-testid="button-radar-tab"
+                    className={`flex-1 relative flex items-center justify-center gap-1.5 py-2.5 text-[13px] font-bold rounded-xl transition-colors ${companyView === "radar" ? "text-primary" : "text-gray-500"}`}>
+                    <MapIcon className="w-4 h-4" /> Radar
                   </button>
                 </div>
               </div>
@@ -1678,6 +1692,8 @@ export default function Home() {
             {mode === "perusahaan" ? (
               companyView === "analytics" ? (
                 <AnalyticsDashboard customJobs={customJobs} ratings={ratings} totalApplicants={notifications.length} />
+              ) : companyView === "radar" ? (
+                <CompanyRadarMap />
               ) : (
                 <HiringModePanel
                   currentUser={currentUser}

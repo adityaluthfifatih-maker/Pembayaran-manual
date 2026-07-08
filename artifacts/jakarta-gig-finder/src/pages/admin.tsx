@@ -6,8 +6,9 @@ import {
   XCircle, Award, RotateCcw, Trophy,
   Plus, Pencil, Trash2, Save, Settings2, Briefcase, FileText, X,
   ShieldCheck, IdCard, LayoutDashboard, TrendingUp, UserCheck, Banknote,
-  LineChart as LineChartIcon, CreditCard, Crown,
+  LineChart as LineChartIcon, CreditCard, Crown, Download,
 } from "lucide-react";
+import { downloadCsv } from "@/lib/csv-export";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
@@ -440,6 +441,30 @@ function RevenueTab() {
 
   const categoryEntries = Object.entries(stats.byCategory).filter(([, v]) => v.count > 0);
 
+  const handleExportCsv = () => {
+    const rows: (string | number)[][] = [
+      ["Ringkasan Pendapatan Rekhastha"],
+      ["Total Pendapatan (Rp)", stats.totalRevenue],
+      ["Pendapatan Hari Ini (Rp)", stats.todayRevenue],
+      ["Pendapatan Broadcast Instan (Rp)", stats.instantRevenue],
+      ["Pesanan Instan Terbayar", stats.totalInstantOrders],
+      ["Pendapatan Langganan (Rp)", stats.subscriptionRevenue],
+      ["Langganan Aktif", stats.activeSubscriptions],
+      [],
+      ["Kategori", "Jumlah Pesanan", "Total (Rp)"],
+      ...categoryEntries.map(([cat, v]) => [cat, v.count, v.amount]),
+      [],
+      ["Tanggal", "Instan (Rp)", "Langganan (Rp)", "Total (Rp)"],
+      ...stats.daily.map((d) => [
+        new Date(d.date).toLocaleDateString("id-ID"),
+        d.instant,
+        d.subscription,
+        d.total,
+      ]),
+    ];
+    downloadCsv(`pendapatan-rekhastha-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -449,12 +474,21 @@ function RevenueTab() {
             {lastUpdated ? `Diperbarui ${lastUpdated.toLocaleTimeString("id-ID")}` : "Memuat…"}
           </p>
         </div>
-        <button
-          onClick={() => void load()}
-          className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors"
-        >
-          <RefreshCw className="w-3.5 h-3.5" /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            data-testid="button-export-revenue-csv"
+            onClick={handleExportCsv}
+            className="flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" /> Unduh CSV
+          </button>
+          <button
+            onClick={() => void load()}
+            className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* Summary cards */}

@@ -1,12 +1,13 @@
 import { useMemo } from "react";
 import {
   TrendingUp, DollarSign, Star, Briefcase, Zap, BarChart2,
-  ArrowUpRight, Shield, Users, AlertTriangle,
+  ArrowUpRight, Shield, Users, AlertTriangle, Download,
 } from "lucide-react";
 import { CustomJob, calcTotal, durasiKontrakOptions } from "@/types/custom-job";
 import { calcEmployerFee, DEFAULT_FEE_RATE, PLATFORM_FEE_RATES } from "@/types/escrow";
 import { RatingPayload } from "@/components/rating-modal";
 import type { JobCategory } from "@/types/escrow";
+import { downloadCsv } from "@/lib/csv-export";
 
 interface AnalyticsDashboardProps {
   customJobs: CustomJob[];
@@ -81,6 +82,29 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
     }),
   [customJobs]);
 
+  const handleExportCsv = () => {
+    const rows: (string | number)[][] = [
+      ["Posisi", "Kategori", "Kuota", "Durasi", "Tarif Komisi (%)", "Total Kotor (Rp)", "Komisi Platform (Rp)", "Upah Pekerja (Rp)", "Status Tarif"],
+      ...jobBreakdowns.map(({ job, gross, comm, workerPay, rate, certainty }) => [
+        job.posisi,
+        job.jobCategory ?? "-",
+        job.kuota,
+        durasiKontrakOptions.find((o) => o.value === (job.durasiKontrak ?? "harian"))?.label ?? "Harian",
+        certainty === "unknown" ? "?" : (rate * 100).toFixed(1),
+        gross,
+        certainty === "unknown" ? 0 : comm,
+        workerPay,
+        certainty === "exact" ? "Pasti" : certainty === "inferred" ? "Estimasi" : "Tidak Diketahui",
+      ]),
+      [],
+      ["Total Pengeluaran (Rp)", metrics.totalGross],
+      ["Total Komisi Diketahui (Rp)", metrics.totalCommKnown],
+      ["Rata-Rata Rating", metrics.avgRating ? metrics.avgRating.toFixed(1) : "-"],
+      ["Total Pelamar", totalApplicants],
+    ];
+    downloadCsv(`laporan-keuangan-rekhastha-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+
   return (
     <div
       className="flex-1 overflow-y-auto"
@@ -89,12 +113,22 @@ export default function AnalyticsDashboard({ customJobs, ratings, totalApplicant
       <div className="p-4 space-y-5 pb-8">
 
         {/* Header */}
-        <div className="pt-2">
-          <div className="flex items-center gap-2">
-            <BarChart2 className="w-5 h-5 text-emerald-400" />
-            <h2 className="text-lg font-black text-white tracking-tight">Analitik Keuangan &amp; Performa</h2>
+        <div className="pt-2 flex items-start justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <BarChart2 className="w-5 h-5 text-emerald-400" />
+              <h2 className="text-lg font-black text-white tracking-tight">Analitik Keuangan &amp; Performa</h2>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">Real-time · Auto-refresh setiap transaksi baru</p>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">Real-time · Auto-refresh setiap transaksi baru</p>
+          <button
+            data-testid="button-export-report-csv"
+            onClick={handleExportCsv}
+            disabled={customJobs.length === 0}
+            className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-400/30 px-3 py-2 rounded-xl hover:bg-emerald-400/20 transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Download className="w-3.5 h-3.5" /> Unduh Laporan
+          </button>
         </div>
 
         {/* Warning banner for legacy gigs with unknown fee rates */}

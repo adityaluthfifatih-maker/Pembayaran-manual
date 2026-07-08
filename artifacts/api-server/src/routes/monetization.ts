@@ -19,7 +19,7 @@ import {
 
 const router: IRouter = Router();
 
-async function getActiveSubscription(companyId: string) {
+export async function getActiveSubscription(companyId: string) {
   const [sub] = await db
     .select()
     .from(companySubscriptionsTable)

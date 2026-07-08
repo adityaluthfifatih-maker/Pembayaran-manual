@@ -39,28 +39,12 @@ export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedO
 
   const slipDate = clockedOutAt ?? new Date();
 
-  const handlePrint = () => {
-    const el = document.getElementById("pay-slip-content");
-    if (!el) return;
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.write(`
-      <html><head><title>Slip Gaji - ${workerProfile.namaLengkap}</title>
-      <style>
-        body { font-family: 'Courier New', monospace; padding: 20px; max-width: 400px; margin: 0 auto; font-size: 12px; color: #111; }
-        h1 { text-align: center; font-size: 16px; margin-bottom: 4px; }
-        .sub { text-align: center; font-size: 11px; color: #555; margin-bottom: 16px; }
-        hr { border: none; border-top: 1px dashed #999; margin: 10px 0; }
-        .row { display: flex; justify-content: space-between; margin: 3px 0; }
-        .row.bold { font-weight: bold; }
-        .row.big { font-size: 14px; font-weight: bold; }
-        .label { color: #555; }
-        .footer { margin-top: 24px; text-align: center; font-size: 10px; color: #888; }
-      </style></head><body>${el.innerHTML}</body></html>
-    `);
-    w.document.close();
-    w.print();
-  };
+  // Print the slip in-place via a dedicated print stylesheet instead of a popup
+  // window: popups get silently blocked by browsers, and writing raw innerHTML
+  // into a blank document drops all Tailwind styling, producing a broken-looking
+  // printout. `@media print` below hides everything except #pay-slip-content and
+  // resets it to clean, high-contrast, non-scaled print styling.
+  const handlePrint = () => window.print();
 
   return (
     <div
@@ -193,7 +177,23 @@ export default function PaySlipModal({ job, workerProfile, clockedInAt, clockedO
           </button>
         </div>
       </div>
-      <style>{`@keyframes slideUp { from{transform:translateY(100%);opacity:0.6} to{transform:translateY(0);opacity:1} }`}</style>
+      <style>{`
+        @keyframes slideUp { from{transform:translateY(100%);opacity:0.6} to{transform:translateY(0);opacity:1} }
+        @media print {
+          body * { visibility: hidden; }
+          #pay-slip-content, #pay-slip-content * { visibility: visible; }
+          #pay-slip-content {
+            position: absolute; top: 0; left: 0; width: 100%; padding: 24px;
+            background: #fff !important;
+          }
+          #pay-slip-content .font-mono {
+            border: 1px solid #000 !important;
+            background: #fff !important;
+            color: #000 !important;
+            border-radius: 0 !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

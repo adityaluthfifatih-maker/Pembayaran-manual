@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { attachRealtime } from "./lib/realtime";
+import { ensureEarthdistanceExtensions } from "./lib/geo";
 
 if (process.env["NODE_ENV"] === "production") {
   const hasAdminId = !!process.env["ADMIN_ID"]?.trim();
@@ -38,3 +39,5 @@ const server = app.listen(port, (err) => {
 });
 
 attachRealtime(server);
+
+void ensureEarthdistanceExtensions();

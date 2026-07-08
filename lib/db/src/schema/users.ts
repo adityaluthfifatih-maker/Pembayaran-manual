@@ -4,6 +4,7 @@ import {
   boolean,
   jsonb,
   timestamp,
+  doublePrecision,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -37,6 +38,19 @@ export const usersTable = pgTable("users", {
   defaultCvUrl: text("default_cv_url"),
   /** Master portfolio file the worker keeps on their profile. */
   defaultPortfolioUrl: text("default_portfolio_url"),
+  /**
+   * Worker's last-known coordinates, sent from the device via
+   * POST /api/workers/location whenever the radar toggle is on. Used by the
+   * employer-facing "Radar Pekerja Terdekat" earthdistance search — never
+   * exposed raw to companies (see fuzzCoordinate in companies/radar route).
+   */
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  /** Worker opted in to receive nearby job/radar visibility ("siap kerja"). */
+  isReadyToWork: boolean("is_ready_to_work").notNull().default(false),
+  /** Freeform worker skill tags (e.g. "Barista", "Kurir", "Admin"). */
+  skills: text("skills").array().notNull().default([]),
+  locationUpdatedAt: timestamp("location_updated_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
