@@ -15,6 +15,7 @@ import notificationsRouter from "./notifications";
 import escrowProjectsRouter from "./escrow-projects";
 import monetizationRouter from "./monetization";
 import geoRouter from "./geo";
+import subscriptionRouter from "./subscription";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(notificationsRouter);
 router.use(escrowProjectsRouter);
 router.use(monetizationRouter);
 router.use(geoRouter);
+router.use(subscriptionRouter);
 
 export default router;

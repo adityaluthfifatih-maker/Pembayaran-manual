@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 import { db, attendanceTable, gigsTable } from "@workspace/db";
 import { broadcastAttendance } from "../lib/realtime";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
+import { requirePremium } from "../lib/premium";
 
 const router: IRouter = Router();
 
@@ -46,8 +47,12 @@ const tokenBody = z.object({
 /**
  * Employer mints a QR token. Identity comes from the session cookie (never the
  * body); the caller must be the employer that posted the job.
+ *
+ * Gated behind requirePremium: GPS attendance QR generation is a
+ * "Rekhastha Bisnis" employee-management tool, free/unlimited only for
+ * active premium subscribers (job posting itself stays free for everyone).
  */
-router.post("/attendance/token", async (req, res): Promise<void> => {
+router.post("/attendance/token", requirePremium, async (req, res): Promise<void> => {
   const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
   if (!user) {
     res.status(401).json({ error: "Tidak terautentikasi." });

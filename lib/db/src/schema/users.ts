@@ -51,6 +51,23 @@ export const usersTable = pgTable("users", {
   /** Freeform worker skill tags (e.g. "Barista", "Kurir", "Admin"). */
   skills: text("skills").array().notNull().default([]),
   locationUpdatedAt: timestamp("location_updated_at", { withTimezone: true }),
+  /**
+   * "Rekhastha Bisnis" premium flag for employer accounts (role "perusahaan").
+   * Unlocks unlimited free access to employee-management tools (GPS
+   * attendance QR + daily wage calculator) — never gates job posting, which
+   * stays free for every account. Kept on the account row itself (not a
+   * separate `companies` table) because companies ARE users with
+   * role="perusahaan" in this schema. See checkPremiumStatus in
+   * artifacts/api-server/src/lib/premium.ts for the read+auto-expire logic.
+   *
+   * NOTE: this is a distinct premium flag from `company_subscriptions`
+   * (monetization.ts), which powers the older Rp149k/mo applicant-contact
+   * paywall. The two are intentionally kept separate to avoid touching the
+   * existing applicant paywall behavior; a future pass could unify them.
+   */
+  isPremium: boolean("is_premium").notNull().default(false),
+  /** Premium expiry. NULL = never subscribed. Auto-flips isPremium false once passed. */
+  expiredAt: timestamp("expired_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

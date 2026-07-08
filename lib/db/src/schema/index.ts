@@ -31,3 +31,4 @@ export * from "./chat-messages";
 export * from "./notifications";
 export * from "./escrow-projects";
 export * from "./monetization";
+export * from "./subscription-plans";

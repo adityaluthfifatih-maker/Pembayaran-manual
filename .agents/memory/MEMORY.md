@@ -10,3 +10,4 @@
 - [Xendit escrow projects](xendit-escrow-projects.md) — separate project/milestone escrow using real Xendit Invoice+Disbursement APIs, distinct from the fee-based internal escrow engine.
 - [Flat-rate + paywall pivot](flat-rate-paywall-pivot.md) — % commission retired for new postings (feeRate:0); Instan Kilat flat price + applicant-contact paywall; escrow.ts math kept legacy-only.
 - [Company radar geolocation](company-radar-geolocation.md) — company-facing radar is aggregate-count-only (no map/pins/contact info), anti-bypass/privacy fix; plus an in-page @media-print gotcha.
+- [Rekhastha Bisnis subscription](rekhastha-bisnis-subscription.md) — tiered premium (users.isPremium/expiredAt) gates GPS attendance + wage calc; kept separate from the older flat Rp149k applicant-paywall subscription.
