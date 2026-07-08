@@ -6,7 +6,6 @@ import JobSheet from "@/components/job-sheet";
 import JobPostingModal from "@/components/job-posting-modal";
 import WorkerOnboarding from "@/components/worker-onboarding";
 import NotificationPanel from "@/components/notification-panel";
-import NotificationBell from "@/components/notification-bell";
 import ClockInModal from "@/components/clock-in-modal";
 import AttendanceQrModal from "@/components/attendance-qr-modal";
 import RatingModal, { RatingPayload } from "@/components/rating-modal";
@@ -23,7 +22,7 @@ import ScheduledJobsFeed from "@/components/scheduled-jobs-feed";
 import MyApplications from "@/components/my-applications";
 import { RekhasthaLogo } from "@/components/rekhastha-logo";
 import EscrowProjectsPanel from "@/components/escrow-projects-panel";
-import CompanyRadarMap from "@/components/company-radar-map";
+import CompanyRadarStats from "@/components/company-radar-stats";
 import {
   subscribeToServer,
   subscribeAttendance,
@@ -494,7 +493,7 @@ export default function Home() {
         setUserLocation({ lat: p.coords.latitude, lng: p.coords.longitude });
         setLocationAccuracy(Math.round(p.coords.accuracy));
         // Keep the server's copy of this worker's coordinates fresh while the
-        // radar is on, so companies can find them via GET /api/companies/radar.
+        // radar is on, so they count toward GET /api/companies/radar-stats.
         if (radarOnRef.current) {
           void postWorkerLocation(p.coords.latitude, p.coords.longitude, true);
         }
@@ -1475,10 +1474,7 @@ export default function Home() {
               <div className="flex items-center gap-2">
                 <RekhasthaLogo size={34} showSubtitle wordmarkClassName="text-lg" />
                 {mode === "perusahaan" && (
-                  <>
-                    <NotificationPanel notifications={notifications} onStatusChange={handleStatusChange} onOpenChat={handleOpenChatFromNotif} onMarkComplete={handleSplitPayment} onDispute={handleNotifDispute} />
-                    <NotificationBell />
-                  </>
+                  <NotificationPanel notifications={notifications} onStatusChange={handleStatusChange} onOpenChat={handleOpenChatFromNotif} onMarkComplete={handleSplitPayment} onDispute={handleNotifDispute} />
                 )}
               </div>
               <span className={`text-xs font-bold px-3 py-1.5 rounded-lg ${mode === "perusahaan" ? "bg-blue-50 text-blue-700" : "bg-primary/10 text-primary"}`}>
@@ -1693,7 +1689,7 @@ export default function Home() {
               companyView === "analytics" ? (
                 <AnalyticsDashboard customJobs={customJobs} ratings={ratings} totalApplicants={notifications.length} />
               ) : companyView === "radar" ? (
-                <CompanyRadarMap />
+                <CompanyRadarStats onGoInstant={() => setCompanyView("jobs")} />
               ) : (
                 <HiringModePanel
                   currentUser={currentUser}

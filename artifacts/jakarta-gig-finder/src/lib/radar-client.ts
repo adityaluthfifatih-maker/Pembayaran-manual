@@ -1,20 +1,9 @@
 const API_BASE = "/api";
 
-export interface RadarWorker {
-  id: string;
-  firstName: string;
-  skills: string[];
-  distanceKm: number;
-  lat: number;
-  lng: number;
-  whatsapp: string | null;
-  contactLocked: boolean;
-}
-
-export interface RadarResponse {
-  workers: RadarWorker[];
-  isPremium: boolean;
+export interface RadarStats {
+  count: number;
   radiusKm: number;
+  isPremium: boolean;
 }
 
 export async function postWorkerLocation(
@@ -39,17 +28,22 @@ export async function postCompanyLocation(lat: number, lng: number): Promise<voi
   });
 }
 
-export async function fetchRadar(lat?: number, lng?: number): Promise<RadarResponse> {
+export async function fetchRadarStats(
+  lat?: number,
+  lng?: number,
+  radiusKm?: number,
+): Promise<RadarStats> {
   const params = new URLSearchParams();
   if (lat !== undefined) params.set("lat", String(lat));
   if (lng !== undefined) params.set("lng", String(lng));
+  if (radiusKm !== undefined) params.set("radiusKm", String(radiusKm));
   const qs = params.toString();
-  const res = await fetch(`${API_BASE}/companies/radar${qs ? `?${qs}` : ""}`, {
+  const res = await fetch(`${API_BASE}/companies/radar-stats${qs ? `?${qs}` : ""}`, {
     credentials: "include",
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? "Gagal memuat radar pekerja.");
+    throw new Error(body.error ?? "Gagal memuat statistik radar pekerja.");
   }
   return res.json();
 }

@@ -20,7 +20,7 @@ interface CompanyProfilePageProps {
   onJobUpdate?: (job: CustomJob) => void;
 }
 
-type ProfileTab = "data" | "analitik" | "riwayat";
+type ProfileTab = "data" | "riwayat";
 
 export default function CompanyProfilePage({
   currentUser, customJobs, ratings, notifications, escrowEvents, onLogout, onDispute, onAdminResolve, onJobUpdate,
@@ -70,7 +70,7 @@ export default function CompanyProfilePage({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto" style={{ background: tab === "analitik" ? "#0F172A" : "#F8FAFC" }}>
+    <div className="flex-1 overflow-y-auto" style={{ background: "#F8FAFC" }}>
 
       {/* ── Profile header ──────────────────────────────── */}
       <div
@@ -108,15 +108,13 @@ export default function CompanyProfilePage({
       </div>
 
       {/* ── Tab bar ─────────────────────────────────────── */}
-      <div className={`flex border-b px-5 gap-1 ${tab === "analitik" ? "bg-slate-900 border-slate-700" : "bg-white border-gray-100"}`}>
-        {(["data", "analitik", "riwayat"] as ProfileTab[]).map((t) => (
+      <div className="flex border-b px-5 gap-1 bg-white border-gray-100">
+        {(["data", "riwayat"] as ProfileTab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 ${
-              tab === t
-                ? t === "analitik" ? "border-emerald-400 text-emerald-400" : "border-blue-600 text-blue-700"
-                : tab === "analitik" ? "border-transparent text-slate-500" : "border-transparent text-gray-500"
+              tab === t ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500"
             }`}>
-            {t === "data" ? "🏢 Bisnis" : t === "analitik" ? "📊 Analitik" : "📋 Riwayat"}
+            {t === "data" ? "🏢 Bisnis" : "📋 Riwayat"}
           </button>
         ))}
       </div>
@@ -337,12 +335,6 @@ export default function CompanyProfilePage({
             ))}
           </div>
 
-          {/* Switch to analytics CTA */}
-          <button onClick={() => setTab("analitik")}
-            className="w-full flex items-center justify-center gap-2 bg-slate-900 text-emerald-400 text-sm font-bold py-3.5 rounded-2xl hover:bg-slate-800 transition-colors">
-            <BarChart2 className="w-4 h-4" /> Lihat Dashboard Analitik Keuangan →
-          </button>
-
           {/* ── Admin Escrow Key Panel ───────────────── */}
           <button onClick={() => setShowAdminPanel(p => !p)}
             className="w-full flex items-center justify-center gap-2 bg-gray-900 text-amber-400 text-xs font-bold py-3 rounded-2xl hover:bg-gray-800 transition-colors border border-amber-900/30">
@@ -390,18 +382,6 @@ export default function CompanyProfilePage({
             className="w-full flex items-center justify-center gap-2 bg-red-50 border border-red-200 text-red-500 text-sm font-semibold py-3 rounded-2xl hover:bg-red-100 transition-colors">
             <LogOut className="w-4 h-4" /> Keluar dari Akun
           </button>
-        </div>
-
-      ) : tab === "analitik" ? (
-        /* Analytics — reuses dark AnalyticsDashboard + logout at bottom */
-        <div className="flex flex-col" style={{ background: "#0F172A" }}>
-          <AnalyticsDashboard customJobs={customJobs} ratings={ratings} totalApplicants={notifications.length} />
-          <div className="px-4 pb-10 space-y-3" style={{ background: "#0F172A" }}>
-            <button onClick={onLogout}
-              className="w-full flex items-center justify-center gap-2 border border-red-800 text-red-400 text-sm font-semibold py-3 rounded-2xl hover:bg-red-900/20 transition-colors">
-              <LogOut className="w-4 h-4" /> Keluar dari Akun
-            </button>
-          </div>
         </div>
 
       ) : (

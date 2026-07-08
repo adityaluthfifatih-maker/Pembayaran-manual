@@ -9,4 +9,4 @@
 - [KYC verification flow](kyc-verification.md) — verificationStatus defaults "pending" at signup, so admin queue filters by doc presence not status; resubmission resets to pending.
 - [Xendit escrow projects](xendit-escrow-projects.md) — separate project/milestone escrow using real Xendit Invoice+Disbursement APIs, distinct from the fee-based internal escrow engine.
 - [Flat-rate + paywall pivot](flat-rate-paywall-pivot.md) — % commission retired for new postings (feeRate:0); Instan Kilat flat price + applicant-contact paywall; escrow.ts math kept legacy-only.
-- [Company radar geolocation](company-radar-geolocation.md) — earthdistance radar, 300-500m coord fuzzing, subscription paywall reuse, and an in-page @media-print fix (avoid popup+innerHTML for downloads/PDFs).
+- [Company radar geolocation](company-radar-geolocation.md) — company-facing radar is aggregate-count-only (no map/pins/contact info), anti-bypass/privacy fix; plus an in-page @media-print gotcha.

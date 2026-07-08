@@ -1,30 +1,29 @@
 ---
 name: Company radar geolocation feature
-description: Nearby-worker radar map (earthdistance query, coordinate fuzzing, print-quality fix) — decisions to stay consistent with.
+description: Nearby-worker radar is aggregate-count-only (no map/pins) for privacy + anti-bypass reasons; earthdistance query + print-quality fix — decisions to stay consistent with.
 ---
 
 # Company radar geolocation feature
 
-`GET /api/companies/radar` uses Postgres `cube`+`earthdistance` extensions (enabled
-idempotently at server startup, not via a migration) to find ready-to-work users within
-5km of the company's last known location.
+**Current shape (superseded the old pin-map version):** `GET /api/companies/radar-stats`
+returns only `{ count, radiusKm, isPremium }` — a `COUNT(*)` over Postgres
+`cube`+`earthdistance` (enabled idempotently at server startup, not via a migration) of
+ready-to-work users within a company-chosen 3km/5km radius. No worker lat/lng, name, or
+WhatsApp number is ever included in the response.
 
-**Coordinate fuzzing:** worker coordinates returned to a company are fuzzed by
-300–500m before being sent to the client. This is a deliberate privacy tradeoff — exact
-worker location is never exposed to employers, only an approximate pin + distance.
+**Why the map/pins were removed:** the earlier version returned fuzzed worker
+coordinates + unlocked contact info to premium companies on a Leaflet map. This let
+employers locate and contact workers directly, bypassing the platform's paid
+Instan/Premium flows and creating a worker-privacy/security risk. The fix was to drop
+per-worker data entirely and expose only an aggregate count, with CTAs steering
+employers to Mode Instan or the Premium subscription instead of self-serve contact.
 
-**Free-tier paywall:** contact info (phone/full name) on radar pins is masked unless the
-company has an active subscription (checked via `getActiveSubscription`, exported from
-`monetization.ts`). This mirrors the existing applicant-contact paywall pattern rather
-than inventing a new gating mechanism.
-
-**Why:** keeps the radar feature consistent with the already-shipped flat-rate +
-paywall monetization model (see `flat-rate-paywall-pivot.md`) instead of introducing a
-second, divergent premium-gating scheme.
-
-**How to apply:** any new radar/location endpoint should reuse `ensureEarthdistanceExtensions`
-+ `fuzzCoordinate` from `artifacts/api-server/src/lib/geo.ts` rather than re-implementing
-distance math, and should gate contact-info visibility through `getActiveSubscription`.
+**How to apply:** any future "find nearby workers" feature for employers must stay
+aggregate-only (counts/bucket stats) — do not reintroduce per-worker coordinates or
+contact info in a company-facing response. Reuse `ensureEarthdistanceExtensions` from
+`artifacts/api-server/src/lib/geo.ts` for the distance math. The worker-facing map
+(`worker-map.tsx`, showing the worker's own surroundings/gigs) is unaffected — this
+restriction applies only to company/employer-facing worker-location data.
 
 ## Print-quality gotcha (applies beyond radar)
 
