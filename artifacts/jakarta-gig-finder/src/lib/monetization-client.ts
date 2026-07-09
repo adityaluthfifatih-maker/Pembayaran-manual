@@ -51,3 +51,44 @@ export function fetchSubscription(): Promise<SubscriptionInfo> {
 export function subscribePremium(): Promise<unknown> {
   return request("/subscriptions/subscribe", "POST");
 }
+
+// ── Rekhastha Bisnis (new tiered subscription system) ──────────────
+
+export interface SubscriptionPlan {
+  id: number;
+  label: string;
+  durationMonths: number;
+  durationDays: number;
+  originalPrice: number;
+  promoPrice: number;
+}
+
+export interface BisnisStatus {
+  isPremium: boolean;
+  expiredAt: string | null;
+}
+
+export interface SubscriptionOrder {
+  id: number;
+  companyId: string;
+  planId: number;
+  amount: number;
+  status: string;
+  orderIdGateway: string | null;
+}
+
+export function fetchSubscriptionPlans(): Promise<SubscriptionPlan[]> {
+  return request<SubscriptionPlan[]>("/subscription-plans", "GET");
+}
+
+export function fetchBisnisStatus(): Promise<BisnisStatus> {
+  return request<BisnisStatus>("/subscriptions/status", "GET");
+}
+
+export function createSubscriptionOrder(planId: number): Promise<{ order: SubscriptionOrder; plan: SubscriptionPlan }> {
+  return request("/subscriptions/orders", "POST", { planId });
+}
+
+export function confirmSubscriptionPayment(orderId: number): Promise<unknown> {
+  return request("/webhook/subscription-payment", "POST", { orderId, status: "success" });
+}
