@@ -1,18 +1,20 @@
 import { randomUUID } from "node:crypto";
 import type { CookieOptions } from "express";
 import { and, eq, lte } from "drizzle-orm";
-import { db, adminSessionsTable, adminLoginAttemptsTable } from "@workspace/db";
+import bcrypt from "bcryptjs";
+import { db, adminUsersTable, adminSessionsTable, adminLoginAttemptsTable } from "@workspace/db";
 
 /**
  * Admin ("Tilu Company") control-plane auth. Deliberately separate from the
  * user session system: a distinct httpOnly cookie, a Postgres-backed session
- * store, and per-IP brute-force throttling. Both the session store and the
- * throttle counters live in the database so they survive an API server restart
- * (a restart used to log every admin out and reset the brute-force throttle).
- * Credentials come from env secrets (ADMIN_ID / ADMIN_TOKEN). In development
- * the documented demo values are used as a fallback so the portal works out of
- * the box; in production the demo fallback is disabled and the server refuses
- * to start unless real secrets are configured.
+ * store, and per-IP brute-force throttling.
+ *
+ * Credentials are now stored in `admin_users` (bcrypt hashes) so the operator
+ * can change their own password via the portal without editing env secrets.
+ * The ADMIN_TOKEN env secret is kept as a one-time recovery key only.
+ *
+ * On first startup (empty admin_users) the table is seeded automatically from
+ * ADMIN_ID / ADMIN_TOKEN env secrets (or the dev fallbacks in non-production).
  */
 export const ADMIN_COOKIE = "rekhastha_admin";
 const ADMIN_TTL_MS = 1000 * 60 * 60 * 8; // 8 hours
@@ -23,8 +25,8 @@ const DEFAULT_ADMIN_TOKEN = "rekhastha2026";
 const IS_PROD = process.env["NODE_ENV"] === "production";
 
 /**
- * Returns the active admin credentials, or null when running in production
- * without real secrets configured (demo fallback is disabled in production).
+ * Returns the active env-based admin credentials (used for bootstrap seed
+ * and password recovery). Dev fallback is disabled in production.
  */
 export function adminCredentials(): { id: string; token: string } | null {
   const id = process.env["ADMIN_ID"]?.trim();
@@ -41,10 +43,97 @@ export function adminCredentials(): { id: string; token: string } | null {
   return { id: DEFAULT_ADMIN_ID, token: DEFAULT_ADMIN_TOKEN };
 }
 
-export function verifyAdminCredentials(id: string, token: string): boolean {
-  const expected = adminCredentials();
-  if (!expected) return false;
-  return id === expected.id && token === expected.token;
+/**
+ * Seeds the admin_users table from env secrets / dev fallbacks if it is
+ * empty. Call once at server startup. Idempotent — no-ops if a row already
+ * exists.
+ */
+export async function bootstrapAdminUser(): Promise<void> {
+  const existing = await db.select({ adminId: adminUsersTable.adminId }).from(adminUsersTable).limit(1);
+  if (existing.length > 0) return;
+
+  const creds = adminCredentials();
+  if (!creds) {
+    throw new Error(
+      "Production startup blocked: admin_users table is empty and ADMIN_ID/ADMIN_TOKEN secrets are not set. " +
+      "Configure both secrets so the initial admin account can be seeded.",
+    );
+  }
+
+  const passwordHash = await bcrypt.hash(creds.token, 10);
+  await db.insert(adminUsersTable).values({
+    adminId: creds.id,
+    passwordHash,
+    displayName: "Tilu Admin",
+    mustChangePassword: false,
+  });
+}
+
+/**
+ * DB-backed credential check. Replaces the old synchronous env comparison.
+ */
+export async function verifyAdminPassword(adminId: string, password: string): Promise<boolean> {
+  const [row] = await db
+    .select({ passwordHash: adminUsersTable.passwordHash })
+    .from(adminUsersTable)
+    .where(eq(adminUsersTable.adminId, adminId))
+    .limit(1);
+
+  if (!row) return false;
+  return bcrypt.compare(password, row.passwordHash);
+}
+
+/**
+ * Change password for a logged-in admin. Requires the old password for
+ * verification before updating.
+ */
+export async function changeAdminPassword(
+  adminId: string,
+  oldPassword: string,
+  newPassword: string,
+): Promise<{ ok: true } | { error: string }> {
+  const valid = await verifyAdminPassword(adminId, oldPassword);
+  if (!valid) return { error: "Kata sandi lama tidak sesuai." };
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await db
+    .update(adminUsersTable)
+    .set({ passwordHash, mustChangePassword: false, updatedAt: new Date() })
+    .where(eq(adminUsersTable.adminId, adminId));
+
+  return { ok: true };
+}
+
+/**
+ * Emergency password reset using the ADMIN_TOKEN env secret as a recovery
+ * key. This lets the operator regain access if they forget their DB password,
+ * without requiring a re-deployment.
+ */
+export async function resetAdminPassword(
+  adminId: string,
+  newPassword: string,
+  recoveryToken: string,
+): Promise<{ ok: true } | { error: string }> {
+  const creds = adminCredentials();
+  if (!creds || recoveryToken !== creds.token) {
+    return { error: "Token pemulihan tidak valid." };
+  }
+
+  const [row] = await db
+    .select({ adminId: adminUsersTable.adminId })
+    .from(adminUsersTable)
+    .where(eq(adminUsersTable.adminId, adminId))
+    .limit(1);
+
+  if (!row) return { error: "Admin ID tidak ditemukan." };
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await db
+    .update(adminUsersTable)
+    .set({ passwordHash, mustChangePassword: false, updatedAt: new Date() })
+    .where(eq(adminUsersTable.adminId, adminId));
+
+  return { ok: true };
 }
 
 export function adminCookieOptions(): CookieOptions {
@@ -164,7 +253,6 @@ export async function pruneAdminState(): Promise<void> {
     .where(
       and(
         lte(adminLoginAttemptsTable.lockedUntil, now),
-        // only prune rows that are no longer locked
         eq(adminLoginAttemptsTable.count, 0),
       ),
     );

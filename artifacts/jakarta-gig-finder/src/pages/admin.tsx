@@ -14,7 +14,8 @@ import {
   ResponsiveContainer, Legend,
 } from "recharts";
 import {
-  adminLogin, adminLogout, adminMe, fetchLedger, forceRelease,
+  adminLogin, adminLogout, adminMe, adminChangePassword, adminResetPassword,
+  fetchLedger, forceRelease,
   fetchAdminUsers, toggleSuspend, AdminError,
   fetchDisputes, refund, fetchOnsite,
   fetchAcademy, submitAcademy,
@@ -42,14 +43,22 @@ function formatRp(v: number): string {
   return "Rp " + Math.round(v).toLocaleString("id-ID");
 }
 
-type Tab = "dashboard" | "revenue" | "escrow" | "resolution" | "onsite" | "users" | "kyc" | "academy" | "jobs" | "logs";
+type Tab = "dashboard" | "revenue" | "escrow" | "resolution" | "onsite" | "users" | "kyc" | "academy" | "jobs" | "logs" | "akun";
 
 // ── Login gateway ─────────────────────────────────────────────────
 function LoginGate({ onSuccess }: { onSuccess: () => void }) {
+  const [mode, setMode] = useState<"login" | "reset">("login");
   const [adminId, setAdminId] = useState("");
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Reset form state
+  const [resetAdminId, setResetAdminId] = useState("");
+  const [resetRecovery, setResetRecovery] = useState("");
+  const [resetNew, setResetNew] = useState("");
+  const [resetConfirm, setResetConfirm] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +74,36 @@ function LoginGate({ onSuccess }: { onSuccess: () => void }) {
       setBusy(false);
     }
   };
+
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    if (resetNew !== resetConfirm) {
+      setError("Konfirmasi kata sandi tidak cocok.");
+      return;
+    }
+    if (resetNew.length < 8) {
+      setError("Kata sandi baru minimal 8 karakter.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await adminResetPassword(resetAdminId.trim(), resetNew, resetRecovery);
+      setSuccess("Kata sandi berhasil direset. Silakan masuk dengan kata sandi baru.");
+      setMode("login");
+      setAdminId(resetAdminId.trim());
+      setToken("");
+    } catch (err) {
+      setError(err instanceof AdminError ? err.message : "Terjadi kesalahan.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const inputCls = "w-full bg-emerald-950/50 border border-emerald-700/50 rounded-xl px-4 py-3 text-sm text-white placeholder-emerald-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/50";
+  const labelCls = "text-xs font-bold text-emerald-100 flex items-center gap-1.5 mb-1.5";
 
   return (
     <div
@@ -83,60 +122,273 @@ function LoginGate({ onSuccess }: { onSuccess: () => void }) {
           <p className="text-sm mt-0.5" style={{ color: GOLD }}>Tilu Company · Rekhastha</p>
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="bg-white/5 backdrop-blur border rounded-2xl p-6 space-y-4 shadow-2xl"
-          style={{ borderColor: "rgba(212,175,55,0.3)" }}
-        >
+        {mode === "login" ? (
+          <form
+            onSubmit={handleSubmit}
+            className="bg-white/5 backdrop-blur border rounded-2xl p-6 space-y-4 shadow-2xl"
+            style={{ borderColor: "rgba(212,175,55,0.3)" }}
+          >
+            <div>
+              <label className={labelCls}>
+                <Lock className="w-3.5 h-3.5" /> Identitas Admin
+              </label>
+              <input
+                data-testid="input-admin-id"
+                value={adminId}
+                onChange={(e) => setAdminId(e.target.value)}
+                autoComplete="username"
+                placeholder="Masukkan Identitas Admin"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>
+                <KeyRound className="w-3.5 h-3.5" /> Kata Sandi
+              </label>
+              <input
+                data-testid="input-admin-token"
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                autoComplete="current-password"
+                placeholder="Masukkan Kata Sandi"
+                className={inputCls}
+              />
+            </div>
+
+            {success && (
+              <div className="flex items-start gap-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 px-3 py-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-300 shrink-0 mt-0.5" />
+                <p className="text-xs text-emerald-200 leading-relaxed">{success}</p>
+              </div>
+            )}
+
+            {error && (
+              <div className="flex items-start gap-2 rounded-xl bg-red-500/15 border border-red-500/30 px-3 py-2.5">
+                <AlertTriangle className="w-4 h-4 text-red-300 shrink-0 mt-0.5" />
+                <p className="text-xs text-red-200 leading-relaxed">{error}</p>
+              </div>
+            )}
+
+            <button
+              data-testid="button-admin-login"
+              type="submit"
+              disabled={busy || !adminId || !token}
+              className="w-full font-black py-3.5 rounded-xl text-sm text-emerald-950 transition-all disabled:opacity-50 active:scale-[0.98] flex items-center justify-center gap-2"
+              style={{ background: `linear-gradient(135deg, ${GOLD}, #c9a227)` }}
+            >
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+              Masuk ke Command Center
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setMode("reset"); setError(null); setSuccess(null); }}
+              className="w-full text-center text-xs text-emerald-300/60 hover:text-emerald-200 transition-colors pt-1"
+            >
+              Lupa kata sandi? Gunakan token pemulihan
+            </button>
+          </form>
+        ) : (
+          <form
+            onSubmit={handleReset}
+            className="bg-white/5 backdrop-blur border rounded-2xl p-6 space-y-4 shadow-2xl"
+            style={{ borderColor: "rgba(212,175,55,0.3)" }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <RotateCcw className="w-4 h-4 text-amber-400" />
+              <h2 className="text-sm font-black text-white">Reset Kata Sandi Admin</h2>
+            </div>
+            <p className="text-[11px] text-emerald-300/70 leading-relaxed -mt-2">
+              Masukkan token pemulihan yang sama dengan nilai <strong className="text-emerald-200">ADMIN_TOKEN</strong> di panel Secrets Replit.
+            </p>
+
+            <div>
+              <label className={labelCls}><Lock className="w-3.5 h-3.5" /> Identitas Admin</label>
+              <input
+                value={resetAdminId}
+                onChange={(e) => setResetAdminId(e.target.value)}
+                autoComplete="username"
+                placeholder="Identitas Admin (mis. tilu_admin)"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}><KeyRound className="w-3.5 h-3.5" /> Token Pemulihan</label>
+              <input
+                type="password"
+                value={resetRecovery}
+                onChange={(e) => setResetRecovery(e.target.value)}
+                placeholder="Nilai ADMIN_TOKEN dari Secrets"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}><KeyRound className="w-3.5 h-3.5" /> Kata Sandi Baru</label>
+              <input
+                type="password"
+                value={resetNew}
+                onChange={(e) => setResetNew(e.target.value)}
+                autoComplete="new-password"
+                placeholder="Min. 8 karakter"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}><KeyRound className="w-3.5 h-3.5" /> Konfirmasi Kata Sandi</label>
+              <input
+                type="password"
+                value={resetConfirm}
+                onChange={(e) => setResetConfirm(e.target.value)}
+                autoComplete="new-password"
+                placeholder="Ulangi kata sandi baru"
+                className={inputCls}
+              />
+            </div>
+
+            {error && (
+              <div className="flex items-start gap-2 rounded-xl bg-red-500/15 border border-red-500/30 px-3 py-2.5">
+                <AlertTriangle className="w-4 h-4 text-red-300 shrink-0 mt-0.5" />
+                <p className="text-xs text-red-200 leading-relaxed">{error}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={busy || !resetAdminId || !resetRecovery || !resetNew || !resetConfirm}
+              className="w-full font-black py-3.5 rounded-xl text-sm text-emerald-950 transition-all disabled:opacity-50 active:scale-[0.98] flex items-center justify-center gap-2"
+              style={{ background: `linear-gradient(135deg, ${GOLD}, #c9a227)` }}
+            >
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+              Reset Kata Sandi
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setMode("login"); setError(null); }}
+              className="w-full text-center text-xs text-emerald-300/60 hover:text-emerald-200 transition-colors pt-1"
+            >
+              ← Kembali ke halaman masuk
+            </button>
+          </form>
+        )}
+
+        <p className="text-center text-[11px] text-emerald-300/50 mt-4">
+          Akses terbatas untuk operator platform. Aktivitas dicatat.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Change Password tab (inside CommandCenter) ────────────────────
+function ChangePasswordTab() {
+  const [oldPw, setOldPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    if (newPw !== confirmPw) { setError("Konfirmasi kata sandi tidak cocok."); return; }
+    if (newPw.length < 8) { setError("Kata sandi baru minimal 8 karakter."); return; }
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await adminChangePassword(oldPw, newPw);
+      setSuccess("Kata sandi berhasil diubah.");
+      setOldPw(""); setNewPw(""); setConfirmPw("");
+    } catch (err) {
+      setError(err instanceof AdminError ? err.message : "Terjadi kesalahan.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const inputCls = "w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/40";
+  const labelCls = "block text-xs font-bold text-gray-600 mb-1.5";
+
+  return (
+    <div className="max-w-md">
+      <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
+            <KeyRound className="w-4 h-4 text-emerald-600" />
+          </div>
           <div>
-            <label className="text-xs font-bold text-emerald-100 flex items-center gap-1.5 mb-1.5">
-              <Lock className="w-3.5 h-3.5" /> Identitas Admin
-            </label>
+            <p className="font-black text-sm text-gray-900">Ganti Kata Sandi</p>
+            <p className="text-[11px] text-gray-400">Kata sandi disimpan terenkripsi di database</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className={labelCls}>Kata Sandi Lama</label>
             <input
-              data-testid="input-admin-id"
-              value={adminId}
-              onChange={(e) => setAdminId(e.target.value)}
-              autoComplete="username"
-              placeholder="Masukkan Identitas Admin"
-              className="w-full bg-emerald-950/50 border border-emerald-700/50 rounded-xl px-4 py-3 text-sm text-white placeholder-emerald-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+              type="password"
+              value={oldPw}
+              onChange={(e) => setOldPw(e.target.value)}
+              autoComplete="current-password"
+              placeholder="Kata sandi saat ini"
+              className={inputCls}
             />
           </div>
           <div>
-            <label className="text-xs font-bold text-emerald-100 flex items-center gap-1.5 mb-1.5">
-              <KeyRound className="w-3.5 h-3.5" /> Kode Token / Passkey
-            </label>
+            <label className={labelCls}>Kata Sandi Baru</label>
             <input
-              data-testid="input-admin-token"
               type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              autoComplete="current-password"
-              placeholder="Masukkan Kode Token"
-              className="w-full bg-emerald-950/50 border border-emerald-700/50 rounded-xl px-4 py-3 text-sm text-white placeholder-emerald-300/40 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+              value={newPw}
+              onChange={(e) => setNewPw(e.target.value)}
+              autoComplete="new-password"
+              placeholder="Min. 8 karakter"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Konfirmasi Kata Sandi Baru</label>
+            <input
+              type="password"
+              value={confirmPw}
+              onChange={(e) => setConfirmPw(e.target.value)}
+              autoComplete="new-password"
+              placeholder="Ulangi kata sandi baru"
+              className={inputCls}
             />
           </div>
 
           {error && (
-            <div className="flex items-start gap-2 rounded-xl bg-red-500/15 border border-red-500/30 px-3 py-2.5">
-              <AlertTriangle className="w-4 h-4 text-red-300 shrink-0 mt-0.5" />
-              <p className="text-xs text-red-200 leading-relaxed">{error}</p>
+            <div className="flex items-start gap-2 rounded-xl bg-red-50 border border-red-200 px-3 py-2.5">
+              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-red-700 leading-relaxed">{error}</p>
+            </div>
+          )}
+
+          {success && (
+            <div className="flex items-start gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-emerald-700 leading-relaxed">{success}</p>
             </div>
           )}
 
           <button
-            data-testid="button-admin-login"
             type="submit"
-            disabled={busy || !adminId || !token}
-            className="w-full font-black py-3.5 rounded-xl text-sm text-emerald-950 transition-all disabled:opacity-50 active:scale-[0.98] flex items-center justify-center gap-2"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, #c9a227)` }}
+            disabled={busy || !oldPw || !newPw || !confirmPw}
+            className="w-full font-black py-3 rounded-xl text-sm text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-2"
           >
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-            Masuk ke Command Center
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+            Simpan Kata Sandi Baru
           </button>
         </form>
-        <p className="text-center text-[11px] text-emerald-300/50 mt-4">
-          Akses terbatas untuk operator platform. Aktivitas dicatat.
-        </p>
+
+        <div className="border-t border-gray-100 pt-4 mt-2">
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            <strong className="text-gray-500">Lupa kata sandi?</strong> Gunakan fitur &ldquo;Reset Kata Sandi&rdquo; di halaman masuk dengan token pemulihan dari Secrets Replit (<code className="bg-gray-100 px-1 rounded text-[10px]">ADMIN_TOKEN</code>).
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -2366,6 +2618,7 @@ function CommandCenter({
     { id: "kyc", label: "🪪 Verifikasi KYC", icon: <IdCard className="w-4 h-4" /> },
     { id: "academy", label: "🎓 Kurasi Akademi", icon: <GraduationCap className="w-4 h-4" /> },
     { id: "logs", label: "📝 Log Audit", icon: <FileText className="w-4 h-4" /> },
+    { id: "akun", label: "🔑 Pengaturan Akun", icon: <Settings2 className="w-4 h-4" /> },
   ];
 
   return (
@@ -2454,6 +2707,7 @@ function CommandCenter({
         {tab === "kyc" && <KycTab />}
         {tab === "academy" && <AcademyTab onTrainingPassed={onTrainingPassed} />}
         {tab === "logs" && <LogsTab />}
+        {tab === "akun" && <ChangePasswordTab />}
       </main>
 
       {/* Full-screen worker SOS alarm — blocks everything when active */}

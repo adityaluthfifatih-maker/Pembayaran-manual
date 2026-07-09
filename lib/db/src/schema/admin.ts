@@ -4,6 +4,7 @@ import {
   text,
   integer,
   timestamp,
+  boolean,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -12,6 +13,22 @@ import {
  * These tables move the previously in-memory session store and per-IP
  * brute-force throttle into Postgres so both survive an API server restart.
  */
+
+/**
+ * DB-backed admin accounts. Credentials are stored as bcrypt hashes and
+ * managed via the admin portal itself (change-password + recovery flow),
+ * so the operator is never dependent on manually editing env secrets for
+ * day-to-day login. The ADMIN_TOKEN env secret is kept only as a one-time
+ * recovery key when the password is forgotten.
+ */
+export const adminUsersTable = pgTable("admin_users", {
+  adminId: text("admin_id").primaryKey(),
+  passwordHash: text("password_hash").notNull(),
+  displayName: text("display_name"),
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 /** Opaque admin session tokens referenced by the `rekhastha_admin` cookie. */
 export const adminSessionsTable = pgTable("admin_sessions", {
@@ -68,6 +85,7 @@ export const radarScrapeAlertsTable = pgTable("radar_scrape_alerts", {
     .defaultNow(),
 });
 
+export type AdminUser = typeof adminUsersTable.$inferSelect;
 export type AdminSession = typeof adminSessionsTable.$inferSelect;
 export type AdminLoginAttempt = typeof adminLoginAttemptsTable.$inferSelect;
 export type AdminLog = typeof adminLogsTable.$inferSelect;

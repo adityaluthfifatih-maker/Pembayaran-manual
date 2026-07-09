@@ -134,6 +134,21 @@ export function adminLogin(adminId: string, token: string): Promise<{ ok: true }
   return request("/admin/login", "POST", { adminId, token });
 }
 
+export function adminChangePassword(
+  oldPassword: string,
+  newPassword: string,
+): Promise<{ ok: true }> {
+  return request("/admin/change-password", "POST", { oldPassword, newPassword });
+}
+
+export function adminResetPassword(
+  adminId: string,
+  newPassword: string,
+  recoveryToken: string,
+): Promise<{ ok: true }> {
+  return request("/admin/reset-password", "POST", { adminId, newPassword, recoveryToken });
+}
+
 export function adminLogout(): Promise<void> {
   return request("/admin/logout", "POST");
 }

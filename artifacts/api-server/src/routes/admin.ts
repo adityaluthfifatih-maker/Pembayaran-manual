@@ -17,14 +17,16 @@ import {
   ADMIN_COOKIE,
   adminCookieOptions,
   adminSessionId,
+  changeAdminPassword,
   createAdminSession,
   deleteAdminSession,
   isAdminSession,
   lockoutRemaining,
   pruneAdminState,
   recordFailedAttempt,
+  resetAdminPassword,
   resetAttempts,
-  verifyAdminCredentials,
+  verifyAdminPassword,
 } from "../lib/admin";
 import {
   getAllQuestionsForAdmin,
@@ -78,14 +80,15 @@ router.post("/admin/login", async (req, res): Promise<void> => {
 
   const parsed = loginBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: "Identitas Admin dan Kode Token wajib diisi." });
+    res.status(400).json({ error: "Identitas Admin dan Kata Sandi wajib diisi." });
     return;
   }
 
-  if (!verifyAdminCredentials(parsed.data.adminId.trim(), parsed.data.token)) {
+  const valid = await verifyAdminPassword(parsed.data.adminId.trim(), parsed.data.token);
+  if (!valid) {
     await recordFailedAttempt(ip);
     req.log.warn({ ip }, "Failed admin login attempt");
-    res.status(401).json({ error: "Identitas Admin atau Kode Token salah." });
+    res.status(401).json({ error: "Identitas Admin atau Kata Sandi salah." });
     return;
   }
 
@@ -93,6 +96,59 @@ router.post("/admin/login", async (req, res): Promise<void> => {
   const session = await createAdminSession(parsed.data.adminId.trim());
   res.cookie(ADMIN_COOKIE, session, adminCookieOptions());
   res.json({ ok: true });
+});
+
+const changePasswordBody = z.object({
+  oldPassword: z.string().min(1),
+  newPassword: z.string().min(8, "Kata sandi minimal 8 karakter."),
+});
+
+router.post("/admin/change-password", async (req, res): Promise<void> => {
+  const adminId = await adminSessionId(req.cookies?.[ADMIN_COOKIE]);
+  if (!adminId) {
+    res.status(401).json({ error: "Sesi admin tidak valid." });
+    return;
+  }
+
+  const parsed = changePasswordBody.safeParse(req.body);
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? "Input tidak valid.";
+    res.status(400).json({ error: msg });
+    return;
+  }
+
+  const result = await changeAdminPassword(adminId, parsed.data.oldPassword, parsed.data.newPassword);
+  if ("error" in result) {
+    res.status(400).json(result);
+    return;
+  }
+  res.json(result);
+});
+
+const resetPasswordBody = z.object({
+  adminId: z.string().min(1),
+  newPassword: z.string().min(8, "Kata sandi minimal 8 karakter."),
+  recoveryToken: z.string().min(1),
+});
+
+router.post("/admin/reset-password", async (req, res): Promise<void> => {
+  const parsed = resetPasswordBody.safeParse(req.body);
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? "Input tidak valid.";
+    res.status(400).json({ error: msg });
+    return;
+  }
+
+  const result = await resetAdminPassword(
+    parsed.data.adminId,
+    parsed.data.newPassword,
+    parsed.data.recoveryToken,
+  );
+  if ("error" in result) {
+    res.status(400).json(result);
+    return;
+  }
+  res.json(result);
 });
 
 router.post("/admin/logout", async (req, res): Promise<void> => {
