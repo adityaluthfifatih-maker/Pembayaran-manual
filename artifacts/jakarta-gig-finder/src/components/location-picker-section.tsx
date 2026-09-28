@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MapPin, Navigation, Loader2, X } from "lucide-react";
+import { MAP_ATTRIBUTION, MAP_TILE_URL } from "@/lib/map-config";
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -210,8 +211,8 @@ export default function LocationPickerSection({
           zoomControl={false}
         >
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+            attribution={MAP_ATTRIBUTION}
+            url={MAP_TILE_URL}
           />
           <DraggableMarker lat={markerPos[0]} lng={markerPos[1]} onDragEnd={handleDragEnd} />
           <MapFlyController target={flyTarget} />

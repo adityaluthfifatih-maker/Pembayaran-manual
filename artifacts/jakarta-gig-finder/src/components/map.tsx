@@ -3,6 +3,7 @@ import "leaflet/dist/leaflet.css";
 import { MapContainer, TileLayer, Marker } from "react-leaflet";
 import { Worker } from "../data/workers";
 import { CustomJob } from "../types/custom-job";
+import { MAP_ATTRIBUTION, MAP_TILE_URL } from "@/lib/map-config";
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -59,8 +60,8 @@ export default function Map({ workers, onWorkerClick, customJobs = [], onJobClic
         zoomControl={false}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          attribution={MAP_ATTRIBUTION}
+          url={MAP_TILE_URL}
         />
         {workers.map((worker) => {
           const color = categoryColors[worker.category] || "#6B7280";

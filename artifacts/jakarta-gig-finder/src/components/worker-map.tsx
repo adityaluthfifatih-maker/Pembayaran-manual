@@ -3,6 +3,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MapContainer, TileLayer, Marker, Polyline, Tooltip, useMap } from "react-leaflet";
 import { CustomJob, paymentUnits } from "@/types/custom-job";
+import { MAP_ATTRIBUTION, MAP_TILE_URL } from "@/lib/map-config";
 
 function MapFlyController({ target }: { target: [number, number] | null }) {
   const map = useMap();
@@ -119,8 +120,8 @@ export default function WorkerMap({
         zoomControl={false}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          attribution={MAP_ATTRIBUTION}
+          url={MAP_TILE_URL}
         />
         <MapFlyController target={flyTarget} />
 
