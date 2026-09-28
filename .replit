@@ -88,3 +88,4 @@ channel = "stable-25_05"
 
 [userenv.shared]
 ADMIN_ID = "tilu_admin"
+MIDTRANS_IS_PRODUCTION = "false"
