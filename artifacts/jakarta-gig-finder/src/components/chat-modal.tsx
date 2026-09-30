@@ -119,6 +119,7 @@ export default function ChatModal({
 }: ChatModalProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(!!jobId);
+  const [chatError, setChatError] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [bypassWarning, setBypassWarning] = useState(false);
@@ -142,6 +143,12 @@ export default function ChatModal({
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+  const appendServerMessage = useCallback((row: ChatMessageEvent) => {
+    if (seenMsgIds.current.has(row.id)) return;
+    seenMsgIds.current.add(row.id);
+    setMessages((prev) => [...prev, rowToMsg(row)]);
+  }, []);
+
   const currentNominal = lockedNominal ?? nominal;
   const systemFee = calcEmployerFee(currentNominal, feeRate);
   const totalEscrow = calcEmployerDeposit(currentNominal, feeRate);
@@ -155,25 +162,46 @@ export default function ChatModal({
     // Reset thread state whenever the (jobId, workerId) pair changes.
     setMessages([]);
     seenMsgIds.current = new Set();
+    setChatError(null);
     setLoading(true);
-    (async () => {
+    let requestInFlight = false;
+    const loadHistory = async () => {
+      if (requestInFlight) return;
+      requestInFlight = true;
       try {
-        const res = await fetch(`/api/chat/${jobId}/${workerId}`);
-        if (res.ok && !cancelled) {
-          const rows = (await res.json()) as Array<{
-            id: number; senderRole: string; text: string; sentAt: string;
-          }>;
-          const msgs = rows.map(rowToMsg);
-          msgs.forEach(m => seenMsgIds.current.add(m.id));
-          setMessages(msgs);
+        const res = await fetch(`/api/chat/${jobId}/${workerId}`, { cache: "no-store" });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(body?.error || "Riwayat chat tidak dapat dimuat.");
         }
-      } catch {
-        /* stay with empty state if offline */
+        const rows = (await res.json()) as Array<{
+          id: number; senderRole: string; text: string; sentAt: string;
+          attachmentUrl?: string | null; attachmentType?: string | null; fileSize?: number | null;
+        }>;
+        if (cancelled) return;
+        const history = rows.map(rowToMsg);
+        history.forEach((message) => seenMsgIds.current.add(message.id));
+        setMessages((current) => {
+          const byId = new Map(current.map((message) => [message.id, message]));
+          history.forEach((message) => byId.set(message.id, message));
+          return [...byId.values()].sort((a, b) => a.time.getTime() - b.time.getTime());
+        });
+        setChatError(null);
+      } catch (err) {
+        if (!cancelled) {
+          setChatError(err instanceof Error ? err.message : "Chat tidak dapat dimuat. Periksa koneksi.");
+        }
       } finally {
+        requestInFlight = false;
         if (!cancelled) setLoading(false);
       }
-    })();
-    return () => { cancelled = true; };
+    };
+    void loadHistory();
+    const intervalId = window.setInterval(() => void loadHistory(), 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [jobId, workerId]);
 
   // ── Subscribe to incoming WS chat messages ────────────────────────
@@ -182,11 +210,9 @@ export default function ChatModal({
       // Scope strictly to this (jobId, workerId) thread so that messages
       // from other workers on the same job don't bleed into this view.
       if (ev.jobId !== jobId || ev.workerId !== workerId) return;
-      if (seenMsgIds.current.has(ev.id)) return; // our own POST echo
-      seenMsgIds.current.add(ev.id);
-      setMessages(prev => [...prev, rowToMsg(ev)]);
+      appendServerMessage(ev);
     });
-  }, [jobId, workerId]);
+  }, [jobId, workerId, appendServerMessage]);
 
   // ── Send regular message ──────────────────────────────────────────
   const handleSend = useCallback(async () => {
@@ -206,8 +232,6 @@ export default function ChatModal({
       setInput("");
       return;
     }
-    setInput("");
-
     setSending(true);
     try {
       const res = await fetch(`/api/chat/${jobId}/${workerId}`, {
@@ -215,17 +239,20 @@ export default function ChatModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      // Don't append here — the scoped WS broadcast delivers the message
-      // to both participants (including the sender) so we rely on that path.
-      // This prevents a race-condition duplicate when WS arrives before the
-      // HTTP response and seenMsgIds has not yet been updated.
-      // (error handling: WS will not deliver if server rejected — user can retry)
-    } catch {
-      /* best-effort — message may still arrive via WS */
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error || "Pesan gagal dikirim.");
+      }
+      const row = (await res.json()) as ChatMessageEvent;
+      setInput("");
+      setChatError(null);
+      appendServerMessage(row);
+    } catch (err) {
+      setChatError(err instanceof Error ? err.message : "Pesan gagal dikirim. Coba lagi.");
     } finally {
       setSending(false);
     }
-  }, [input, jobId, sending, blacklisted]);
+  }, [input, jobId, sending, blacklisted, appendServerMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); }
@@ -262,18 +289,23 @@ export default function ChatModal({
         attachmentUrl: string; attachmentType: string; fileSize: number;
       };
 
-      await fetch(`/api/chat/${jobId}/${workerId}`, {
+      const messageRes = await fetch(`/api/chat/${jobId}/${workerId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: "", attachmentUrl, attachmentType, fileSize }),
       });
-      // WS broadcast delivers the message to both participants, same as text.
-    } catch {
-      setAttachError("Gagal mengunggah berkas. Periksa koneksi Anda.");
+      if (!messageRes.ok) {
+        const body = (await messageRes.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error || "Lampiran gagal dikirim.");
+      }
+      appendServerMessage((await messageRes.json()) as ChatMessageEvent);
+      setChatError(null);
+    } catch (err) {
+      setAttachError(err instanceof Error ? err.message : "Gagal mengunggah berkas. Periksa koneksi Anda.");
     } finally {
       setUploading(false);
     }
-  }, [jobId, workerId, blacklisted]);
+  }, [jobId, workerId, blacklisted, appendServerMessage]);
 
   const handleFilePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -474,6 +506,11 @@ export default function ChatModal({
 
           {/* Messages area */}
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2" style={{ background: "#ece5dd" }}>
+            {chatError && (
+              <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                {chatError}
+              </p>
+            )}
             {loading ? (
               <div className="flex items-center justify-center h-full">
                 <div className="flex flex-col items-center gap-2">

@@ -204,7 +204,7 @@ export default function NotificationPanel({ notifications, onStatusChange, onOpe
                             </div>
 
                             {/* Open chat button (only available once worker is accepted) */}
-                            {onOpenChat && n.status === "diterima" && (
+                            {onOpenChat && (n.status === "diterima" || n.status === "selesai") && (
                               <button
                                 data-testid={`button-open-chat-notif-${n.id}`}
                                 onClick={() => { setOpen(false); onOpenChat(n); }}

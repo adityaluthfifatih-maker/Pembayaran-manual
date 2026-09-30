@@ -66,7 +66,7 @@ router.post(
  * The row is persisted and immediately fanned out over the WebSocket hub.
  */
 const applyBody = z.object({
-  jobId: z.coerce.number(),
+  jobId: z.coerce.number().int().positive(),
   jobTitle: z.string().default(""),
   workerName: z.string().default(""),
   workerNikMasked: z.string().default(""),
@@ -106,76 +106,118 @@ router.post("/applications", async (req, res): Promise<void> => {
     return;
   }
 
-  // Resolve the employer_id and hiring mode from the gig row so we can scope
-  // GET/PATCH later and decide whether CV/Portfolio applies (Regular only).
-  const [gig] = await db
-    .select({ employerId: gigsTable.employerId, hiringMode: gigsTable.hiringMode })
-    .from(gigsTable)
-    .where(eq(gigsTable.id, parsed.data.jobId))
-    .limit(1);
-  const employerId = gig?.employerId ?? "";
-  const isRegular = gig?.hiringMode !== "cepat";
+  // Persist the application and its durable notification atomically. This
+  // prevents a failed notification write from leaving an application that
+  // appears to the worker as a failed request and never reaches the employer.
+  const result = await db.transaction(async (tx) => {
+    const [gig] = await tx
+      .select({
+        employerId: gigsTable.employerId,
+        hiringMode: gigsTable.hiringMode,
+        title: gigsTable.posisi,
+      })
+      .from(gigsTable)
+      .where(eq(gigsTable.id, parsed.data.jobId))
+      .limit(1)
+      .for("update");
 
-  let submittedCvUrl = parsed.data.submittedCvUrl;
-  let submittedPortfolioUrl = parsed.data.submittedPortfolioUrl;
+    if (!gig) return { kind: "missing_gig" as const };
+    if (!gig.employerId) return { kind: "missing_employer" as const };
 
-  // Regular job, no fresh upload provided for this application ⇒ fall back to
-  // the worker's profile master CV/Portfolio (the "gunakan dari profil" choice).
-  if (isRegular && !submittedCvUrl && !submittedPortfolioUrl) {
-    const [profileUser] = await db
-      .select({ defaultCvUrl: usersTable.defaultCvUrl, defaultPortfolioUrl: usersTable.defaultPortfolioUrl })
-      .from(usersTable)
-      .where(eq(usersTable.id, user.id))
+    // A repeated submit from a double tap or a retried network request should
+    // not create duplicate rows or duplicate realtime notifications.
+    const [existing] = await tx
+      .select()
+      .from(applicationsTable)
+      .where(
+        and(
+          eq(applicationsTable.jobId, parsed.data.jobId),
+          eq(applicationsTable.workerId, user.id),
+        ),
+      )
+      .orderBy(desc(applicationsTable.createdAt))
       .limit(1);
-    submittedCvUrl = profileUser?.defaultCvUrl ?? undefined;
-    submittedPortfolioUrl = profileUser?.defaultPortfolioUrl ?? undefined;
-  }
+    if (existing && existing.status !== "ditolak") {
+      return { kind: "existing" as const, row: existing, gig };
+    }
 
-  const [row] = await db
-    .insert(applicationsTable)
-    .values({
-      ...parsed.data,
-      submittedCvUrl: isRegular ? submittedCvUrl : undefined,
-      submittedPortfolioUrl: isRegular ? submittedPortfolioUrl : undefined,
-      workerId: user.id,
-      employerId,
-      status: "baru",
-    })
-    .returning();
+    const isRegular = gig.hiringMode !== "cepat";
+    let submittedCvUrl = parsed.data.submittedCvUrl;
+    let submittedPortfolioUrl = parsed.data.submittedPortfolioUrl;
 
-  if (!row) {
-    res.status(500).json({ error: "Gagal menyimpan lamaran. Silakan coba lagi." });
-    return;
-  }
+    if (isRegular && !submittedCvUrl && !submittedPortfolioUrl) {
+      const [profileUser] = await tx
+        .select({
+          defaultCvUrl: usersTable.defaultCvUrl,
+          defaultPortfolioUrl: usersTable.defaultPortfolioUrl,
+        })
+        .from(usersTable)
+        .where(eq(usersTable.id, user.id))
+        .limit(1);
+      submittedCvUrl = profileUser?.defaultCvUrl ?? undefined;
+      submittedPortfolioUrl = profileUser?.defaultPortfolioUrl ?? undefined;
+    }
 
-  if (!employerId) {
-    req.log.warn(
-      { jobId: parsed.data.jobId },
-      "Application saved but employerId is empty — notification skipped",
-    );
-  } else {
-    // Persisted, polling-based notification — the reliable path. This does
-    // not depend on the employer's WebSocket ever being registered, so it
-    // still shows up on refresh/poll even if the realtime push is missed.
-    await db.insert(notificationsTable).values({
-      userId: employerId,
+    const [row] = await tx
+      .insert(applicationsTable)
+      .values({
+        ...parsed.data,
+        jobTitle: gig.title,
+        submittedCvUrl: isRegular ? submittedCvUrl : undefined,
+        submittedPortfolioUrl: isRegular ? submittedPortfolioUrl : undefined,
+        workerId: user.id,
+        employerId: gig.employerId,
+        status: "baru",
+      })
+      .returning();
+    if (!row) return { kind: "insert_failed" as const };
+
+    await tx.insert(notificationsTable).values({
+      userId: gig.employerId,
       message: `${row.workerName || "Seorang pekerja"} baru saja melamar lowongan ${row.jobTitle || "Anda"}`,
       type: "application",
       jobId: row.jobId,
       applicationId: row.id,
     });
 
-    // Include hiringMode alongside the row so the employer's client can pick
-    // the exact Instant vs Regular notification copy without an extra fetch.
-    // Best-effort realtime push on top of the polling-based notification above.
-    broadcastApplication({ ...row, hiringMode: gig?.hiringMode ?? "lama" }, employerId);
+    return { kind: "created" as const, row, gig };
+  });
+
+  if (result.kind === "missing_gig") {
+    res.status(404).json({ error: "Lowongan tidak ditemukan di server." });
+    return;
+  }
+  if (result.kind === "missing_employer") {
+    res.status(409).json({ error: "Lowongan belum terhubung ke akun perusahaan." });
+    return;
+  }
+  if (result.kind === "insert_failed") {
+    res.status(500).json({ error: "Gagal menyimpan lamaran. Silakan coba lagi." });
+    return;
   }
 
-  req.log.info(
-    { applicationId: row.id, jobId: row.jobId, workerId: row.workerId, employerId },
-    "New job application submitted",
+  if (result.kind === "existing") {
+    res.json({ ...result.row, hiringMode: result.gig.hiringMode ?? "lama", reused: true });
+    return;
+  }
+
+  // Push only after the application and durable notification commit together.
+  const deliveredTo = broadcastApplication(
+    { ...result.row, hiringMode: result.gig.hiringMode ?? "lama" },
+    result.gig.employerId!,
   );
-  res.status(201).json(row);
+
+  req.log.info(
+    {
+      applicationId: result.row.id,
+      jobId: result.row.jobId,
+      workerId: result.row.workerId,
+      employerId: result.gig.employerId,
+      websocketRecipients: deliveredTo,
+    },
+    "New job application persisted and delivered",
+  );
+  res.status(201).json({ ...result.row, hiringMode: result.gig.hiringMode ?? "lama" });
 });
 
 /**
@@ -186,6 +228,36 @@ router.post("/applications", async (req, res): Promise<void> => {
  * applications are ever returned. An optional `?jobId=` narrows the result
  * further to a single gig.
  */
+router.get("/applications/mine", async (req, res): Promise<void> => {
+  const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
+  if (!user) {
+    res.status(401).json({ error: "Tidak terautentikasi." });
+    return;
+  }
+  if (user.role !== "pekerja") {
+    res.status(403).json({ error: "Endpoint ini hanya tersedia untuk pekerja." });
+    return;
+  }
+
+  const rows = await db
+    .select({
+      application: applicationsTable,
+      hiringMode: gigsTable.hiringMode,
+    })
+    .from(applicationsTable)
+    .leftJoin(gigsTable, eq(applicationsTable.jobId, gigsTable.id))
+    .where(eq(applicationsTable.workerId, user.id))
+    .orderBy(desc(applicationsTable.createdAt));
+
+  res.setHeader("Cache-Control", "no-store");
+  res.json(
+    rows.map(({ application, hiringMode }) => ({
+      ...application,
+      hiringMode: hiringMode ?? "lama",
+    })),
+  );
+});
+
 router.get("/applications", async (req, res): Promise<void> => {
   const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
   if (!user) {
@@ -206,11 +278,21 @@ router.get("/applications", async (req, res): Promise<void> => {
     : eq(applicationsTable.employerId, user.id);
 
   const rows = await db
-    .select()
+    .select({
+      application: applicationsTable,
+      hiringMode: gigsTable.hiringMode,
+    })
     .from(applicationsTable)
+    .leftJoin(gigsTable, eq(applicationsTable.jobId, gigsTable.id))
     .where(conditions)
     .orderBy(desc(applicationsTable.createdAt));
-  res.json(rows);
+  res.setHeader("Cache-Control", "no-store");
+  res.json(
+    rows.map(({ application, hiringMode }) => ({
+      ...application,
+      hiringMode: hiringMode ?? "lama",
+    })),
+  );
 });
 
 /**

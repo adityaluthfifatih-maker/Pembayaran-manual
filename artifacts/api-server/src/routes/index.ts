@@ -17,6 +17,7 @@ import monetizationRouter from "./monetization";
 import geoRouter from "./geo";
 import subscriptionRouter from "./subscription";
 import midtransRouter from "./midtrans";
+import companyBranchesRouter from "./company-branches";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,6 @@ router.use(monetizationRouter);
 router.use(geoRouter);
 router.use(subscriptionRouter);
 router.use(midtransRouter);
+router.use(companyBranchesRouter);
 
 export default router;

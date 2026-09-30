@@ -11,7 +11,6 @@ interface ClockInModalProps {
   locationAccuracy: number | null;
   isClockedIn: boolean;
   clockedInAt: Date | null;
-  workerName: string;
   onClockIn: () => void;
   onClockOut: () => void;
   onClose: () => void;
@@ -39,7 +38,7 @@ type Phase = "idle" | "scanning" | "verifying" | "verified" | "error";
 
 export default function ClockInModal({
   job, userLat, userLng, locationAccuracy, isClockedIn, clockedInAt,
-  workerName, onClockIn, onClockOut, onClose,
+  onClockIn, onClockOut, onClose,
 }: ClockInModalProps) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -64,7 +63,29 @@ export default function ClockInModal({
     setPhase("verifying");
     setErrorMsg(null);
     try {
-      const row = await submitAttendanceScan(text, workerName);
+      let location = locationAccuracy == null
+        ? undefined
+        : { latitude: userLat, longitude: userLng, accuracy: locationAccuracy };
+      if (navigator.geolocation) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 8000,
+              maximumAge: 0,
+            });
+          });
+          location = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+          };
+        } catch {
+          // The server permits legacy non-branch QR tokens without GPS. Branch QR
+          // tokens require a fresh, sufficiently accurate location.
+        }
+      }
+      const row = await submitAttendanceScan(text, location);
       setVerifiedKind(row.kind);
       setPhase("verified");
       setTimeout(() => {

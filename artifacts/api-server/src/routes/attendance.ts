@@ -1,8 +1,14 @@
 import { Router, type IRouter } from "express";
 import { randomUUID } from "crypto";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, attendanceTable, gigsTable } from "@workspace/db";
+import {
+  db,
+  attendanceTable,
+  applicationsTable,
+  companyBranchesTable,
+  gigsTable,
+} from "@workspace/db";
 import { broadcastAttendance } from "../lib/realtime";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
 import { requirePremium } from "../lib/premium";
@@ -21,8 +27,10 @@ const TOKEN_TTL_MS = 3 * 60 * 1000;
 
 interface TokenRecord {
   jobId: number;
+  branchId: number | null;
   kind: "masuk" | "pulang";
   expiresAt: number;
+  processing?: boolean;
 }
 
 const tokens = new Map<string, TokenRecord>();
@@ -42,6 +50,7 @@ function jakartaDateString(): string {
 const tokenBody = z.object({
   jobId: z.coerce.number(),
   kind: z.enum(["masuk", "pulang"]),
+  branchId: z.coerce.number().int().positive().optional(),
 });
 
 /**
@@ -77,16 +86,61 @@ router.post("/attendance/token", requirePremium, async (req, res): Promise<void>
     return;
   }
 
+  let branchId: number | null = null;
+  if (parsed.data.branchId !== undefined) {
+    const [branch] = await db
+      .select({ id: companyBranchesTable.id })
+      .from(companyBranchesTable)
+      .where(
+        and(
+          eq(companyBranchesTable.id, parsed.data.branchId),
+          eq(companyBranchesTable.companyId, user.id),
+          eq(companyBranchesTable.active, true),
+        ),
+      )
+      .limit(1);
+    if (!branch) {
+      res.status(404).json({ error: "Cabang aktif tidak ditemukan." });
+      return;
+    }
+    branchId = branch.id;
+  }
+
   sweepExpired();
   const token = randomUUID();
   const expiresAt = Date.now() + TOKEN_TTL_MS;
-  tokens.set(token, { jobId: parsed.data.jobId, kind: parsed.data.kind, expiresAt });
+  tokens.set(token, {
+    jobId: parsed.data.jobId,
+    branchId,
+    kind: parsed.data.kind,
+    expiresAt,
+  });
   res.status(201).json({ token, expiresAt });
 });
 
 const scanBody = z.object({
   token: z.string().min(1),
+  latitude: z.coerce.number().finite().min(-90).max(90).optional(),
+  longitude: z.coerce.number().finite().min(-180).max(180).optional(),
+  accuracy: z.coerce.number().finite().positive().max(1000).optional(),
 });
+
+function distanceMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+): number {
+  const radius = 6_371_000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 /**
  * Worker redeems a scanned QR token. The recorded worker name is taken from the
@@ -102,6 +156,10 @@ router.post("/attendance/scan", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Tidak terautentikasi." });
     return;
   }
+  if (user.role !== "pekerja") {
+    res.status(403).json({ error: "Hanya pekerja yang dapat melakukan presensi." });
+    return;
+  }
   const parsed = scanBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -113,7 +171,72 @@ router.post("/attendance/scan", async (req, res): Promise<void> => {
     res.status(410).json({ error: "QR tidak valid atau sudah kadaluarsa." });
     return;
   }
-  tokens.delete(parsed.data.token); // single-use
+  if (rec.processing) {
+    res.status(409).json({ error: "QR sedang diproses. Coba lagi sebentar." });
+    return;
+  }
+  rec.processing = true;
+
+  // A worker can only record attendance after this employer has accepted their
+  // latest application for the job.
+  const [application] = await db
+    .select({ status: applicationsTable.status })
+    .from(applicationsTable)
+    .where(
+      and(
+        eq(applicationsTable.jobId, rec.jobId),
+        eq(applicationsTable.workerId, user.id),
+      ),
+    )
+    .orderBy(desc(applicationsTable.createdAt))
+    .limit(1);
+  if (!application || application.status !== "diterima") {
+    rec.processing = false;
+    res.status(403).json({ error: "Presensi hanya tersedia untuk pekerja yang lamarannya diterima." });
+    return;
+  }
+
+  if (rec.branchId !== null) {
+    const [branch] = await db
+      .select()
+      .from(companyBranchesTable)
+      .where(
+        and(
+          eq(companyBranchesTable.id, rec.branchId),
+          eq(companyBranchesTable.active, true),
+        ),
+      )
+      .limit(1);
+    if (!branch) {
+      tokens.delete(parsed.data.token);
+      res.status(410).json({ error: "Cabang QR sudah tidak aktif." });
+      return;
+    }
+    const { latitude, longitude, accuracy } = parsed.data;
+    if (latitude === undefined || longitude === undefined || accuracy === undefined) {
+      rec.processing = false;
+      res.status(400).json({ error: "Lokasi GPS wajib diizinkan untuk presensi cabang." });
+      return;
+    }
+    if (accuracy > 100) {
+      rec.processing = false;
+      res.status(422).json({ error: "Akurasi GPS terlalu rendah. Coba lagi di area terbuka." });
+      return;
+    }
+    const distance = distanceMeters(
+      latitude,
+      longitude,
+      branch.latitude,
+      branch.longitude,
+    );
+    if (distance > branch.radiusMeters) {
+      rec.processing = false;
+      res.status(403).json({
+        error: `Anda berada di luar radius presensi cabang (${Math.round(distance)} m dari lokasi).`,
+      });
+      return;
+    }
+  }
 
   const scanDate = jakartaDateString();
 
@@ -130,6 +253,7 @@ router.post("/attendance/scan", async (req, res): Promise<void> => {
       ),
     );
   if (existing) {
+    tokens.delete(parsed.data.token);
     res.status(409).json({
       error:
         rec.kind === "masuk"
@@ -143,13 +267,26 @@ router.post("/attendance/scan", async (req, res): Promise<void> => {
     .insert(attendanceTable)
     .values({
       jobId: rec.jobId,
+      branchId: rec.branchId,
       workerId: user.id,
       workerName: user.name,
       kind: rec.kind,
       scanDate,
     })
+    .onConflictDoNothing()
     .returning();
 
+  // The token is consumed only once the attendance row is safely committed.
+  tokens.delete(parsed.data.token);
+  if (!row) {
+    res.status(409).json({
+      error:
+        rec.kind === "masuk"
+          ? "Anda sudah melakukan presensi masuk hari ini untuk pekerjaan ini."
+          : "Anda sudah melakukan presensi pulang hari ini untuk pekerjaan ini.",
+    });
+    return;
+  }
   broadcastAttendance(row);
   res.status(201).json(row);
 });
@@ -188,6 +325,7 @@ router.get("/attendance/status", async (req, res): Promise<void> => {
       ),
     );
 
+  res.setHeader("Cache-Control", "no-store");
   res.json({ scannedIn: !!existing });
 });
 

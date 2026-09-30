@@ -11,6 +11,7 @@ interface ScheduledJobsFeedProps {
   userLng?: number;
   onSelect: (job: CustomJob) => void;
   onChat: (job: CustomJob) => void;
+  canChat?: (job: CustomJob) => boolean;
 }
 
 function distKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -48,7 +49,7 @@ const DISTANCE_OPTIONS = [
  * "lama") scheduled jobs. These arrive silently in real time over the network
  * (no buzzer, no flashing overlay), unlike instant broadcasts on the radar.
  */
-export default function ScheduledJobsFeed({ jobs, suspended, userLat, userLng, onSelect, onChat }: ScheduledJobsFeedProps) {
+export default function ScheduledJobsFeed({ jobs, suspended, userLat, userLng, onSelect, onChat, canChat }: ScheduledJobsFeedProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [maxDistKm, setMaxDistKm] = useState(0);
   const [filterCategory, setFilterCategory] = useState<JobCategory | "">("");
@@ -364,12 +365,14 @@ export default function ScheduledJobsFeed({ jobs, suspended, userLat, userLng, o
                   >
                     {suspended ? "Ditangguhkan" : "Detail & Lamar"}
                   </Button>
-                  <button
-                    onClick={() => onChat(job)}
-                    className="px-3 py-2 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors flex items-center justify-center"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                  </button>
+                  {canChat?.(job) && (
+                    <button
+                      onClick={() => onChat(job)}
+                      className="px-3 py-2 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors flex items-center justify-center"
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             );

@@ -23,19 +23,24 @@ export interface AttendanceToken {
 export async function requestAttendanceToken(
   jobId: number,
   kind: AttendanceKind,
+  branchId?: number,
 ): Promise<AttendanceToken> {
   const res = await fetch(`${API_BASE}/attendance/token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jobId, kind }),
+    body: JSON.stringify({ jobId, kind, ...(branchId ? { branchId } : {}) }),
   });
-  if (!res.ok) throw new Error("Gagal membuat QR Presensi.");
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error ?? "Gagal membuat QR Presensi.");
+  }
   return (await res.json()) as AttendanceToken;
 }
 
 export interface AttendanceRow {
   id: number;
   jobId: number;
+  branchId: number | null;
   workerName: string;
   kind: AttendanceKind;
   at: string;
@@ -44,12 +49,12 @@ export interface AttendanceRow {
 /** Worker: redeem a scanned QR token. Server validates, persists and broadcasts. */
 export async function submitAttendanceScan(
   token: string,
-  workerName: string,
+  location?: { latitude: number; longitude: number; accuracy: number },
 ): Promise<AttendanceRow> {
   const res = await fetch(`${API_BASE}/attendance/scan`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, workerName }),
+    body: JSON.stringify({ token, ...(location ?? {}) }),
   });
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string };

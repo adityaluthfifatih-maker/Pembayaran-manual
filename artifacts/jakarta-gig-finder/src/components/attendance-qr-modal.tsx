@@ -3,6 +3,8 @@ import { X, LogIn, LogOut, RefreshCw, CheckCircle, Zap, ShieldCheck } from "luci
 import QrCodeView from "./qr-code-view";
 import { requestAttendanceToken, type AttendanceKind } from "@/lib/attendance-client";
 import { subscribeAttendance } from "@/lib/central-server";
+import CompanyBranchPicker from "./company-branch-picker";
+import type { CompanyBranch } from "@/lib/company-branches-client";
 
 interface AttendanceQrModalProps {
   jobId: number;
@@ -21,23 +23,34 @@ export default function AttendanceQrModal({ jobId, jobTitle, onClose }: Attendan
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedBranch, setSelectedBranch] = useState<CompanyBranch | null>(null);
   const [confirmed, setConfirmed] = useState<{ workerName: string; kind: AttendanceKind } | null>(null);
+
+  const handleBranchChange = useCallback((branch: CompanyBranch | null) => {
+    setSelectedBranch(branch);
+    setConfirmed(null);
+  }, []);
 
   const loadToken = useCallback(
     async (k: AttendanceKind) => {
+      if (!selectedBranch) {
+        setToken(null);
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       setError(null);
       setToken(null);
       try {
-        const t = await requestAttendanceToken(jobId, k);
+        const t = await requestAttendanceToken(jobId, k, selectedBranch.id);
         setToken(t.token);
-      } catch {
-        setError("Gagal membuat QR Presensi. Coba lagi.");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Gagal membuat QR Presensi.");
       } finally {
         setLoading(false);
       }
     },
-    [jobId],
+    [jobId, selectedBranch],
   );
 
   useEffect(() => {
@@ -47,9 +60,15 @@ export default function AttendanceQrModal({ jobId, jobTitle, onClose }: Attendan
   // Live confirmation the instant the worker scans this job's QR.
   useEffect(() => {
     return subscribeAttendance((e) => {
-      if (e.jobId === jobId) setConfirmed({ workerName: e.workerName, kind: e.kind });
+      if (
+        e.jobId === jobId &&
+        e.branchId === selectedBranch?.id &&
+        e.kind === kind
+      ) {
+        setConfirmed({ workerName: e.workerName, kind: e.kind });
+      }
     });
-  }, [jobId]);
+  }, [jobId, kind, selectedBranch?.id]);
 
   const isMasuk = kind === "masuk";
 
@@ -82,6 +101,10 @@ export default function AttendanceQrModal({ jobId, jobTitle, onClose }: Attendan
         </div>
 
         <div className="space-y-5 px-5 py-5">
+          <CompanyBranchPicker
+            onChange={handleBranchChange}
+          />
+
           {/* Masuk / Pulang toggle */}
           <div className="grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1">
             <button
@@ -122,15 +145,21 @@ export default function AttendanceQrModal({ jobId, jobTitle, onClose }: Attendan
                 </button>
               </div>
             )}
+            {!loading && !error && !selectedBranch && (
+              <div className="flex h-[220px] w-[220px] items-center justify-center text-center text-sm text-gray-500">
+                Tambahkan atau pilih cabang untuk membuat QR.
+              </div>
+            )}
             {!loading && !error && token && <QrCodeView value={token} />}
             <div className="flex items-center gap-2 text-[10px] text-gray-500">
               <Zap className="h-3 w-3 text-orange-500" />
               <span>QR unik & sekali pakai — kadaluarsa otomatis dalam 3 menit</span>
             </div>
             <button
-              onClick={() => loadToken(kind)}
+              onClick={() => void loadToken(kind)}
+              disabled={!selectedBranch || loading}
               data-testid="button-refresh-qr"
-              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:border-primary/40 hover:text-primary"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
             >
               <RefreshCw className="h-3.5 w-3.5" /> Perbarui QR
             </button>

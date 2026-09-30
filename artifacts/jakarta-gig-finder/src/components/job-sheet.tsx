@@ -20,7 +20,11 @@ interface JobSheetProps {
   onClose: () => void;
   workerProfile?: WorkerProfile | null;
   currentUser?: AuthUser | null;
-  onApply?: (job: CustomJob, profile: WorkerProfile, docs?: { submittedCvUrl?: string; submittedPortfolioUrl?: string }) => void;
+  onApply?: (
+    job: CustomJob,
+    profile: WorkerProfile,
+    docs?: { submittedCvUrl?: string; submittedPortfolioUrl?: string },
+  ) => void | boolean | Promise<void | boolean>;
   onOpenChat?: (job: CustomJob) => void;
   onReportSuspect?: (jobId: number) => void;
   /** Called when the worker tries to apply without a completed profile — should open onboarding. */
@@ -59,7 +63,7 @@ export default function JobSheet({
   const isRegular = job.hiringMode !== "cepat";
   const hasProfileDocs = !!(currentUser?.defaultCvUrl || currentUser?.defaultPortfolioUrl);
 
-  const submitApplication = (docs?: { submittedCvUrl?: string; submittedPortfolioUrl?: string }) => {
+  const submitApplication = async (docs?: { submittedCvUrl?: string; submittedPortfolioUrl?: string }) => {
     // Guard: without a completed worker profile there is nothing to send to
     // the server, so never fake a "Lamaran Terkirim!" success — that used to
     // silently drop the application (no POST /api/applications was ever
@@ -70,11 +74,20 @@ export default function JobSheet({
       onRequireProfile?.();
       return;
     }
+    setDocsError(null);
     setApplyState("sending");
-    setTimeout(() => {
+    try {
+      const accepted = await onApply(job, workerProfile, docs);
+      if (accepted === false) {
+        setApplyState("idle");
+        setDocsError("Lamaran belum berhasil dikirim ke server. Periksa koneksi lalu coba lagi.");
+        return;
+      }
       setApplyState("done");
-      onApply(job, workerProfile, docs);
-    }, 2000);
+    } catch {
+      setApplyState("idle");
+      setDocsError("Lamaran belum berhasil dikirim ke server. Periksa koneksi lalu coba lagi.");
+    }
   };
 
   const handleApply = () => {

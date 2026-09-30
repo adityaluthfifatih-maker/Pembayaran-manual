@@ -132,7 +132,7 @@ export default function MyApplications({ notifications, customJobs, workerName, 
                 )}
 
                 {/* Chat button (only when accepted and job exists) */}
-                {notif.status === "diterima" && job && (
+                {(notif.status === "diterima" || notif.status === "selesai") && job && (
                   <button
                     onClick={() => onChat(job, notif)}
                     className="flex items-center justify-center gap-2 w-full bg-primary text-white text-sm font-bold py-2.5 rounded-xl hover:bg-primary/90 active:scale-[0.98] transition-all"

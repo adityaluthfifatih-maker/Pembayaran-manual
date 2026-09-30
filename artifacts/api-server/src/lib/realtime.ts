@@ -97,16 +97,19 @@ function broadcast(payload: unknown): void {
 }
 
 /** Send to all sockets registered under a specific user id. */
-function sendToUser(userId: string, data: string): void {
+function sendToUser(userId: string, data: string): number {
+  let sent = 0;
   for (const ws of userClients.get(userId) ?? []) {
     if (ws.readyState === WebSocket.OPEN) {
       try {
         ws.send(data);
+        sent += 1;
       } catch {
         /* broken socket */
       }
     }
   }
+  return sent;
 }
 
 /** Push a newly created/updated gig to every connected device. */
@@ -160,8 +163,11 @@ export function broadcastDailyPayout(payout: unknown): void {
 export function broadcastApplication(
   application: unknown,
   employerId: string,
-): void {
-  sendToUser(employerId, JSON.stringify({ type: "application_new", application }));
+): number {
+  return sendToUser(
+    employerId,
+    JSON.stringify({ type: "application_new", application }),
+  );
 }
 
 /**
@@ -189,6 +195,6 @@ export function broadcastChatMessage(
   workerId: string,
 ): void {
   const data = JSON.stringify({ type: "chat_message", message });
-  sendToUser(employerId, data);
+  if (employerId) sendToUser(employerId, data);
   if (workerId !== employerId) sendToUser(workerId, data);
 }

@@ -27,6 +27,7 @@ export type ServerSubscriber = (gig: Gig | null, activeGigs: Gig[]) => void;
 export interface AttendanceEvent {
   id: number;
   jobId: number;
+  branchId?: number | null;
   workerName: string;
   kind: "masuk" | "pulang";
   at: string;
@@ -375,18 +376,17 @@ export async function postApplication(data: {
   /** Regular-job dual-entry CV/Portfolio override for this application only. */
   submittedCvUrl?: string;
   submittedPortfolioUrl?: string;
-}): Promise<ApplicationEvent | null> {
-  try {
-    const res = await fetch(`${API_BASE}/applications`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as ApplicationEvent;
-  } catch {
-    return null;
+}): Promise<ApplicationEvent> {
+  const res = await fetch(`${API_BASE}/applications`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error || "Lamaran gagal dikirim.");
   }
+  return (await res.json()) as ApplicationEvent;
 }
 
 /**

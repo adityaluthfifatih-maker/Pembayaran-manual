@@ -1,6 +1,7 @@
-import { pgTable, serial, bigint, text, timestamp, unique } from "drizzle-orm/pg-core";
+import { pgTable, serial, bigint, integer, text, timestamp, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { companyBranchesTable } from "./company-branches";
 
 /**
  * Cross-device QR attendance (Presensi) log.
@@ -21,6 +22,9 @@ export const attendanceTable = pgTable(
   {
     id: serial("id").primaryKey(),
     jobId: bigint("job_id", { mode: "number" }).notNull(),
+    branchId: integer("branch_id").references(() => companyBranchesTable.id, {
+      onDelete: "set null",
+    }),
     workerId: text("worker_id").notNull().default(""),
     workerName: text("worker_name").notNull(),
     kind: text("kind").notNull(),

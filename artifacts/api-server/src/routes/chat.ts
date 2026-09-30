@@ -43,7 +43,10 @@ async function resolveParticipant(
     return null;
   }
 
-  const isEmployer = gig.employerId !== null && gig.employerId === user.id;
+  const isEmployer =
+    user.role === "perusahaan" &&
+    gig.employerId !== null &&
+    gig.employerId === user.id;
   const isWorker = user.role === "pekerja" && user.id === workerId;
 
   if (!isEmployer && !isWorker) {
@@ -61,22 +64,20 @@ async function resolveParticipant(
   // ordering, an unordered `.limit(1)` can non-deterministically return a
   // stale "ditolak" row even after the employer accepted the newer one —
   // permanently deadlocking the worker out of a chat they were just granted.
-  if (isWorker) {
-    const [app] = await db
-      .select({ status: applicationsTable.status })
-      .from(applicationsTable)
-      .where(
-        and(
-          eq(applicationsTable.jobId, jobId),
-          eq(applicationsTable.workerId, workerId),
-        ),
-      )
-      .orderBy(desc(applicationsTable.createdAt))
-      .limit(1);
-    if (!app || app.status !== "diterima") {
-      res.status(403).json({ error: "Chat hanya tersedia setelah lamaran Anda diterima oleh pemberi kerja." });
-      return null;
-    }
+  const [app] = await db
+    .select({ status: applicationsTable.status })
+    .from(applicationsTable)
+    .where(
+      and(
+        eq(applicationsTable.jobId, jobId),
+        eq(applicationsTable.workerId, workerId),
+      ),
+    )
+    .orderBy(desc(applicationsTable.createdAt))
+    .limit(1);
+  if (!app || (app.status !== "diterima" && app.status !== "selesai")) {
+    res.status(403).json({ error: "Chat hanya tersedia setelah lamaran diterima oleh pemberi kerja." });
+    return null;
   }
 
   return { user, gig };
@@ -111,6 +112,7 @@ router.get("/chat/:jobId/:workerId", async (req: Request, res: Response): Promis
     )
     .orderBy(asc(chatMessagesTable.sentAt));
 
+  res.setHeader("Cache-Control", "no-store");
   res.json(rows);
 });
 

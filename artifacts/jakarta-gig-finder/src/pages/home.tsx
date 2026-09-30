@@ -383,38 +383,135 @@ export default function Home() {
   useEffect(() => {
     if (!currentUser || currentUser.role !== "perusahaan") return;
     let cancelled = false;
-    fetch("/api/applications")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((rows: ApplicationEvent[]) => {
-        if (cancelled || !rows.length) return;
-        // Mark all hydrated IDs as seen so duplicate WS frames are dropped.
-        rows.forEach((e) => processedApplicationRef.current.add(e.id));
+    let firstSync = true;
+    const syncApplications = async () => {
+      try {
+        const response = await fetch("/api/applications", { cache: "no-store" });
+        if (!response.ok) return;
+        const rows = (await response.json()) as ApplicationEvent[];
+        if (cancelled) return;
+
+        const isFirstSync = firstSync;
+        const knownBeforeSync = new Set(processedApplicationRef.current);
+        rows.forEach((row) => processedApplicationRef.current.add(row.id));
         setNotifications((prev) => {
-          const seenServerIds = new Set(
-            prev.map((x) => x.serverId).filter((x): x is number => x !== undefined),
+          const byServerId = new globalThis.Map<number, ApplicationEvent>(
+            rows.map((row) => [row.id, row] as const),
           );
-          const toAdd: ApplicationNotification[] = rows
-            .filter((e) => !seenServerIds.has(e.id))
-            .map((e) => ({
+          const existingIds = new Set<number>();
+          const updated = prev.map((item) => {
+            if (item.serverId === undefined) return item;
+            existingIds.add(item.serverId);
+            const latest = byServerId.get(item.serverId);
+            return latest
+              ? { ...item, status: latest.status as ApplicationStatus }
+              : item;
+          });
+          const additions: ApplicationNotification[] = rows
+            .filter((row) => !existingIds.has(row.id) && isFirstSync)
+            .map((row) => ({
               id: nextNotifId++,
-              serverId: e.id,
-              jobId: e.jobId,
-              jobTitle: e.jobTitle,
-              workerId: e.workerId,
-              applicantName: e.workerName,
-              applicantNikMasked: e.workerNikMasked,
-              applicantNpwpMasked: e.workerNpwpMasked,
-              hasNpwp: e.hasNpwp,
-              bank: e.bank,
-              rekening: e.rekening,
-              timestamp: new Date(e.createdAt),
-              status: e.status as ApplicationStatus,
+              serverId: row.id,
+              jobId: row.jobId,
+              jobTitle: row.jobTitle,
+              workerId: row.workerId,
+              applicantName: row.workerName,
+              applicantNikMasked: row.workerNikMasked,
+              applicantNpwpMasked: row.workerNpwpMasked,
+              hasNpwp: row.hasNpwp,
+              bank: row.bank,
+              rekening: row.rekening,
+              timestamp: new Date(row.createdAt),
+              status: row.status as ApplicationStatus,
+              hiringMode: row.hiringMode,
+              cvUrl: row.submittedCvUrl ?? undefined,
+              portfolioUrl: row.submittedPortfolioUrl ?? undefined,
             }));
-          return toAdd.length ? [...prev, ...toAdd] : prev;
+          return additions.length ? [...additions, ...updated] : updated;
         });
-      })
-      .catch(() => {/* offline / not yet ready */});
-    return () => { cancelled = true; };
+
+        if (!firstSync) {
+          rows
+            .filter((row) => !knownBeforeSync.has(row.id))
+            .forEach((row) => applicationHandlerRef.current(row));
+        }
+        firstSync = false;
+      } catch {
+        /* retry at the next interval while this employer dashboard is open */
+      }
+    };
+
+    void syncApplications();
+    const intervalId = window.setInterval(() => void syncApplications(), 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [currentUser]);
+
+  // ── Worker: recover own applications and accepted-chat access ─────
+  // The worker's application list must survive refreshes and missed status
+  // WebSocket events, not just employer-side application delivery.
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "pekerja") return;
+    let cancelled = false;
+    const syncMyApplications = async () => {
+      try {
+        const response = await fetch("/api/applications/mine", { cache: "no-store" });
+        if (!response.ok) return;
+        const rows = (await response.json()) as ApplicationEvent[];
+        if (cancelled) return;
+
+        setNotifications((prev) => {
+          const byServerId = new globalThis.Map<number, ApplicationEvent>(
+            rows.map((row) => [row.id, row] as const),
+          );
+          const existingIds = new Set<number>();
+          const updated = prev.map((item) => {
+            if (item.serverId === undefined) return item;
+            existingIds.add(item.serverId);
+            const latest = byServerId.get(item.serverId);
+            return latest
+              ? {
+                  ...item,
+                  status: latest.status as ApplicationStatus,
+                  hiringMode: latest.hiringMode,
+                }
+              : item;
+          });
+          const additions: ApplicationNotification[] = rows
+            .filter((row) => !existingIds.has(row.id))
+            .map((row) => ({
+              id: nextNotifId++,
+              serverId: row.id,
+              jobId: row.jobId,
+              jobTitle: row.jobTitle,
+              workerId: row.workerId,
+              applicantName: row.workerName,
+              applicantNikMasked: row.workerNikMasked,
+              applicantNpwpMasked: row.workerNpwpMasked,
+              hasNpwp: row.hasNpwp,
+              bank: row.bank,
+              rekening: row.rekening,
+              timestamp: new Date(row.createdAt),
+              status: row.status as ApplicationStatus,
+              hiringMode: row.hiringMode,
+              cvUrl: row.submittedCvUrl ?? undefined,
+              portfolioUrl: row.submittedPortfolioUrl ?? undefined,
+            }));
+          return additions.length ? [...additions, ...updated] : updated;
+        });
+      } catch {
+        /* retry on the next poll if the network is temporarily unavailable */
+      }
+    };
+
+    void syncMyApplications();
+    const intervalId = window.setInterval(() => void syncMyApplications(), 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [currentUser]);
 
   // ── Worker: fetch which employers have blacklisted me ────────────
@@ -881,7 +978,8 @@ export default function Home() {
   }, [currentUser]);
 
   // ── Apply ───────────────────────────────────────────────────────
-  const handleApply = useCallback((job: CustomJob, profile: WorkerProfile, docs?: { submittedCvUrl?: string; submittedPortfolioUrl?: string }) => {
+  const handleApply = useCallback(async (job: CustomJob, profile: WorkerProfile, docs?: { submittedCvUrl?: string; submittedPortfolioUrl?: string }) => {
+    if (!currentUser || currentUser.role !== "pekerja") return false;
     const workerName   = maskName(profile.namaLengkap);
     const workerNik    = maskNik(profile.nik);
     const workerNpwp   = profile.belumPunyaNpwp ? "Belum ada NPWP" : maskNpwp(profile.npwp);
@@ -901,38 +999,41 @@ export default function Home() {
       timestamp: new Date(), status: "baru",
       hiringMode: job.hiringMode,
     };
-    setNotifications((p) => [notif, ...p]);
-    // Persist to server — employer receives it via WebSocket; on success, back-fill
-    // the server-assigned `serverId` so handleStatusChange can call PATCH.
-    const localId = notif.id;
-    postApplication({
-      jobId: job.id,
-      jobTitle: job.posisi,
-      workerName,
-      workerNikMasked: workerNik,
-      workerNpwpMasked: workerNpwp,
-      hasNpwp,
-      bank,
-      rekening,
-      submittedCvUrl: docs?.submittedCvUrl,
-      submittedPortfolioUrl: docs?.submittedPortfolioUrl,
-    }).then((result) => {
-      if (result) {
-        setNotifications((prev) =>
-          prev.map((n) => n.id === localId ? { ...n, serverId: result.id } : n),
-        );
-      }
-    }).catch(() => {/* best effort */});
+    let result: ApplicationEvent;
+    try {
+      result = await postApplication({
+        jobId: job.id,
+        jobTitle: job.posisi,
+        workerName,
+        workerNikMasked: workerNik,
+        workerNpwpMasked: workerNpwp,
+        hasNpwp,
+        bank,
+        rekening,
+        submittedCvUrl: docs?.submittedCvUrl,
+        submittedPortfolioUrl: docs?.submittedPortfolioUrl,
+      });
+    } catch {
+      return false;
+    }
+
+    // Only mark the worker's application as submitted after the server confirms
+    // persistence. The server-assigned ID is also the dedupe/status-sync key.
+    setNotifications((prev) => [
+      { ...notif, serverId: result.id, status: result.status as ApplicationStatus },
+      ...prev.filter((item) => item.serverId !== result.id),
+    ]);
     setActiveJob(job);
     // Status starts at "applied" — clock-in and the 15-min grace timer only
     // activate once the employer explicitly clicks "Terima" (status → "diterima"),
     // which arrives here via the WS `application_status` event handler below.
-    setJobStatus("applied");
+    setJobStatus(result.status === "diterima" ? "accepted" : "applied");
     setContractClosed(false);
     setDisputeDeadline(null);
     setDisputeJob(null);
     setStandbyReroute(null);
-  }, []);
+    return true;
+  }, [currentUser]);
 
   const handleStatusChange = useCallback((id: number, status: ApplicationStatus) => {
     const n = notifications.find((x) => x.id === id);
@@ -954,15 +1055,36 @@ export default function Home() {
   }, [notifications, customJobs]);
 
   // ── Chat ────────────────────────────────────────────────────────
+  const canOpenChatForJob = useCallback((jobId: number) => {
+    if (!currentUser) return false;
+    const latestApplication = notifications.reduce<ApplicationNotification | undefined>(
+      (latest, item) => {
+        if (item.jobId !== jobId || item.workerId !== currentUser.id) return latest;
+        return !latest || item.timestamp > latest.timestamp ? item : latest;
+      },
+      undefined,
+    );
+    return latestApplication?.status === "diterima" || latestApplication?.status === "selesai";
+  }, [currentUser, notifications]);
+
   const handleOpenChatFromJob = useCallback((job: CustomJob) => {
+    if (!canOpenChatForJob(job.id)) return;
     setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "", feeRate: job.feeRate });
-  }, [workerProfile, currentUser]);
+  }, [workerProfile, currentUser, canOpenChatForJob]);
 
   const handleOpenChatFromNotif = useCallback((notif: ApplicationNotification) => {
+    const latestApplication = notifications.reduce<ApplicationNotification | undefined>(
+      (latest, item) => {
+        if (item.jobId !== notif.jobId || item.workerId !== notif.workerId) return latest;
+        return !latest || item.timestamp > latest.timestamp ? item : latest;
+      },
+      undefined,
+    );
+    if (latestApplication?.status !== "diterima" && latestApplication?.status !== "selesai") return;
     const job = customJobs.find((j) => j.id === notif.jobId);
     if (!job) return;
     setChatContext({ jobTitle: notif.jobTitle, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan Anda", workerName: notif.applicantName, currentRole: "company", hiringMode: job.hiringMode, jobId: job.id, workerId: notif.workerId, feeRate: job.feeRate });
-  }, [customJobs]);
+  }, [customJobs, notifications]);
 
   const handleNominalUpdate = useCallback((newNominal: number) => {
     if (!chatContext?.jobId) return;
@@ -1224,7 +1346,6 @@ export default function Home() {
         <ClockInModal job={activeJob} userLat={userLocation.lat} userLng={userLocation.lng}
           locationAccuracy={locationAccuracy}
           isClockedIn={jobStatus === "clocked_in"} clockedInAt={clockedInAt}
-          workerName={workerProfile?.namaLengkap || currentUser.name}
           onClockIn={handleClockIn} onClockOut={handleClockOut} onClose={() => setShowClockIn(false)} />
       )}
       {attendanceQrJob && (
@@ -1319,7 +1440,7 @@ export default function Home() {
                       </div>
                       {isAccepted ? (
                         <button
-                          onClick={() => setChatContext({ jobTitle: activeJob.posisi, nominal: activeJob.nominal, companyName: activeJob.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker", hiringMode: activeJob.hiringMode, jobId: activeJob.id, workerId: currentUser?.id ?? "", feeRate: activeJob.feeRate })}
+                          onClick={() => handleOpenChatFromJob(activeJob)}
                           className="flex items-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 rounded-xl shrink-0">
                           <MessageSquare className="w-3.5 h-3.5" /> Chat
                         </button>
@@ -1333,9 +1454,7 @@ export default function Home() {
                 })()}
                 {/* Other jobs from the list */}
                 {customJobs.filter(j => j.id !== activeJob?.id).map((job) => {
-                  const isAccepted = notifications.some(
-                    n => n.jobId === job.id && n.status === "diterima",
-                  );
+                  const isAccepted = canOpenChatForJob(job.id);
                   return (
                     <div key={job.id} className="bg-white border border-gray-100 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm">
                       <div className="flex items-center gap-3 min-w-0">
@@ -1350,7 +1469,7 @@ export default function Home() {
                       </div>
                       {isAccepted ? (
                         <button
-                          onClick={() => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "", feeRate: job.feeRate })}
+                          onClick={() => handleOpenChatFromJob(job)}
                           className="flex items-center gap-1.5 bg-gray-100 text-gray-700 text-xs font-bold px-3 py-2 rounded-xl shrink-0 hover:bg-primary/10 hover:text-primary transition-colors">
                           <MessageSquare className="w-3.5 h-3.5" /> Chat
                         </button>
@@ -1636,7 +1755,7 @@ export default function Home() {
                       {jobStatus === "completed" ? (
                         <>
                           <button onClick={() => setShowPaySlip(true)} className="text-[10px] font-bold bg-primary text-white px-2.5 py-1.5 rounded-lg">Slip Gaji</button>
-                          <button onClick={() => setChatContext({ jobTitle: activeJob.posisi, nominal: activeJob.nominal, companyName: activeJob.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: activeJob.hiringMode, jobId: activeJob.id, workerId: currentUser?.id ?? "", feeRate: activeJob.feeRate })}
+                          <button onClick={() => handleOpenChatFromJob(activeJob)}
                             className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-1.5 rounded-lg flex items-center">
                             <MessageSquare className="w-3 h-3" />
                           </button>
@@ -1769,7 +1888,7 @@ export default function Home() {
                   </div>
                 )}
                 <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile}
-                  onApply={isSuspended ? undefined : handleApply} onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect} onRequireProfile={() => setShowOnboarding(true)} />
+                  onApply={isSuspended ? undefined : handleApply} onOpenChat={selectedJob && canOpenChatForJob(selectedJob.id) ? handleOpenChatFromJob : undefined} onReportSuspect={handleReportSuspect} onRequireProfile={() => setShowOnboarding(true)} />
               </div>
 
             ) : workerView === "scheduled" ? (
@@ -1780,10 +1899,11 @@ export default function Home() {
                   userLat={userLocation.lat}
                   userLng={userLocation.lng}
                   onSelect={(job) => setSelectedJob(job)}
-                  onChat={(job) => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "", feeRate: job.feeRate })}
+                  onChat={handleOpenChatFromJob}
+                  canChat={(job) => canOpenChatForJob(job.id)}
                 />
                 <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile}
-                  onApply={isSuspended ? undefined : handleApply} onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect} onRequireProfile={() => setShowOnboarding(true)} />
+                  onApply={isSuspended ? undefined : handleApply} onOpenChat={selectedJob && canOpenChatForJob(selectedJob.id) ? handleOpenChatFromJob : undefined} onReportSuspect={handleReportSuspect} onRequireProfile={() => setShowOnboarding(true)} />
               </>
 
             ) : workerView === "applications" ? (
@@ -1792,7 +1912,7 @@ export default function Home() {
                 customJobs={customJobs}
                 workerName={workerProfile?.namaLengkap || currentUser.name}
                 workerId={currentUser.id}
-                onChat={(job, notif) => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || currentUser.name, currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: notif.workerId, feeRate: job.feeRate })}
+                onChat={(job) => handleOpenChatFromJob(job)}
               />
 
             ) : (
@@ -1879,17 +1999,17 @@ export default function Home() {
                           onClick={() => !isSuspended && setSelectedJob(job)}>
                           {isSuspended ? "Ditangguhkan" : "Detail & Lamar"}
                         </Button>
-                        <button onClick={() => setChatContext({ jobTitle: job.posisi, nominal: job.nominal, companyName: job.namaPerusahaan || "Perusahaan", workerName: workerProfile?.namaLengkap || "Pekerja", currentRole: "worker", hiringMode: job.hiringMode, jobId: job.id, workerId: currentUser?.id ?? "", feeRate: job.feeRate })}
+                        {canOpenChatForJob(job.id) && <button onClick={() => handleOpenChatFromJob(job)}
                           className="px-3 py-2 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors flex items-center justify-center">
                           <MessageSquare className="w-4 h-4" />
-                        </button>
+                        </button>}
                       </div>
                     </div>
                   ))}
 
                 </div>
                 <JobSheet job={selectedJob} onClose={() => setSelectedJob(null)} workerProfile={workerProfile}
-                  onApply={isSuspended ? undefined : handleApply} onOpenChat={handleOpenChatFromJob} onReportSuspect={handleReportSuspect} onRequireProfile={() => setShowOnboarding(true)} />
+                  onApply={isSuspended ? undefined : handleApply} onOpenChat={selectedJob && canOpenChatForJob(selectedJob.id) ? handleOpenChatFromJob : undefined} onReportSuspect={handleReportSuspect} onRequireProfile={() => setShowOnboarding(true)} />
               </div>
             )}
           </main>

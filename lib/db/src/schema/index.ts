@@ -19,6 +19,7 @@
 
 export * from "./gigs";
 export * from "./users";
+export * from "./company-branches";
 export * from "./attendance";
 export * from "./blacklist";
 export * from "./ratings";
