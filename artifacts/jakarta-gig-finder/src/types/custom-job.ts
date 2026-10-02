@@ -41,6 +41,7 @@ export interface CustomJob {
   // ── Escrow fields ────────────────────────────────────
   escrowStatus?: EscrowStatus;
   escrowAmount?: number;   // Total gross locked in escrow (per ALL workers)
+  paymentStatus?: "awaiting_payment" | "confirmed" | string;
   jumlahHari?: number;     // Working days for this contract
   // ── Poster identity (for blacklist filtering) ────────
   employerId?: string;     // real account id of the employer who posted

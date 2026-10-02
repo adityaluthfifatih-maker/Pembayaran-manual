@@ -10,14 +10,15 @@ import { CustomJob, PaymentType, HiringMode, paymentLabels, paymentInputLabels, 
 import { ApplicationNotification, ApplicationStatus, maskName } from "@/types/notification";
 import { JobCategory, getFeeRate, CANCELLATION_FEE_1HR } from "@/types/escrow";
 import { INSTANT_PRICE_BY_CATEGORY, SUBSCRIPTION_PRICE_MONTHLY, FREE_APPLICANT_LIMIT, getInstantPrice } from "@/types/monetization";
-import { createInstantOrder, confirmInstantPayment, fetchSubscription, subscribePremium } from "@/lib/monetization-client";
+import { createInstantOrder, fetchSubscription, subscribePremium } from "@/lib/monetization-client";
 import { AuthUser } from "@/types/auth";
 
 interface HiringModePanelProps {
   currentUser: AuthUser;
   customJobs: CustomJob[];
   notifications: ApplicationNotification[];
-  onJobPosted: (data: Omit<CustomJob, "id" | "type" | "lat" | "lng" | "postedAt"> & { lat?: number; lng?: number }) => void;
+  onJobPosted: (data: Omit<CustomJob, "id" | "type" | "lat" | "lng" | "postedAt"> & { lat?: number; lng?: number }) => Promise<CustomJob>;
+  onOpenPayments?: () => void;
   onLockEscrow: (jobId: number, escrowAmount: number) => void;
   onDispute: (jobId: number) => void;
   onStatusChange: (notifId: number, status: ApplicationStatus) => void;
@@ -128,7 +129,7 @@ function getDemoKm(name: string): number {
 
 export default function HiringModePanel({
   currentUser, customJobs, notifications,
-  onJobPosted, onLockEscrow, onDispute, onStatusChange, onCancelJob,
+  onJobPosted, onOpenPayments, onLockEscrow, onDispute, onStatusChange, onCancelJob,
 }: HiringModePanelProps) {
 
   // ── Mode toggle ────────────────────────────────────────────────
@@ -165,6 +166,8 @@ export default function HiringModePanel({
   const [broadcastCount, setBroadcastCount] = useState(0);
   const [lastBroadcastJob, setLastBroadcastJob] = useState<string>("");
   const [showCepatConfirm, setShowCepatConfirm] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [postingError, setPostingError] = useState("");
 
   // ── Bisa Lama state ───────────────────────────────────────────
   const [escrowConfirmJobId, setEscrowConfirmJobId] = useState<number | null>(null);
@@ -187,11 +190,12 @@ export default function HiringModePanel({
 
   const handleSubscribe = async () => {
     setSubscribing(true);
+    setPostingError("");
     try {
       await subscribePremium();
-      setIsPremium(true);
-    } catch {
-      // Best-effort demo subscribe; UI stays on free tier if it fails.
+      onOpenPayments?.();
+    } catch (error) {
+      setPostingError(error instanceof Error ? error.message : "Tagihan langganan gagal dibuat.");
     } finally {
       setSubscribing(false);
     }
@@ -205,7 +209,8 @@ export default function HiringModePanel({
   const biayaSistem = 0;
   const totalEscrow = upahPokok + biayaSistem;
   const instantListingPrice = getInstantPrice(jobCategory);
-  const isEscrowLocked = broadcastState === "done" && hiringMode === "cepat";
+  const isEscrowLocked = broadcastState === "done" && hiringMode === "cepat" &&
+    customJobs.some((job) => job.posisi === lastBroadcastJob && job.paymentStatus === "confirmed");
   const baseValid = posisi.trim().length >= 3 && nominalNum >= 10_000;
   const catatanValid = deskripsi.trim().length > 0;
   const formValid =
@@ -223,11 +228,9 @@ export default function HiringModePanel({
     setNominalRaw(raw ? parseInt(raw).toLocaleString("id-ID") : "");
   };
 
-  // ── Submit Broadcast Instan ────────────────────────────────────
-  // Instan Kilat now pays a flat listing price per category (no more %
-  // commission on wages). The job is only broadcast after the payment
-  // webhook confirms — mirrored client-side here via createInstantOrder +
-  // confirmInstantPayment (simulated Midtrans/Xendit callback).
+  // ── Submit Instan Kilat ─────────────────────────────────────────
+  // The server creates manual-payment records for the wage escrow and the
+  // listing fee. Admin confirmation is required before workers see the gig.
   const handleCepatSubmit = async () => {
     if (!formValid || broadcastState !== "idle" || payingInstant) return;
     // Force-fetch device GPS (permission prompt) — location is auto-locked to a 5km radar radius.
@@ -238,14 +241,9 @@ export default function HiringModePanel({
     }
     setBroadcastState("locking");
     setPayingInstant(true);
-
-    const finish = () => {
-      setBroadcastState("broadcasting");
-      const count = Math.floor(Math.random() * 16) + 5;
-      setBroadcastCount(count);
-      setLastBroadcastJob(posisi);
-
-      onJobPosted({
+    setPostingError("");
+    try {
+      const created = await onJobPosted({
         posisi: posisi.trim(),
         deskripsi: deskripsi.trim() || `Dibutuhkan segera ${posisi} di Jakarta. Gaji langsung dibayar setelah shift selesai.`,
         pembayaran,
@@ -262,57 +260,57 @@ export default function HiringModePanel({
         jobCategory,
         feeRate: 0,
       });
-
-      setTimeout(() => {
-        setBroadcastState("done");
-        setTimeout(() => {
-          resetForm();
-          setBroadcastState("idle");
-          setFormOpen(false);
-        }, 4000);
-      }, 1500);
-    };
-
-    try {
-      // jobId isn't known until onJobPosted persists the gig, so the demo
-      // order uses a synthetic 0 id — the flat price/category is what
-      // matters for the payment simulation here.
-      const order = await createInstantOrder(0, jobCategory);
-      await confirmInstantPayment(order.id);
-    } catch {
-      // Payment simulation is best-effort in this demo flow; still broadcast.
+      await createInstantOrder(created.id, jobCategory);
+      setLastBroadcastJob(posisi);
+      setBroadcastCount(0);
+      setBroadcastState("done");
+      onOpenPayments?.();
+      window.setTimeout(() => {
+        resetForm();
+        setBroadcastState("idle");
+        setFormOpen(false);
+      }, 4500);
+    } catch (error) {
+      setBroadcastState("idle");
+      setPostingError(error instanceof Error ? error.message : "Tagihan Instan Kilat gagal dibuat.");
     } finally {
       setPayingInstant(false);
     }
-
-    setTimeout(finish, 1200);
   };
 
   // ── Submit Posting Reguler (scheduled marketplace listing) ─────
-  // Always free: no listing fee, no wage commission.
-  const handleLamaSubmit = () => {
-    if (!formValid) return;
-    onJobPosted({
-      posisi: posisi.trim(),
-      deskripsi: deskripsi.trim() || `Lowongan ${posisi} untuk kontrak terjadwal.`,
-      pembayaran,
-      nominal: nominalNum,
-      dresscode,
-      kuota: kuotaNum,
-      namaPerusahaan,
-      hiringMode: "lama",
-      broadcastActive: false,
-      escrowStatus: "pending",
-      durasiKontrak: "harian",
-      jobDate: tanggalMulai ? new Date(tanggalMulai) : undefined,
-      jamKerja: jamKerja.trim(),
-      alamat: pickerAddress.trim(),
-      ...(pickerLat !== null && pickerLng !== null ? { lat: pickerLat, lng: pickerLng } : {}),
-      jobCategory,
-      feeRate: 0,
-    });
-    resetForm();
-    setFormOpen(false);
+  const handleLamaSubmit = async () => {
+    if (!formValid || posting) return;
+    setPosting(true);
+    setPostingError("");
+    try {
+      await onJobPosted({
+        posisi: posisi.trim(),
+        deskripsi: deskripsi.trim() || `Lowongan ${posisi} untuk kontrak terjadwal.`,
+        pembayaran,
+        nominal: nominalNum,
+        dresscode,
+        kuota: kuotaNum,
+        namaPerusahaan,
+        hiringMode: "lama",
+        broadcastActive: false,
+        escrowStatus: "pending",
+        durasiKontrak: "harian",
+        jobDate: tanggalMulai ? new Date(tanggalMulai) : undefined,
+        jamKerja: jamKerja.trim(),
+        alamat: pickerAddress.trim(),
+        ...(pickerLat !== null && pickerLng !== null ? { lat: pickerLat, lng: pickerLng } : {}),
+        jobCategory,
+        feeRate: 0,
+      });
+      resetForm();
+      setFormOpen(false);
+      onOpenPayments?.();
+    } catch (error) {
+      setPostingError(error instanceof Error ? error.message : "Lowongan gagal dibuat.");
+    } finally {
+      setPosting(false);
+    }
   };
 
   const resetForm = () => {
@@ -543,22 +541,21 @@ export default function HiringModePanel({
 
           {formOpen && (
             <div className="p-4 space-y-3">
-              {/* Broadcast success banner */}
+              {/* Pending manual-payment banner */}
               {broadcastState === "done" && (
-                <>
-                  <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-bold text-emerald-800">Broadcast Berhasil! 🎉</p>
-                      <p className="text-xs text-emerald-700 mt-0.5">
-                        <span className="font-bold">{broadcastCount} pekerja</span> dalam radius 5km menerima notifikasi
-                        untuk posisi <span className="font-bold">"{lastBroadcastJob}"</span>.
-                      </p>
-                      <p className="text-[10px] text-emerald-600 mt-1">Dana escrow terkunci aman · Rekhastha melindungi transaksi Anda</p>
-                    </div>
+                <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-bold text-amber-900">Tagihan dibuat — menunggu transfer</p>
+                    <p className="text-xs text-amber-800 mt-0.5">
+                      Lowongan <span className="font-bold">"{lastBroadcastJob}"</span> baru akan dikirim ke pekerja
+                      setelah upah dan biaya Instan Kilat dikonfirmasi admin.
+                    </p>
+                    <button type="button" onClick={onOpenPayments} className="mt-2 text-xs font-bold text-emerald-800 underline">
+                      Buka pembayaran manual
+                    </button>
                   </div>
-                  <BroadcastRadar />
-                </>
+                </div>
               )}
 
               {/* Broadcasting animation */}
@@ -588,6 +585,11 @@ export default function HiringModePanel({
 
               {broadcastState === "idle" && (
                 <>
+                  {postingError && (
+                    <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                      {postingError}
+                    </p>
+                  )}
                   <div>
                     <label className={labelCls}>Nama Posisi / Pekerjaan *</label>
                     <input value={posisi} onChange={e => setPosisi(e.target.value)}
@@ -664,7 +666,7 @@ export default function HiringModePanel({
                       </button>
                       {showFeeExplanation && (
                         <div className="mt-1.5 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 space-y-1.5">
-                          <p className="text-[10px] font-bold text-blue-900">Posting Reguler selalu gratis. Instan Kilat mengenakan biaya posting flat berdasarkan kompleksitas pekerjaan:</p>
+                          <p className="text-[10px] font-bold text-blue-900">Posting Reguler tidak dikenai biaya listing; upah tetap harus ditransfer dan diverifikasi. Instan Kilat memiliki biaya listing flat:</p>
                           <ul className="space-y-1">
                             <li className="flex items-start gap-1.5 text-[10px] text-blue-800 leading-relaxed">
                               <span className="font-black text-primary shrink-0">{formatRp(INSTANT_PRICE_BY_CATEGORY.umum)}</span>
@@ -854,7 +856,7 @@ export default function HiringModePanel({
                 hiringMode === "cepat" ? (
                   <button
                     onClick={() => { if (formValid) setShowCepatConfirm(true); }}
-                    disabled={!formValid}
+                    disabled={!formValid || payingInstant}
                     className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all ${
                       formValid
                         ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md active:scale-[0.98]"
@@ -866,14 +868,14 @@ export default function HiringModePanel({
                 ) : (
                   <button
                     onClick={handleLamaSubmit}
-                    disabled={!formValid}
+                    disabled={!formValid || posting}
                     className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all ${
                       formValid
                         ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md active:scale-[0.98]"
                         : "bg-gray-100 text-gray-400 cursor-not-allowed"
                     }`}>
                     <Briefcase className="w-4 h-4" />
-                    {formValid ? "📋 Posting Lowongan Terjadwal" : "Isi Posisi & Upah untuk Lanjut"}
+                    {posting ? "Membuat tagihan…" : formValid ? "Buat Tagihan & Posting Terjadwal" : "Isi Posisi & Upah untuk Lanjut"}
                   </button>
                 )
               )}

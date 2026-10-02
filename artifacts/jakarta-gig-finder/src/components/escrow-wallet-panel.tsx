@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Banknote, ArrowDownCircle, Lock, TrendingUp, Clock, CheckCircle, AlertTriangle, Wallet, Smartphone } from "lucide-react";
+import { Banknote, ArrowDownCircle, Lock, TrendingUp, Clock, CheckCircle, Wallet } from "lucide-react";
 import { WalletTransaction } from "@/types/escrow";
 
 interface EscrowWalletPanelProps {
@@ -8,8 +7,6 @@ interface EscrowWalletPanelProps {
   isWithdrawLocked: boolean;
   onWithdraw: (method: string, account: string) => void;
 }
-
-const WITHDRAW_METHODS = ["GoPay", "DANA", "OVO", "ShopeePay", "Transfer Bank"] as const;
 
 function fmt(n: number) { return "Rp " + Math.round(n).toLocaleString("id-ID"); }
 
@@ -28,17 +25,9 @@ export default function EscrowWalletPanel({
   const debits  = transactions.filter(t => t.type === "debit");
   const totalIn = credits.reduce((s, t) => s + t.amount, 0);
 
-  const [method, setMethod] = useState<string>(WITHDRAW_METHODS[0]);
-  const [account, setAccount] = useState("");
-
-  const accountValid = account.trim().length >= 6;
-  const canWithdraw = !isWithdrawLocked && balance > 0 && accountValid;
-  const isBank = method === "Transfer Bank";
-
+  const canWithdraw = !isWithdrawLocked && balance > 0;
   const handleSubmit = () => {
-    if (!canWithdraw) return;
-    onWithdraw(method, account.trim());
-    setAccount("");
+    if (canWithdraw) onWithdraw("Transfer Bank", "");
   };
 
   return (
@@ -101,51 +90,11 @@ export default function EscrowWalletPanel({
           </div>
           <div>
             <p className="text-sm font-bold text-gray-900">Dompet Rekhastha</p>
-            <p className="text-[10px] text-gray-400">Pencairan Upah · Cair instan ke e-wallet / bank</p>
+            <p className="text-[10px] text-gray-400">Pencairan upah ditransfer dan dicatat admin</p>
           </div>
         </div>
 
         <div className="px-4 py-4 space-y-3.5">
-          {/* Metode Pencairan */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-gray-700">Pilih Metode Pencairan</label>
-            <div className="relative">
-              <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <select
-                value={method}
-                onChange={(e) => setMethod(e.target.value)}
-                disabled={isWithdrawLocked}
-                className="w-full appearance-none border border-gray-200 rounded-xl pl-9 pr-9 py-3 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all disabled:bg-gray-50 disabled:text-gray-400"
-              >
-                {WITHDRAW_METHODS.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">▾</span>
-            </div>
-          </div>
-
-          {/* Nomor tujuan */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-gray-700">
-              {isBank ? "Nomor Rekening Terdaftar" : "Nomor HP Terdaftar"} <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={account}
-              onChange={(e) => setAccount(e.target.value.replace(/[^\d]/g, ""))}
-              disabled={isWithdrawLocked}
-              placeholder={isBank ? "cth: 1234567890" : "cth: 081234567890"}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all disabled:bg-gray-50 disabled:text-gray-400"
-            />
-            {account.length > 0 && !accountValid && (
-              <p className="text-[10px] text-red-500 flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> Nomor minimal 6 digit
-              </p>
-            )}
-          </div>
-
           {/* Total saldo tersedia (disabled summary) */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-700">Total Saldo Tersedia (Net 100% Bebas Potongan)</label>
@@ -154,6 +103,9 @@ export default function EscrowWalletPanel({
               <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 rounded-full px-2 py-0.5">100% NET</span>
             </div>
           </div>
+          <p className="text-xs leading-relaxed text-gray-500">
+            Permintaan memakai rekening bank yang tersimpan di profil. Admin akan mentransfer upah dan mencatat nomor referensinya; saldo baru dianggap cair setelah status diperbarui.
+          </p>
 
           <button
             onClick={handleSubmit}
@@ -169,7 +121,7 @@ export default function EscrowWalletPanel({
             ) : balance <= 0 ? (
               <>Saldo Belum Tersedia</>
             ) : (
-              <><ArrowDownCircle className="w-4 h-4" /> Cairkan {fmt(balance)} ke {method}</>
+              <><ArrowDownCircle className="w-4 h-4" /> Minta transfer {fmt(balance)}</>
             )}
           </button>
         </div>

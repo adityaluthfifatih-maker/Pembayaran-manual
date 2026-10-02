@@ -13,6 +13,9 @@ import { z } from "zod/v4";
 export const dailyPayoutsTable = pgTable("daily_payouts", {
   id: serial("id").primaryKey(),
   jobId: bigint("job_id", { mode: "number" }).notNull(),
+  workerId: text("worker_id"),
+  /** Historical rows remain marked as settled; new check-outs credit the wallet. */
+  status: text("status").notNull().default("settled"),
   workerName: text("worker_name").notNull(),
   // 1-based day index within the contract ("Hari ke-N").
   dayIndex: integer("day_index").notNull(),

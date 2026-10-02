@@ -1,11 +1,13 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
   usersTable,
   subscriptionPlansTable,
   subscriptionOrdersTable,
+  manualPaymentSettingsTable,
+  manualPaymentsTable,
 } from "@workspace/db";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
 import { checkPremiumStatus, requirePremium } from "../lib/premium";
@@ -54,98 +56,39 @@ router.post("/subscriptions/orders", async (req, res): Promise<void> => {
     return;
   }
 
-  const [order] = await db
-    .insert(subscriptionOrdersTable)
-    .values({ companyId: user.id, planId: plan.id, amount: plan.promoPrice })
-    .returning();
-
-  res.status(201).json({ order, plan });
-});
-
-/**
- * Payment gateway webhook (Midtrans/Xendit-style). On success:
- *   1. flips the order to "success",
- *   2. accumulates the plan's `durationDays` onto the company's `expiredAt`
- *      — from the OLD expiry if it's still in the future, or from now if it
- *      has already lapsed (or never subscribed before) — and
- *   3. sets `isPremium = true`.
- * On failure the order is flipped "failed" and no company row changes.
- */
-const webhookBody = z.object({
-  orderId: z.coerce.number(),
-  orderIdGateway: z.string().optional(),
-  status: z.enum(["success", "failed"]),
-});
-
-router.post("/webhook/subscription-payment", async (req, res): Promise<void> => {
-  const parsed = webhookBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+  const [settings] = await db
+    .select({ accountNumber: manualPaymentSettingsTable.accountNumber })
+    .from(manualPaymentSettingsTable)
+    .where(eq(manualPaymentSettingsTable.id, 1))
+    .limit(1);
+  if (!settings?.accountNumber) {
+    res.status(409).json({ error: "Instruksi transfer belum diatur oleh admin." });
     return;
   }
 
   const result = await db.transaction(async (tx) => {
     const [order] = await tx
-      .update(subscriptionOrdersTable)
-      .set({
-        status: parsed.data.status,
-        orderIdGateway:
-          parsed.data.orderIdGateway ?? sql`${subscriptionOrdersTable.orderIdGateway}`,
-      })
-      .where(eq(subscriptionOrdersTable.id, parsed.data.orderId))
+      .insert(subscriptionOrdersTable)
+      .values({ companyId: user.id, planId: plan.id, amount: plan.promoPrice })
       .returning();
-    if (!order) return { error: "not_found" as const };
-
-    if (parsed.data.status !== "success") return { order };
-
-    const [plan] = await tx
-      .select()
-      .from(subscriptionPlansTable)
-      .where(eq(subscriptionPlansTable.id, order.planId))
-      .limit(1);
-    if (!plan) return { error: "plan_not_found" as const };
-
-    const [company] = await tx
-      .select({ expiredAt: usersTable.expiredAt })
-      .from(usersTable)
-      .where(eq(usersTable.id, order.companyId))
-      .limit(1);
-    if (!company) return { error: "company_not_found" as const };
-
-    const now = Date.now();
-    // Accumulate from the OLD expiry if the subscription is still active,
-    // never from "today" — an extension should stack on top of remaining
-    // time, not discard it.
-    const baseMs =
-      company.expiredAt && company.expiredAt.getTime() > now
-        ? company.expiredAt.getTime()
-        : now;
-    const newExpiredAt = new Date(baseMs + plan.durationDays * 24 * 60 * 60 * 1000);
-
-    await tx
-      .update(usersTable)
-      .set({ isPremium: true, expiredAt: newExpiredAt })
-      .where(eq(usersTable.id, order.companyId));
-
-    return { order, plan, newExpiredAt };
+    if (!order) throw new Error("Gagal membuat pesanan langganan.");
+    const [payment] = await tx
+      .insert(manualPaymentsTable)
+      .values({
+        payerId: user.id,
+        targetType: "business_subscription",
+        targetId: String(order.id),
+        amount: order.amount,
+      })
+      .returning();
+    return { order, payment };
   });
 
-  if ("error" in result) {
-    const status = result.error === "not_found" ? 404 : 409;
-    res.status(status).json({ error: result.error });
-    return;
-  }
+  res.status(201).json({ ...result, plan });
+});
 
-  req.log.info(
-    {
-      orderId: result.order.id,
-      companyId: result.order.companyId,
-      status: result.order.status,
-      newExpiredAt: "newExpiredAt" in result ? result.newExpiredAt : undefined,
-    },
-    "Subscription payment webhook processed",
-  );
-  res.json(result);
+router.post("/webhook/subscription-payment", async (_req, res): Promise<void> => {
+  res.status(410).json({ error: "Konfirmasi otomatis dinonaktifkan. Pembayaran harus ditinjau admin." });
 });
 
 /**

@@ -8,6 +8,8 @@ import {
   gigsTable,
   companySubscriptionsTable,
   instantOrdersTable,
+  manualPaymentSettingsTable,
+  manualPaymentsTable,
 } from "@workspace/db";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
 import { broadcastInstantActivated } from "../lib/realtime";
@@ -132,71 +134,51 @@ router.post("/instant-orders", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  const [gig] = await db
+    .select()
+    .from(gigsTable)
+    .where(eq(gigsTable.id, parsed.data.jobId))
+    .limit(1);
+  if (!gig || gig.employerId !== user.id || gig.hiringMode !== "cepat") {
+    res.status(404).json({ error: "Lowongan Instan Kilat tidak ditemukan." });
+    return;
+  }
+  const [settings] = await db
+    .select({ accountNumber: manualPaymentSettingsTable.accountNumber })
+    .from(manualPaymentSettingsTable)
+    .where(eq(manualPaymentSettingsTable.id, 1))
+    .limit(1);
+  if (!settings?.accountNumber) {
+    res.status(409).json({ error: "Instruksi transfer belum diatur oleh admin." });
+    return;
+  }
   const amount = getInstantPrice(parsed.data.category);
-  const [order] = await db
-    .insert(instantOrdersTable)
-    .values({
-      jobId: parsed.data.jobId,
-      companyId: user.id,
-      amount,
-    })
-    .returning();
-  res.status(201).json(order);
-});
-
-/**
- * Payment gateway webhook (Midtrans/Xendit). Confirms the flat-rate payment
- * for an Instan Kilat order, flips it "active", and asynchronously fans out
- * the geofenced broadcast to nearby workers (non-blocking via setImmediate).
- */
-const webhookBody = z.object({
-  orderId: z.coerce.number(),
-  orderIdGateway: z.string().optional(),
-  status: z.enum(["success", "failed"]),
-});
-
-router.post("/webhook/payment", async (req, res): Promise<void> => {
-  const parsed = webhookBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
-
-  const newStatus = parsed.data.status === "success" ? "active" : "failed";
-  const [order] = await db
-    .update(instantOrdersTable)
-    .set({
-      status: newStatus,
-      orderIdGateway: parsed.data.orderIdGateway ?? sql`${instantOrdersTable.orderIdGateway}`,
-    })
-    .where(eq(instantOrdersTable.id, parsed.data.orderId))
-    .returning();
-
-  if (!order) {
-    res.status(404).json({ error: "Order tidak ditemukan." });
-    return;
-  }
-
-  if (newStatus === "active") {
-    const [gig] = await db
-      .update(gigsTable)
-      .set({ broadcastActive: true })
-      .where(eq(gigsTable.id, order.jobId))
+  const result = await db.transaction(async (tx) => {
+    const [order] = await tx
+      .insert(instantOrdersTable)
+      .values({
+        jobId: parsed.data.jobId,
+        companyId: user.id,
+        amount,
+      })
       .returning();
+    if (!order) throw new Error("Gagal membuat tagihan Instan Kilat.");
+    const [payment] = await tx
+      .insert(manualPaymentsTable)
+      .values({
+        payerId: user.id,
+        targetType: "instant_listing",
+        targetId: String(order.id),
+        amount,
+      })
+      .returning();
+    return { order, payment };
+  });
+  res.status(201).json({ ...result.order, manualPaymentId: result.payment.id });
+});
 
-    // Non-blocking geofenced broadcast simulation — worker devices already
-    // filter/alert on incoming gigs by radius via the realtime radar pipeline.
-    setImmediate(() => {
-      req.log.info(
-        { jobId: order.jobId, amount: order.amount },
-        "[SIMULASI] Broadcast geofencing 5KM dikirim ke pelamar terdekat",
-      );
-      if (gig) broadcastInstantActivated(gig);
-    });
-  }
-
-  req.log.info({ orderId: order.id, status: order.status }, "Payment webhook processed");
-  res.json(order);
+router.post("/webhook/payment", async (_req, res): Promise<void> => {
+  res.status(410).json({ error: "Konfirmasi otomatis dinonaktifkan. Pembayaran harus ditinjau admin." });
 });
 
 /**
@@ -253,32 +235,33 @@ router.post("/jobs/instant/accept", async (req, res): Promise<void> => {
   res.json(result.order);
 });
 
-/**
- * Activates/refreshes the employer's monthly Premium subscription. In a real
- * deployment this is triggered by the same Midtrans/Xendit webhook flow as
- * /webhook/payment — kept as its own endpoint here since it applies to the
- * company account, not a single job.
- */
 router.post("/subscriptions/subscribe", async (req, res): Promise<void> => {
   const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
   if (!user || user.role !== "perusahaan") {
     res.status(403).json({ error: "Hanya pemberi kerja yang dapat berlangganan." });
     return;
   }
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 30);
-
-  const [sub] = await db
-    .insert(companySubscriptionsTable)
-    .values({ companyId: user.id, isPremium: true, expiresAt })
-    .onConflictDoUpdate({
-      target: companySubscriptionsTable.companyId,
-      set: { isPremium: true, expiresAt },
+  const [settings] = await db
+    .select({ accountNumber: manualPaymentSettingsTable.accountNumber })
+    .from(manualPaymentSettingsTable)
+    .where(eq(manualPaymentSettingsTable.id, 1))
+    .limit(1);
+  if (!settings?.accountNumber) {
+    res.status(409).json({ error: "Instruksi transfer belum diatur oleh admin." });
+    return;
+  }
+  const targetId = `${user.id}:${Date.now()}`;
+  const [payment] = await db
+    .insert(manualPaymentsTable)
+    .values({
+      payerId: user.id,
+      targetType: "legacy_subscription",
+      targetId,
+      amount: SUBSCRIPTION_PRICE_MONTHLY,
     })
     .returning();
-
-  req.log.info({ companyId: user.id, price: SUBSCRIPTION_PRICE_MONTHLY }, "Company subscribed to Premium");
-  res.json(sub);
+  req.log.info({ companyId: user.id, paymentId: payment.id }, "Monthly subscription awaiting manual payment");
+  res.status(201).json({ payment });
 });
 
 router.get("/subscriptions/me", async (req, res): Promise<void> => {

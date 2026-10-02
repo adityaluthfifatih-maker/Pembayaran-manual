@@ -35,6 +35,7 @@ import {
   type RevenueStats,
 } from "@/lib/admin-client";
 import { EmergencyAlarm } from "@/components/emergency-alarm";
+import ManualFinanceAdminTab from "@/components/manual-finance-admin-tab";
 
 const API_BASE = "/api";
 const GOLD = "#D4AF37";
@@ -43,7 +44,7 @@ function formatRp(v: number): string {
   return "Rp " + Math.round(v).toLocaleString("id-ID");
 }
 
-type Tab = "dashboard" | "revenue" | "escrow" | "resolution" | "onsite" | "users" | "kyc" | "academy" | "jobs" | "logs" | "akun";
+type Tab = "dashboard" | "revenue" | "escrow" | "manual_finance" | "resolution" | "onsite" | "users" | "kyc" | "academy" | "jobs" | "logs" | "akun";
 
 // ── Login gateway ─────────────────────────────────────────────────
 function LoginGate({ onSuccess }: { onSuccess: () => void }) {
@@ -2611,6 +2612,7 @@ function CommandCenter({
     { id: "dashboard", label: "📊 Dashboard Live", icon: <LayoutDashboard className="w-4 h-4" /> },
     { id: "revenue", label: "📈 Analitik Pendapatan", icon: <LineChartIcon className="w-4 h-4" /> },
     { id: "escrow", label: "💰 Pengawasan Escrow", icon: <Wallet className="w-4 h-4" /> },
+    { id: "manual_finance", label: "🏦 Pembayaran Manual", icon: <Banknote className="w-4 h-4" /> },
     { id: "jobs", label: "📋 Manajemen Job", icon: <Briefcase className="w-4 h-4" /> },
     { id: "resolution", label: "⚖️ Pusat Resolusi", icon: <Gavel className="w-4 h-4" /> },
     { id: "onsite", label: "👷 Monitoring Proyek Fisik", icon: <HardHat className="w-4 h-4" /> },
@@ -2700,6 +2702,7 @@ function CommandCenter({
         {tab === "dashboard" && <DashboardTab />}
         {tab === "revenue" && <RevenueTab />}
         {tab === "escrow" && <EscrowTab trainingPassed={trainingPassed} requireAcademy={requireAcademy} />}
+        {tab === "manual_finance" && <ManualFinanceAdminTab />}
         {tab === "jobs" && <JobsTab />}
         {tab === "resolution" && <ResolutionTab />}
         {tab === "onsite" && <OnsiteTab />}

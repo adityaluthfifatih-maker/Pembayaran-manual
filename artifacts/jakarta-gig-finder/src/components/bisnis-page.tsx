@@ -8,13 +8,13 @@ import {
   fetchSubscriptionPlans,
   fetchBisnisStatus,
   createSubscriptionOrder,
-  confirmSubscriptionPayment,
   type SubscriptionPlan,
   type BisnisStatus,
 } from "@/lib/monetization-client";
 
 interface BisnisPageProps {
   currentUser: AuthUser;
+  onOpenPayments: () => void;
 }
 
 const fmt = (n: number) =>
@@ -53,7 +53,7 @@ const FEATURES = [
 
 type BuyStep = "idle" | "confirm" | "paying" | "success" | "error";
 
-export default function BisnisPage({ currentUser }: BisnisPageProps) {
+export default function BisnisPage({ currentUser, onOpenPayments }: BisnisPageProps) {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [status, setStatus] = useState<BisnisStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,10 +88,8 @@ export default function BisnisPage({ currentUser }: BisnisPageProps) {
     setBuyError("");
     try {
       const { order } = await createSubscriptionOrder(selectedPlan.id);
-      await confirmSubscriptionPayment(order.id);
-      const fresh = await fetchBisnisStatus();
-      setStatus(fresh);
       setBuyStep("success");
+      onOpenPayments();
     } catch (e) {
       setBuyError((e as Error).message ?? "Pembayaran gagal. Coba lagi.");
       setBuyStep("error");
@@ -297,12 +295,10 @@ export default function BisnisPage({ currentUser }: BisnisPageProps) {
                   <CheckCircle2 className="w-9 h-9 text-emerald-500" />
                 </div>
                 <div className="text-center">
-                  <p className="font-black text-gray-900 text-xl">Berhasil!</p>
+                  <p className="font-black text-gray-900 text-xl">Tagihan dibuat</p>
                   <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
-                    Rekhastha Bisnis <span className="font-semibold text-gray-700">{selectedPlan.label}</span> kini aktif.
-                    {status?.expiredAt && (
-                      <> Berlaku hingga <span className="font-semibold text-emerald-600">{new Date(status.expiredAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span>.</>
-                    )}
+                    Transfer untuk paket <span className="font-semibold text-gray-700">{selectedPlan.label}</span> melalui Pembayaran Manual.
+                    Paket baru aktif setelah admin mengonfirmasi pembayaran.
                   </p>
                 </div>
                 <button

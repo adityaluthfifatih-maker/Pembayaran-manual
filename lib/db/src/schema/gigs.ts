@@ -42,6 +42,8 @@ export const gigsTable = pgTable("gigs", {
   alamat: text("alamat"),
   escrowStatus: text("escrow_status"),
   escrowAmount: integer("escrow_amount"),
+  /** awaiting_payment -> confirmed; existing pre-pilot gigs default to confirmed. */
+  paymentStatus: text("payment_status").notNull().default("confirmed"),
   jumlahHari: integer("jumlah_hari"),
   employerId: text("employer_id"),
   employerName: text("employer_name"),

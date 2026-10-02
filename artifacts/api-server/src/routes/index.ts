@@ -16,6 +16,7 @@ import escrowProjectsRouter from "./escrow-projects";
 import monetizationRouter from "./monetization";
 import geoRouter from "./geo";
 import subscriptionRouter from "./subscription";
+import manualFinanceRouter from "./manual-finance";
 import midtransRouter from "./midtrans";
 import companyBranchesRouter from "./company-branches";
 
@@ -38,6 +39,7 @@ router.use(escrowProjectsRouter);
 router.use(monetizationRouter);
 router.use(geoRouter);
 router.use(subscriptionRouter);
+router.use(manualFinanceRouter);
 router.use(midtransRouter);
 router.use(companyBranchesRouter);
 

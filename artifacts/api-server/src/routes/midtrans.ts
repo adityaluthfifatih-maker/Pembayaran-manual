@@ -191,6 +191,8 @@ logMidtransMode();
  * returning both token and hosted redirect URL to the caller.
  */
 router.post("/payments/midtrans/create", async (req, res): Promise<void> => {
+  res.status(410).json({ error: "Pembayaran otomatis dinonaktifkan. Gunakan transfer manual." });
+  return;
   const parsed = createPaymentBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -303,6 +305,8 @@ router.post("/payments/midtrans/create", async (req, res): Promise<void> => {
  * database mutation, and every accepted notification is safe to retry.
  */
 router.post("/payments/midtrans-callback", async (req, res): Promise<void> => {
+  res.status(410).json({ error: "Callback pembayaran otomatis dinonaktifkan." });
+  return;
   const parsed = notificationSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Payload callback Midtrans tidak valid." });
@@ -428,6 +432,8 @@ router.post("/payments/midtrans-callback", async (req, res): Promise<void> => {
  * Set execute=true only for an intentional Sandbox Iris request.
  */
 router.post("/payments/midtrans/payout", async (req, res): Promise<void> => {
+  res.status(410).json({ error: "Payout otomatis dinonaktifkan. Transfer dan pencatatan dilakukan admin." });
+  return;
   const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
   if (!user) {
     res.status(401).json({ error: "Tidak terautentikasi." });

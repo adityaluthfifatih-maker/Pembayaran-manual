@@ -408,3 +408,78 @@ export interface RevenueStats {
 export function fetchRevenueStats(): Promise<RevenueStats> {
   return request("/admin/revenue", "GET");
 }
+
+// ── Manual payment and payout operations ───────────────────────────
+
+export interface ManualFinanceSettings {
+  id: number;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  instructions: string;
+  updatedAt: string;
+}
+
+export interface ManualPaymentRow {
+  id: number;
+  payerId: string;
+  payerName: string;
+  payerEmail: string | null;
+  targetType: string;
+  targetId: string;
+  amount: number;
+  status: string;
+  transferReference: string | null;
+  proofNote: string | null;
+  adminNote: string | null;
+  createdAt: string;
+}
+
+export interface ManualPayoutRow {
+  id: number;
+  workerId: string;
+  workerName: string;
+  workerEmail: string | null;
+  amount: number;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  status: string;
+  transferReference: string | null;
+  adminNote: string | null;
+  createdAt: string;
+}
+
+export function fetchManualFinanceSettings(): Promise<{ settings: ManualFinanceSettings | null }> {
+  return request("/admin/manual-finance/settings", "GET");
+}
+
+export function saveManualFinanceSettings(
+  settings: Omit<ManualFinanceSettings, "id" | "updatedAt">,
+): Promise<{ settings: ManualFinanceSettings }> {
+  return request("/admin/manual-finance/settings", "PUT", settings);
+}
+
+export function fetchManualPayments(): Promise<{ payments: ManualPaymentRow[] }> {
+  return request("/admin/manual-finance/payments", "GET");
+}
+
+export function reviewManualPayment(
+  id: number,
+  action: "confirm" | "reject",
+  note: string,
+): Promise<ManualPaymentRow> {
+  return request(`/admin/manual-finance/payments/${id}/review`, "POST", { action, note });
+}
+
+export function fetchManualPayouts(): Promise<{ payouts: ManualPayoutRow[] }> {
+  return request("/admin/manual-finance/payouts", "GET");
+}
+
+export function resolveManualPayout(
+  id: number,
+  action: "paid" | "reject",
+  details: { transferReference?: string; note?: string },
+): Promise<ManualPayoutRow> {
+  return request(`/admin/manual-finance/payouts/${id}/resolve`, "POST", { action, ...details });
+}

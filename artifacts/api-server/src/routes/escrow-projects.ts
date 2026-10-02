@@ -5,17 +5,11 @@ import {
   db,
   escrowProjectsTable,
   escrowMilestonesTable,
-  usersTable,
+  manualPaymentSettingsTable,
+  manualPaymentsTable,
+  walletEntriesTable,
 } from "@workspace/db";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
-import {
-  createInvoice,
-  simulateInvoicePayment,
-  createDisbursement,
-  resolveBankCode,
-  isXenditSandboxKey,
-  XenditError,
-} from "../lib/xendit";
 
 const router: IRouter = Router();
 
@@ -147,14 +141,7 @@ router.get("/escrow-projects/:id", async (req, res): Promise<void> => {
   res.json(project);
 });
 
-// ── Step 1: Employer locks the project → Xendit Invoice generated ────
-
-/**
- * Employer "mengunci" the project: a Xendit Invoice (hosted VA/e-wallet/QRIS
- * checkout page, sandbox mode) is generated for the full `totalAmount`. The
- * project moves to `pending_payment` — money has NOT reached escrow yet,
- * that only happens once the webhook confirms payment (see below).
- */
+// ── Manual project funding ──────────────────────────────────────────
 router.post("/escrow-projects/:id/lock", async (req, res): Promise<void> => {
   const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
   if (!user) {
@@ -179,158 +166,50 @@ router.post("/escrow-projects/:id/lock", async (req, res): Promise<void> => {
     res.status(409).json({ error: `Proyek berstatus '${project.status}', tidak dapat dikunci ulang.` });
     return;
   }
-
-  const externalId = `escrow-project-${project.id}-${Date.now()}`;
-
-  let invoice;
-  try {
-    invoice = await createInvoice({
-      externalId,
-      amount: project.totalAmount,
-      payerEmail: user.email,
-      description: `Escrow Rekhastha — ${project.title}`,
-    });
-  } catch (err) {
-    if (err instanceof XenditError) {
-      res.status(502).json({ error: `Xendit: ${err.message}` });
-      return;
-    }
-    throw err;
+  const [settings] = await db
+    .select({ accountNumber: manualPaymentSettingsTable.accountNumber })
+    .from(manualPaymentSettingsTable)
+    .where(eq(manualPaymentSettingsTable.id, 1))
+    .limit(1);
+  if (!settings?.accountNumber) {
+    res.status(409).json({ error: "Instruksi transfer belum diatur oleh admin." });
+    return;
   }
-
-  const [updated] = await db
-    .update(escrowProjectsTable)
-    .set({
-      status: "pending_payment",
-      xenditInvoiceId: invoice.id,
-      xenditExternalId: externalId,
-      xenditInvoiceUrl: invoice.invoice_url,
-    })
-    .where(eq(escrowProjectsTable.id, id))
-    .returning();
-
-  req.log.info(
-    { projectId: id, xenditInvoiceId: invoice.id },
-    "Escrow project locked — Xendit invoice generated",
-  );
-  res.json(updated);
+  const result = await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(escrowProjectsTable)
+      .set({ status: "pending_payment" })
+      .where(eq(escrowProjectsTable.id, id))
+      .returning();
+    const [payment] = await tx
+      .insert(manualPaymentsTable)
+      .values({
+        payerId: user.id,
+        targetType: "project_escrow",
+        targetId: String(id),
+        amount: project.totalAmount,
+      })
+      .returning();
+    return { project: updated, payment };
+  });
+  req.log.info({ projectId: id, paymentId: result.payment.id }, "Project funding awaiting manual payment");
+  res.json({ ...result.project, manualPaymentId: result.payment.id });
 });
 
-/**
- * Sandbox convenience endpoint: triggers Xendit's own `simulate_payment` API
- * on the TEST-mode invoice, which causes Xendit to actually mark the invoice
- * PAID and fire the real webhook below — so this exercises the exact same
- * code path a genuine payment would. Xendit rejects this call outright on a
- * live-mode invoice, so it can never simulate a real transfer.
- */
-router.post("/escrow-projects/:id/simulate-paid", async (req, res): Promise<void> => {
-  const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
-  if (!user) {
-    res.status(401).json({ error: "Tidak terautentikasi." });
-    return;
-  }
-  const id = Number(req.params.id);
-  if (!id || Number.isNaN(id)) {
-    res.status(400).json({ error: "ID proyek tidak valid." });
-    return;
-  }
-  if (!isXenditSandboxKey()) {
-    res.status(403).json({ error: "Simulasi pembayaran hanya tersedia dalam mode Sandbox Xendit." });
-    return;
-  }
-
-  const [project] = await db
-    .select()
-    .from(escrowProjectsTable)
-    .where(eq(escrowProjectsTable.id, id));
-  if (!project || project.employerId !== user.id) {
-    res.status(404).json({ error: "Proyek tidak ditemukan." });
-    return;
-  }
-  if (project.status !== "pending_payment" || !project.xenditInvoiceId) {
-    res.status(409).json({ error: "Proyek belum memiliki invoice yang menunggu pembayaran." });
-    return;
-  }
-
-  try {
-    await simulateInvoicePayment(project.xenditInvoiceId, project.totalAmount);
-  } catch (err) {
-    if (err instanceof XenditError) {
-      res.status(502).json({ error: `Xendit: ${err.message}` });
-      return;
-    }
-    throw err;
-  }
-
-  req.log.info({ projectId: id }, "Xendit sandbox simulate_payment triggered");
-  res.json({ ok: true, message: "Simulasi pembayaran dikirim ke Xendit — menunggu webhook konfirmasi." });
+router.post("/escrow-projects/:id/simulate-paid", async (_req, res): Promise<void> => {
+  res.status(410).json({ error: "Simulasi pembayaran dinonaktifkan. Pembayaran harus ditinjau admin." });
 });
 
-// ── Step 2: Xendit webhook → project funded ───────────────────────────
-
-const invoiceWebhookBody = z.object({
-  id: z.string(),
-  external_id: z.string(),
-  status: z.string(),
-});
-
-/**
- * Xendit calls this back when an invoice's status changes. We verify the
- * `x-callback-token` header against our own `XENDIT_CALLBACK_TOKEN` secret
- * (configured to match the token shown in the Xendit dashboard) before
- * trusting the payload — this is the only place that flips a project to
- * `funded`, i.e. the only place that says "money is now in escrow".
- */
-router.post("/webhooks/xendit/invoice", async (req, res): Promise<void> => {
-  const token = req.header("x-callback-token");
-  const expected = process.env["XENDIT_CALLBACK_TOKEN"];
-  if (!expected || token !== expected) {
-    res.status(401).json({ error: "Invalid callback token." });
-    return;
-  }
-
-  const parsed = invoiceWebhookBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Malformed webhook payload." });
-    return;
-  }
-
-  if (parsed.data.status !== "PAID" && parsed.data.status !== "SETTLED") {
-    res.json({ ok: true, ignored: true });
-    return;
-  }
-
-  const [project] = await db
-    .select()
-    .from(escrowProjectsTable)
-    .where(eq(escrowProjectsTable.xenditExternalId, parsed.data.external_id));
-  if (!project) {
-    req.log.warn({ externalId: parsed.data.external_id }, "Xendit webhook: no matching project");
-    res.json({ ok: true, ignored: true });
-    return;
-  }
-  if (project.status !== "pending_payment") {
-    res.json({ ok: true, ignored: true });
-    return;
-  }
-
-  await db
-    .update(escrowProjectsTable)
-    .set({ status: "funded", fundedAt: new Date() })
-    .where(eq(escrowProjectsTable.id, project.id));
-
-  req.log.info({ projectId: project.id }, "Escrow project FUNDED via Xendit webhook");
-  res.json({ ok: true });
+router.post("/webhooks/xendit/invoice", async (_req, res): Promise<void> => {
+  res.status(410).json({ error: "Konfirmasi otomatis dinonaktifkan. Gunakan antrean verifikasi manual." });
 });
 
 // ── Step 3: Approve milestone → Xendit Disbursement to worker ────────
 
 /**
- * Employer approves a milestone: the project must already be `funded`, and
- * this milestone must still be `pending`. A Xendit Disbursement moves
- * `milestone.amount` out of the escrow holding balance directly to the
- * worker's registered bank account/e-wallet. Idempotent by construction —
- * once a milestone is `disbursed` it can never be approved again.
+ * Employer approves a milestone. The amount becomes an auditable wallet
+ * credit; the worker must request a payout and an admin must record the bank
+ * transfer before it is marked paid.
  */
 router.post(
   "/escrow-projects/:id/milestones/:milestoneId/approve",
@@ -384,76 +263,64 @@ router.post(
       return;
     }
 
-    const [worker] = await db
-      .select({ profile: usersTable.profile, name: usersTable.name })
-      .from(usersTable)
-      .where(eq(usersTable.id, project.workerId));
-    const profile = (worker?.profile ?? {}) as {
-      namaBank?: string;
-      nomorRekening?: string;
-      namaRekening?: string;
-    };
-    if (!worker || !profile.namaBank || !profile.nomorRekening) {
-      res.status(409).json({
-        error: "Worker belum melengkapi data rekening bank/e-wallet — disbursement tidak dapat dijalankan.",
-      });
+    const result = await db.transaction(async (tx) => {
+      const [lockedMilestone] = await tx
+        .select()
+        .from(escrowMilestonesTable)
+        .where(
+          and(
+            eq(escrowMilestonesTable.id, milestoneId),
+            eq(escrowMilestonesTable.projectId, projectId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!lockedMilestone || lockedMilestone.status !== "pending") {
+        return { error: "Milestone sudah diproses." as const };
+      }
+      const [updatedMilestone] = await tx
+        .update(escrowMilestonesTable)
+        .set({ status: "approved" })
+        .where(eq(escrowMilestonesTable.id, milestoneId))
+        .returning();
+      await tx
+        .insert(walletEntriesTable)
+        .values({
+          workerId: project.workerId!,
+          sourceType: "project_milestone",
+          sourceId: String(milestoneId),
+          amount: milestone.amount,
+          description: `Milestone: ${milestone.title} — ${project.title}`,
+        })
+        .onConflictDoNothing();
+
+      const remaining = await tx
+        .select({ id: escrowMilestonesTable.id })
+        .from(escrowMilestonesTable)
+        .where(
+          and(
+            eq(escrowMilestonesTable.projectId, projectId),
+            eq(escrowMilestonesTable.status, "pending"),
+          ),
+        );
+      const projectCompleted = remaining.length === 0;
+      if (projectCompleted) {
+        await tx
+          .update(escrowProjectsTable)
+          .set({ status: "completed" })
+          .where(eq(escrowProjectsTable.id, projectId));
+      }
+      return { milestone: updatedMilestone, projectCompleted };
+    });
+    if ("error" in result) {
+      res.status(409).json({ error: result.error });
       return;
     }
-
-    const externalId = `escrow-milestone-${milestone.id}-${Date.now()}`;
-    let disbursement;
-    try {
-      disbursement = await createDisbursement({
-        externalId,
-        amount: milestone.amount,
-        bankCode: resolveBankCode(profile.namaBank),
-        accountHolderName: profile.namaRekening || worker.name,
-        accountNumber: profile.nomorRekening,
-        description: `Milestone: ${milestone.title} — ${project.title}`,
-      });
-    } catch (err) {
-      if (err instanceof XenditError) {
-        await db
-          .update(escrowMilestonesTable)
-          .set({ status: "failed" })
-          .where(eq(escrowMilestonesTable.id, milestone.id));
-        res.status(502).json({ error: `Xendit: ${err.message}` });
-        return;
-      }
-      throw err;
-    }
-
-    const [updatedMilestone] = await db
-      .update(escrowMilestonesTable)
-      .set({
-        status: "disbursed",
-        xenditDisbursementId: disbursement.id,
-        disbursedAt: new Date(),
-      })
-      .where(eq(escrowMilestonesTable.id, milestone.id))
-      .returning();
-
-    const remaining = await db
-      .select()
-      .from(escrowMilestonesTable)
-      .where(
-        and(
-          eq(escrowMilestonesTable.projectId, projectId),
-          eq(escrowMilestonesTable.status, "pending"),
-        ),
-      );
-    if (remaining.length === 0) {
-      await db
-        .update(escrowProjectsTable)
-        .set({ status: "completed" })
-        .where(eq(escrowProjectsTable.id, projectId));
-    }
-
     req.log.info(
-      { projectId, milestoneId, xenditDisbursementId: disbursement.id, amount: milestone.amount },
-      "Milestone approved — disbursement sent to worker",
+      { projectId, milestoneId, workerId: project.workerId, amount: milestone.amount },
+      "Milestone approved and credited to worker wallet",
     );
-    res.json({ milestone: updatedMilestone, projectCompleted: remaining.length === 0 });
+    res.json({ ...result, payoutStatus: "available_for_manual_withdrawal" });
   },
 );
 

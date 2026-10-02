@@ -22,6 +22,8 @@ import ScheduledJobsFeed from "@/components/scheduled-jobs-feed";
 import MyApplications from "@/components/my-applications";
 import { RekhasthaLogo } from "@/components/rekhastha-logo";
 import EscrowProjectsPanel from "@/components/escrow-projects-panel";
+import ManualPaymentsPanel from "@/components/manual-payments-panel";
+import BisnisPage from "@/components/bisnis-page";
 import CompanyRadarStats from "@/components/company-radar-stats";
 import {
   subscribeToServer,
@@ -93,7 +95,7 @@ function randomJakartaCoords() {
 const JAKARTA_CENTER = { lat: -6.2088, lng: 106.8456 };
 type JobStatus = "applied" | "accepted" | "clocked_in" | "completed" | null;
 type CompanyView = "jobs" | "analytics" | "radar";
-type AppTab = "home" | "chat" | "proyek" | "profile";
+type AppTab = "home" | "chat" | "proyek" | "bisnis" | "profile";
 
 // A gig is "instant" (Broadcast Instan) only when it is a cepat posting. Regular
 // (lama) jobs — even once their escrow is locked and they go live — stay in the
@@ -153,6 +155,7 @@ export default function Home() {
   // ── Pay slip & earnings ─────────────────────────────────────────
   const [showPaySlip, setShowPaySlip] = useState(false);
   const [showEarnings, setShowEarnings] = useState(false);
+  const [showManualPayments, setShowManualPayments] = useState(false);
   const [totalEarned, setTotalEarned] = useState(0);
   const [completedNotifs, setCompletedNotifs] = useState<ApplicationNotification[]>([]);
 
@@ -161,6 +164,55 @@ export default function Home() {
   const [walletTransactions, setWalletTransactions] = useState<WalletTransaction[]>([]);
   const [platformBalance, setPlatformBalance] = useState(0);
   const [escrowEvents, setEscrowEvents] = useState<EscrowEvent[]>([]);
+
+  const refreshWorkerWallet = useCallback(async () => {
+    if (!currentUser || currentUser.role !== "pekerja") return;
+    try {
+      const response = await fetch("/api/wallet/mine", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) return;
+      const data = (await response.json()) as {
+        balance: number;
+        entries: Array<{ id: number; amount: number; description: string; createdAt: string }>;
+        payouts: Array<{ id: number; amount: number; status: string; createdAt: string; transferReference?: string | null }>;
+      };
+      const entries: WalletTransaction[] = data.entries.map((entry) => ({
+        id: entry.id,
+        type: "credit",
+        amount: entry.amount,
+        label: entry.description,
+        jobTitle: entry.description,
+        timestamp: new Date(entry.createdAt),
+      }));
+      const payouts: WalletTransaction[] = data.payouts.map((payout) => ({
+        id: -payout.id,
+        type: payout.status === "rejected" ? "credit" : "debit",
+        amount: payout.amount,
+        label: payout.status === "pending"
+          ? "Menunggu transfer admin"
+          : payout.status === "paid"
+            ? "Transfer manual dicatat admin"
+            : "Pencairan ditolak — saldo tersedia kembali",
+        jobTitle: "Pencairan upah",
+        timestamp: new Date(payout.createdAt),
+        note: payout.transferReference ? `Referensi transfer: ${payout.transferReference}` : undefined,
+      }));
+      setWalletBalance(data.balance);
+      setWalletTransactions([...entries, ...payouts].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()));
+      setTotalEarned(data.entries.reduce((sum, entry) => sum + entry.amount, 0));
+    } catch {
+      // Keep the last confirmed server balance visible during a network interruption.
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (currentUser?.role !== "pekerja") return;
+    void refreshWorkerWallet();
+    const intervalId = window.setInterval(() => void refreshWorkerWallet(), 15000);
+    return () => window.clearInterval(intervalId);
+  }, [currentUser, refreshWorkerWallet]);
 
   // ── Chat ────────────────────────────────────────────────────────
   const [chatContext, setChatContext] = useState<{
@@ -668,45 +720,40 @@ export default function Home() {
   }, [handleAuthComplete]);
 
   // ── Escrow handlers ─────────────────────────────────────────────
-  const handleSplitPayment = useCallback((notifId: number) => {
+  const handleSplitPayment = useCallback(async (notifId: number) => {
     const notif = notifications.find(n => n.id === notifId);
     if (!notif || notif.status === "selesai") return;
-    const job = customJobs.find(j => j.id === notif.jobId);
-    if (job) warnIfFeeRateMissing(job, "handleSplitPayment");
-    const gross = job?.escrowAmount ?? calcTotal(job?.nominal ?? 0, job?.pembayaran ?? "per_shift");
-    const jobFeeRate = job?.feeRate ?? DEFAULT_FEE_RATE;
-    const { platformCut, workerNet } = calcSplit(gross, jobFeeRate);
+    try {
+      const response = await fetch(`/api/gigs/${notif.jobId}/release-wage`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workerId: notif.workerId }),
+      });
+      const result = (await response.json().catch(() => ({}))) as { error?: string; amount?: number };
+      if (!response.ok) throw new Error(result.error || "Upah belum dapat dicatat.");
 
-    setCustomJobs(prev => prev.map(j =>
-      j.id === notif.jobId ? { ...j, escrowStatus: "released" as const } : j
-    ));
-    setWalletBalance(prev => prev + workerNet);
-    setWalletTransactions(prev => [...prev, {
-      id: Date.now(),
-      type: "credit" as const,
-      amount: workerNet,
-      label: "Upah penuh — pekerjaan selesai",
-      jobTitle: notif.jobTitle,
-      timestamp: new Date(),
-      note: `Upah Anda dicairkan 100% utuh tanpa potongan. Biaya platform 15% (Rp ${platformCut.toLocaleString("id-ID")}) ditanggung penuh oleh perusahaan. Segala kewajiban perpajakan menjadi tanggung jawab mandiri masing-masing pihak sesuai hukum yang berlaku.`,
-    }]);
-    setPlatformBalance(prev => prev + platformCut);
-    setTotalEarned(prev => prev + workerNet);
-    setNotifications(prev => prev.map(n =>
-      n.id === notifId ? { ...n, status: "selesai" as ApplicationStatus } : n
-    ));
-    setEscrowEvents(prev => [...prev, {
-      id: Date.now(),
-      jobId: notif.jobId,
-      jobTitle: notif.jobTitle,
-      fromStatus: "locked",
-      toStatus: "released",
-      actor: "company",
-      amount: workerNet,
-      timestamp: new Date(),
-      note: `Pekerja: ${notif.applicantName}. Upah dicairkan 100% utuh; biaya platform 15% ditanggung perusahaan. Dana ditransfer ke e-wallet pekerja.`,
-    }]);
-  }, [notifications, customJobs]);
+      setCustomJobs(prev => prev.map(j =>
+        j.id === notif.jobId ? { ...j, escrowStatus: "released" as const } : j
+      ));
+      setNotifications(prev => prev.map(n =>
+        n.id === notifId ? { ...n, status: "selesai" as ApplicationStatus } : n
+      ));
+      setEscrowEvents(prev => [...prev, {
+        id: Date.now(),
+        jobId: notif.jobId,
+        jobTitle: notif.jobTitle,
+        fromStatus: "locked",
+        toStatus: "released",
+        actor: "company",
+        amount: result.amount,
+        timestamp: new Date(),
+        note: `Upah untuk ${notif.applicantName} tercatat sebagai saldo pekerja. Transfer masih dilakukan manual oleh admin.`,
+      }]);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Upah belum dapat dicatat.");
+    }
+  }, [notifications]);
 
   const handleNotifDispute = useCallback((notifId: number) => {
     const notif = notifications.find(n => n.id === notifId);
@@ -854,20 +901,22 @@ export default function Home() {
     }]);
   }, [customJobs, workerProfile]);
 
-  const handleWithdraw = useCallback((method: string, account: string) => {
+  const handleWithdraw = useCallback(async (_method: string, _account: string) => {
     if (walletBalance <= 0) return;
-    const masked = account.length > 4 ? `••••${account.slice(-4)}` : account;
-    setWalletTransactions(prev => [...prev, {
-      id: Date.now(),
-      type: "debit" as const,
-      amount: walletBalance,
-      label: `Pencairan via ${method}`,
-      jobTitle: method,
-      timestamp: new Date(),
-      note: `Nomor tujuan: ${masked} · Net 100% bebas potongan`,
-    }]);
-    setWalletBalance(0);
-  }, [walletBalance]);
+    try {
+      const response = await fetch("/api/wallet/withdrawals", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const result = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Permintaan pencairan gagal dibuat.");
+      await refreshWorkerWallet();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Permintaan pencairan gagal dibuat.");
+    }
+  }, [walletBalance, refreshWorkerWallet]);
 
   // ── Search ──────────────────────────────────────────────────────
   const suggestedTags = ["Barista", "Waiter / Waitress", "Event Crew / Runner", "Latte Art", "POS/Kasir", "Crowd Control"];
@@ -943,7 +992,10 @@ export default function Home() {
   // ── Job posting ─────────────────────────────────────────────────
   const [workerMapFlyTarget, setWorkerMapFlyTarget] = useState<[number, number] | null>(null);
 
-  const handleJobPosted = useCallback((data: Omit<CustomJob, "id" | "type" | "lat" | "lng" | "postedAt"> & { lat?: number; lng?: number }) => {
+  const handleJobPosted = useCallback(async (data: Omit<CustomJob, "id" | "type" | "lat" | "lng" | "postedAt"> & { lat?: number; lng?: number }): Promise<CustomJob> => {
+    if (!currentUser || currentUser.role !== "perusahaan") {
+      throw new Error("Masuk sebagai perusahaan untuk membuat lowongan.");
+    }
     // Instant broadcasts (Butuh Cepat / escrow locked) are geofenced within 5 km of Jakarta centre.
     const isBroadcast = data.hiringMode === "cepat" || data.broadcastActive === true || data.escrowStatus === "locked";
     const coords = (data.lat && data.lng)
@@ -958,23 +1010,28 @@ export default function Home() {
       employerId: data.employerId ?? currentUser?.id,
       employerName: data.employerName ?? currentUser?.namaPerusahaan ?? currentUser?.name,
     };
-    setCustomJobs(p => [...p, newJob]);
-    // Publish EVERY posting to the live server so it fans out to worker devices:
-    // instant (cepat) jobs raise the persistent radar alarm on receivers, while
-    // regular (lama) jobs push silently into the "Cari Kerja Terjadwal" feed.
-    triggerGlobalEscrowBroadcast(newJob);
-    if (data.escrowStatus === "locked" && data.escrowAmount) {
-      setEscrowEvents(prev => [...prev, {
-        id: Date.now(),
-        jobId: newId,
-        jobTitle: data.posisi,
-        toStatus: "locked",
-        actor: "system",
-        amount: data.escrowAmount,
-        timestamp: now,
-        note: `Dana dikunci otomatis oleh sistem. Lowongan aktif di peta setelah verifikasi.`,
-      }]);
-    }
+    const response = await fetch("/api/gigs", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newJob),
+    });
+    const result = (await response.json().catch(() => ({}))) as CustomJob & { error?: string };
+    if (!response.ok) throw new Error(result.error || "Lowongan belum dapat dibuat.");
+    const persisted = { ...newJob, ...result };
+    setCustomJobs((previous) => [...previous.filter((job) => job.id !== persisted.id), persisted]);
+    setEscrowEvents((previous) => [{
+      id: Date.now(),
+      jobId: persisted.id,
+      jobTitle: persisted.posisi,
+      toStatus: "pending",
+      actor: "system",
+      amount: persisted.escrowAmount,
+      timestamp: now,
+      note: "Tagihan dibuat. Lowongan baru aktif setelah admin mengonfirmasi transfer.",
+    }, ...previous]);
+    setShowManualPayments(true);
+    return persisted;
   }, [currentUser]);
 
   // ── Apply ───────────────────────────────────────────────────────
@@ -1293,6 +1350,7 @@ export default function Home() {
   // ── Profile pages ───────────────────────────────────────────────
   const isProfileTab = activeTab === "profile";
   const isProyekTab = activeTab === "proyek";
+  const isBisnisTab = activeTab === "bisnis";
 
   return (
     <div className="mobile-app-shell flex flex-col h-[100dvh] w-full bg-gray-50 relative overflow-hidden">
@@ -1364,6 +1422,9 @@ export default function Home() {
           completedJobs={completedNotifs} totalEarned={totalEarned}
           onDownloadSlip={() => { setShowEarnings(false); setShowPaySlip(true); }} onClose={() => setShowEarnings(false)} />
       )}
+      {showManualPayments && currentUser?.role === "perusahaan" && (
+        <ManualPaymentsPanel onClose={() => setShowManualPayments(false)} />
+      )}
       {chatContext && (
         <ChatModal jobTitle={chatContext.jobTitle} nominal={chatContext.nominal}
           companyName={chatContext.companyName} workerName={chatContext.workerName}
@@ -1386,6 +1447,9 @@ export default function Home() {
             <SidebarBtn icon={<MessageSquare className="w-5 h-5" />} label="Chat" active={activeTab === "chat"} onClick={() => setActiveTab("chat")}
               badge={mode === "perusahaan" ? notifications.filter(n => n.status === "diterima" || n.status === "ditinjau").length : undefined} />
             <SidebarBtn icon={<Briefcase className="w-5 h-5" />} label="Proyek" active={activeTab === "proyek"} onClick={() => setActiveTab("proyek")} />
+            {currentUser.role === "perusahaan" && (
+              <SidebarBtn icon={<Banknote className="w-5 h-5" />} label="Rekhastha Bisnis" active={activeTab === "bisnis"} onClick={() => setActiveTab("bisnis")} />
+            )}
           </nav>
           
           <div className="px-4 py-4 border-t border-gray-100">
@@ -1583,9 +1647,12 @@ export default function Home() {
       {isProyekTab && (
         <EscrowProjectsPanel currentUser={currentUser} />
       )}
+      {isBisnisTab && currentUser.role === "perusahaan" && (
+        <BisnisPage currentUser={currentUser} onOpenPayments={() => setShowManualPayments(true)} />
+      )}
 
       {/* ── HOME TAB CONTENT (hidden when profile/proyek tab active) */}
-      {!isProfileTab && !isProyekTab && (
+      {!isProfileTab && !isProyekTab && !isBisnisTab && (
         <>
           {/* ── HEADER ─────────────────────────────────── */}
           <header className="z-10 bg-white border-b border-gray-100 shadow-sm flex flex-col shrink-0">
@@ -1816,6 +1883,7 @@ export default function Home() {
                   notifications={notifications}
                   onJobPosted={handleJobPosted}
                   onLockEscrow={handleLockEscrow}
+                  onOpenPayments={() => setShowManualPayments(true)}
                   onDispute={handleJobDispute}
                   onStatusChange={handleStatusChange}
                   onCancelJob={handleCancelJob}
@@ -2019,6 +2087,17 @@ export default function Home() {
         </div>
       </div>
 
+      {currentUser.role === "perusahaan" && (
+        <button
+          type="button"
+          onClick={() => setShowManualPayments(true)}
+          className="fixed right-4 bottom-20 lg:bottom-6 z-30 flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-3 text-sm font-bold text-white shadow-lg hover:bg-emerald-800"
+        >
+          <Banknote className="w-4 h-4" />
+          Pembayaran
+        </button>
+      )}
+
       {/* ── BOTTOM NAVIGATION (mobile only — 4 tabs) ─────── */}
       <nav className="lg:hidden shrink-0 bg-white shadow-[0_-4px_24px_rgba(0,0,0,0.08)] border-t border-gray-100 flex z-20">
         <NavBtn
@@ -2052,6 +2131,14 @@ export default function Home() {
           active={activeTab === "proyek"}
           onClick={() => setActiveTab("proyek")}
         />
+        {currentUser.role === "perusahaan" && (
+          <NavBtn
+            icon={<Banknote className="w-5 h-5" />}
+            label="Bisnis"
+            active={activeTab === "bisnis"}
+            onClick={() => setActiveTab("bisnis")}
+          />
+        )}
         <NavBtn
           icon={
             <div className="relative">

@@ -1,15 +1,18 @@
 import { Router, type IRouter } from "express";
-import { desc, sql } from "drizzle-orm";
+import { desc, eq, or } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, gigsTable, insertGigSchema } from "@workspace/db";
+import {
+  db,
+  gigsTable,
+  insertGigSchema,
+  manualPaymentSettingsTable,
+  manualPaymentsTable,
+} from "@workspace/db";
 import { broadcastGig } from "../lib/realtime";
+import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
 
 const router: IRouter = Router();
 
-// The client sends dates as ISO strings over JSON; coerce them back to Date.
-// jobCategory and feeRate are explicitly included so callers know they are
-// accepted and persisted — they drive the tiered employer-borne fee displayed
-// in history and payslip screens (umum=3%, terampil=5%, profesional=8%).
 const createGigBody = insertGigSchema.extend({
   postedAt: z.coerce.date().optional(),
   jobDate: z.coerce.date().nullish(),
@@ -17,12 +20,32 @@ const createGigBody = insertGigSchema.extend({
   feeRate: z.number().nullish(),
 });
 
-router.get("/gigs", async (_req, res): Promise<void> => {
-  const rows = await db.select().from(gigsTable).orderBy(desc(gigsTable.postedAt));
+function wageAmount(gig: {
+  pembayaran: string;
+  nominal: number;
+  jumlahHari: number | null;
+  kuota: number;
+}): number {
+  const periods = gig.pembayaran === "per_projek" ? 1 : Math.max(1, gig.jumlahHari ?? 1);
+  return gig.nominal * periods * Math.max(1, gig.kuota);
+}
+
+router.get("/gigs", async (req, res): Promise<void> => {
+  const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
+  const rows = await db
+    .select()
+    .from(gigsTable)
+    .where(
+      user?.role === "perusahaan"
+        ? or(eq(gigsTable.paymentStatus, "confirmed"), eq(gigsTable.employerId, user.id))
+        : eq(gigsTable.paymentStatus, "confirmed"),
+    )
+    .orderBy(desc(gigsTable.postedAt));
   res.json(rows);
 });
 
 router.post("/gigs", async (req, res): Promise<void> => {
+  const user = await getSessionUser(req.cookies?.[SESSION_COOKIE]);
   const parsed = createGigBody.safeParse(req.body);
   if (!parsed.success) {
     req.log.warn({ errors: parsed.error.message }, "Invalid gig body");
@@ -30,27 +53,97 @@ router.post("/gigs", async (req, res): Promise<void> => {
     return;
   }
 
-  // Upsert by client-provided id so re-broadcasting a gig (e.g. escrow locked
-  // after posting) replaces the row instead of failing on the primary key.
-  // COALESCE guards on jobCategory, feeRate, and escrowAmount ensure a
-  // re-broadcast that omits one of these fields (null incoming) never overwrites
-  // the already-stored value — the existing column value is kept instead.
-  const [gig] = await db
-    .insert(gigsTable)
-    .values(parsed.data)
-    .onConflictDoUpdate({
-      target: gigsTable.id,
-      set: {
-        ...parsed.data,
-        jobCategory: sql`COALESCE(EXCLUDED.job_category, ${gigsTable.jobCategory})`,
-        feeRate: sql`COALESCE(EXCLUDED.fee_rate, ${gigsTable.feeRate})`,
-        escrowAmount: sql`COALESCE(EXCLUDED.escrow_amount, ${gigsTable.escrowAmount})`,
-      },
-    })
-    .returning();
+  if (!user || user.role !== "perusahaan") {
+    res.status(403).json({ error: "Hanya akun perusahaan yang dapat membuat lowongan." });
+    return;
+  }
 
-  broadcastGig(gig);
-  res.status(201).json(gig);
+  const [existing] = await db
+    .select()
+    .from(gigsTable)
+    .where(eq(gigsTable.id, parsed.data.id))
+    .limit(1);
+  if (existing) {
+    if (existing.employerId !== user.id) {
+      res.status(403).json({ error: "Lowongan ini bukan milik akun Anda." });
+      return;
+    }
+    const [updated] = await db
+      .update(gigsTable)
+      .set({
+        ...parsed.data,
+        employerId: existing.employerId,
+        paymentStatus: existing.paymentStatus,
+        escrowStatus: existing.escrowStatus,
+        escrowAmount: existing.escrowAmount,
+        broadcastActive: existing.broadcastActive,
+        jobCategory: parsed.data.jobCategory ?? existing.jobCategory,
+        feeRate: existing.feeRate,
+      })
+      .where(eq(gigsTable.id, existing.id))
+      .returning();
+    if (updated.paymentStatus === "confirmed") broadcastGig(updated);
+    res.json(updated);
+    return;
+  }
+
+  const amount = wageAmount({
+    pembayaran: parsed.data.pembayaran,
+    nominal: parsed.data.nominal,
+    jumlahHari: parsed.data.jumlahHari ?? null,
+    kuota: parsed.data.kuota,
+  });
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    res.status(400).json({ error: "Nilai upah tidak valid." });
+    return;
+  }
+  const [settings] = await db
+    .select({ accountNumber: manualPaymentSettingsTable.accountNumber })
+    .from(manualPaymentSettingsTable)
+    .where(eq(manualPaymentSettingsTable.id, 1))
+    .limit(1);
+  if (!settings?.accountNumber) {
+    res.status(409).json({ error: "Instruksi transfer belum diatur oleh admin. Lowongan belum dibuat." });
+    return;
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const [gig] = await tx
+      .insert(gigsTable)
+      .values({
+        ...parsed.data,
+        employerId: user.id,
+        employerName: user.namaPerusahaan || user.name,
+        escrowAmount: amount,
+        escrowStatus: "pending",
+        feeRate: 0,
+        paymentStatus: "awaiting_payment",
+        broadcastActive: false,
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (!gig) return { error: "id_conflict" as const };
+    const [payment] = await tx
+      .insert(manualPaymentsTable)
+      .values({
+        payerId: user.id,
+        targetType: "gig_escrow",
+        targetId: String(gig.id),
+        amount,
+      })
+      .returning();
+    return { gig, payment };
+  });
+
+  if ("error" in result) {
+    res.status(409).json({ error: "ID lowongan sudah digunakan. Coba buat ulang lowongan." });
+    return;
+  }
+  req.log.info(
+    { gigId: result.gig.id, employerId: user.id, amount },
+    "Gig created and held for manual payment review",
+  );
+  res.status(201).json({ ...result.gig, manualPaymentId: result.payment.id });
 });
 
 export default router;

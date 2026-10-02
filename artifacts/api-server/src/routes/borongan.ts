@@ -1,7 +1,14 @@
 import { Router, type IRouter } from "express";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, gigsTable, dailyPayoutsTable, attendanceTable } from "@workspace/db";
+import {
+  db,
+  gigsTable,
+  dailyPayoutsTable,
+  attendanceTable,
+  applicationsTable,
+  walletEntriesTable,
+} from "@workspace/db";
 import { getSessionUser, SESSION_COOKIE } from "../lib/auth";
 import { broadcastGig, broadcastDailyPayout } from "../lib/realtime";
 
@@ -19,9 +26,10 @@ function dailyFractionFor(
   deposit: number,
   days: number,
   dayIndex: number,
+  flatNoFee: boolean,
 ): { grossFraction: number; platformFee: number; netToWorker: number } {
   const d = Math.max(1, days);
-  const workerNetTotal = Math.round(deposit / 1.15);
+  const workerNetTotal = flatNoFee ? deposit : Math.round(deposit / 1.15);
   const platformCutTotal = deposit - workerNetTotal;
   const perDayNet = Math.floor(workerNetTotal / d);
   const perDayFee = Math.floor(platformCutTotal / d);
@@ -49,6 +57,10 @@ router.post("/borongan/remote/submit-proof", async (req, res): Promise<void> => 
     res.status(401).json({ error: "Tidak terautentikasi." });
     return;
   }
+  if (user.role !== "pekerja") {
+    res.status(403).json({ error: "Hanya pekerja yang ditugaskan dapat mengirim bukti kerja." });
+    return;
+  }
   const parsed = submitBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -61,6 +73,21 @@ router.post("/borongan/remote/submit-proof", async (req, res): Promise<void> => 
     .where(eq(gigsTable.id, parsed.data.jobId));
   if (!existing) {
     res.status(404).json({ error: "Proyek tidak ditemukan." });
+    return;
+  }
+  const [acceptedApplication] = await db
+    .select({ id: applicationsTable.id })
+    .from(applicationsTable)
+    .where(
+      and(
+        eq(applicationsTable.jobId, parsed.data.jobId),
+        eq(applicationsTable.workerId, user.id),
+        eq(applicationsTable.status, "diterima"),
+      ),
+    )
+    .limit(1);
+  if (!acceptedApplication) {
+    res.status(403).json({ error: "Bukti kerja hanya dapat dikirim oleh pekerja yang diterima pada proyek ini." });
     return;
   }
   // A finalized milestone (already paid out) must not be re-opened by a new proof.
@@ -97,6 +124,9 @@ async function loadOwnedGig(
   if (!gig.employerId || gig.employerId !== employerId) {
     return { ok: false, status: 403, error: "Hanya pemberi kerja pemilik proyek yang dapat memutuskan." };
   }
+  if (gig.paymentStatus !== "confirmed") {
+    return { ok: false, status: 409, error: "Pembayaran proyek belum dikonfirmasi admin." };
+  }
   return { ok: true };
 }
 
@@ -122,15 +152,51 @@ router.post("/borongan/remote/approve", async (req, res): Promise<void> => {
     return;
   }
 
-  const [gig] = await db
-    .update(gigsTable)
-    .set({ proofStatus: "approved", escrowStatus: "released" })
+  const [application] = await db
+    .select()
+    .from(applicationsTable)
+    .where(
+      and(
+        eq(applicationsTable.jobId, parsed.data.jobId),
+        eq(applicationsTable.status, "diterima"),
+      ),
+    )
+    .limit(1);
+  if (!application) {
+    res.status(409).json({ error: "Belum ada pekerja yang diterima pada proyek ini." });
+    return;
+  }
+  const [currentGig] = await db
+    .select()
+    .from(gigsTable)
     .where(eq(gigsTable.id, parsed.data.jobId))
-    .returning();
+    .limit(1);
+  if (!currentGig || currentGig.proofStatus !== "submitted") {
+    res.status(409).json({ error: "Bukti kerja belum menunggu persetujuan." });
+    return;
+  }
+  const result = await db.transaction(async (tx) => {
+    const [gig] = await tx
+      .update(gigsTable)
+      .set({ proofStatus: "approved", escrowStatus: "released" })
+      .where(eq(gigsTable.id, parsed.data.jobId))
+      .returning();
+    await tx
+      .insert(walletEntriesTable)
+      .values({
+        workerId: application.workerId,
+        sourceType: "remote_borongan",
+        sourceId: String(gig.id),
+        amount: gig.nominal,
+        description: `Upah proyek: ${gig.posisi}`,
+      })
+      .onConflictDoNothing();
+    return gig;
+  });
 
-  broadcastGig(gig);
-  req.log.info({ jobId: gig.id }, "Remote borongan proof approved → escrow released");
-  res.json(gig);
+  broadcastGig(result);
+  req.log.info({ jobId: result.id, workerId: application.workerId }, "Remote borongan approved and credited to wallet");
+  res.json({ ...result, payoutStatus: "available_for_manual_withdrawal" });
 });
 
 /**
@@ -236,6 +302,9 @@ router.post("/borongan/onsite/checkout", async (req, res): Promise<void> => {
       .for("update");
     if (!gig) return { status: 404 as const, error: "Proyek tidak ditemukan." };
 
+    if (gig.paymentStatus !== "confirmed") {
+      return { status: 409 as const, error: "Pembayaran proyek belum dikonfirmasi admin." };
+    }
     const totalDays = gig.jumlahHari ?? 1;
     const already = gig.daysPaid ?? 0;
     // Hard cap: reject the (jumlahHari+1)th checkout before it reaches calcDailyFraction.
@@ -272,18 +341,20 @@ router.post("/borongan/onsite/checkout", async (req, res): Promise<void> => {
     }
 
     const dayIndex = already + 1;
-    const deposit = gig.escrowAmount ?? 0;
+    const totalDeposit = gig.escrowAmount ?? 0;
+    const deposit = Math.floor(totalDeposit / Math.max(1, gig.kuota));
     const { grossFraction, platformFee, netToWorker } = dailyFractionFor(
       deposit,
       totalDays,
       dayIndex,
+      gig.feeRate === 0,
     );
 
     // Flat-floor residual: the amount left in escrow after all days release at
     // the constant per-day rate (Math.floor).  On the final day this represents
     // the rounding gap that MUST be refunded to the employer — not orphaned.
     // Formula: deposit − (Math.floor(workerNetTotal/d) + Math.floor(platformCutTotal/d)) × d
-    const workerNetTotal = Math.round(deposit / 1.15);
+    const workerNetTotal = gig.feeRate === 0 ? deposit : Math.round(deposit / 1.15);
     const platformCutTotal = deposit - workerNetTotal;
     const perDayNet = Math.floor(workerNetTotal / totalDays);
     const perDayFee = Math.floor(platformCutTotal / totalDays);
@@ -293,6 +364,8 @@ router.post("/borongan/onsite/checkout", async (req, res): Promise<void> => {
       .insert(dailyPayoutsTable)
       .values({
         jobId: gig.id,
+        workerId: user.id,
+        status: "credited_to_wallet",
         workerName: user.name,
         dayIndex,
         grossFraction,
@@ -300,6 +373,17 @@ router.post("/borongan/onsite/checkout", async (req, res): Promise<void> => {
         netToWorker,
       })
       .returning();
+
+    await tx
+      .insert(walletEntriesTable)
+      .values({
+        workerId: user.id,
+        sourceType: "onsite_daily",
+        sourceId: String(payout.id),
+        amount: netToWorker,
+        description: `Upah harian ke-${dayIndex}: ${gig.posisi}`,
+      })
+      .onConflictDoNothing();
 
     const fullyPaid = dayIndex >= totalDays;
     const [updated] = await tx
