@@ -1,4 +1,4 @@
-import { Banknote, ArrowDownCircle, Lock, TrendingUp, Clock, CheckCircle, Wallet } from "lucide-react";
+import { AlertTriangle, Banknote, ArrowDownCircle, Lock, TrendingUp, Clock, CheckCircle, Wallet } from "lucide-react";
 import { WalletTransaction } from "@/types/escrow";
 
 interface EscrowWalletPanelProps {

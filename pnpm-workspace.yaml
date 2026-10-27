@@ -4,6 +4,9 @@ packages:
   - lib/integrations/*
   - scripts
 
+allowBuilds:
+  esbuild: true
+
 autoInstallPeers: false
 
 catalog:
@@ -63,7 +66,6 @@ overrides:
   '@tailwindcss/oxide>@tailwindcss/oxide-linux-arm64-musl': '-'
   '@tailwindcss/oxide>@tailwindcss/oxide-linux-x64-musl': '-'
   '@tailwindcss/oxide>@tailwindcss/oxide-win32-arm64-msvc': '-'
-  '@tailwindcss/oxide>@tailwindcss/oxide-win32-x64-msvc': '-'
   '@babel/core': '>=7.29.6'
   esbuild: 0.28.1
   js-yaml: '>=4.2.0'
@@ -95,7 +97,6 @@ overrides:
   esbuild>@esbuild/sunos-x64: '-'
   esbuild>@esbuild/win32-arm64: '-'
   esbuild>@esbuild/win32-ia32: '-'
-  esbuild>@esbuild/win32-x64: '-'
   lightningcss>lightningcss-android-arm64: '-'
   lightningcss>lightningcss-darwin-arm64: '-'
   lightningcss>lightningcss-darwin-x64: '-'
@@ -105,7 +106,6 @@ overrides:
   lightningcss>lightningcss-linux-arm64-musl: '-'
   lightningcss>lightningcss-linux-x64-musl: '-'
   lightningcss>lightningcss-win32-arm64-msvc: '-'
-  lightningcss>lightningcss-win32-x64-msvc: '-'
   rollup>@rollup/rollup-android-arm-eabi: '-'
   rollup>@rollup/rollup-android-arm64: '-'
   rollup>@rollup/rollup-darwin-arm64: '-'
@@ -129,4 +129,3 @@ overrides:
   rollup>@rollup/rollup-win32-arm64-msvc: '-'
   rollup>@rollup/rollup-win32-ia32-msvc: '-'
   rollup>@rollup/rollup-win32-x64-gnu: '-'
-  rollup>@rollup/rollup-win32-x64-msvc: '-'

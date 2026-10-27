@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
+import path from "node:path";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { UPLOAD_ROOT } from "./lib/upload";
@@ -39,5 +40,20 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/uploads", express.static(UPLOAD_ROOT));
 
 app.use("/api", router);
+
+// In production Render runs the API and the Vite bundle in one Web Service so
+// browser requests to /api and /api/ws stay on the same origin.
+const webRoot = path.resolve(
+  process.cwd(),
+  "artifacts/jakarta-gig-finder/dist/public",
+);
+app.use(express.static(webRoot));
+app.use((req, res, next) => {
+  if (req.method === "GET" && !req.path.startsWith("/api")) {
+    res.sendFile(path.join(webRoot, "index.html"));
+    return;
+  }
+  next();
+});
 
 export default app;
